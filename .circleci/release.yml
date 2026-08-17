@@ -1,0 +1,29 @@
+version: 2.1
+
+parameters:
+  workspace_version:
+    type: string
+    default: ""
+    description: "Override workspace v* version (empty = nextsv auto-detect)"
+
+orbs:
+  toolkit: jerus-org/circleci-toolkit@7.1.0
+
+workflows:
+  release:
+    jobs:
+      - toolkit/calculate_versions:
+          name: calculate-versions
+          verify_tools: true
+          workspace_version_override: << pipeline.parameters.workspace_version >>
+
+      - approve-release:
+          type: approval
+          requires: [calculate-versions]
+
+      - toolkit/release_prlog:
+          requires: [release-jci-audit]
+          context:
+            - release
+            - bot-check
+            - pcu-app
