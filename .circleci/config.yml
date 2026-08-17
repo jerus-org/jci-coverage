@@ -1,0 +1,100 @@
+version: 2.1
+
+parameters:
+  min_rust_version:
+    type: string
+    default: "1.89"
+
+orbs:
+  toolkit: jerus-org/circleci-toolkit@7.1.0
+
+jobs:
+  # An unaccepted licence stops the release in its pre-release hook — after the
+  # approval gate and the build, at the most expensive point in the pipeline.
+  # This asks the same question at PR time instead.
+  #
+  # It checks that cargo-about can RESOLVE the licences, not that the committed
+  # notices match byte for byte: the rendered text varies with what the local
+  # cargo cache has unpacked, so comparing bytes here would fail on a correct
+  # tree. See the comment in scripts/licenses.sh. `just` is not in the CI image,
+  # so the invocation is shared through the script rather than copied here.
+  licenses_policy:
+    executor: toolkit/rust_env_rolling
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Check every dependency's licence is accepted by the policy
+          command: ./scripts/licenses.sh --policy
+
+workflows:
+  validation:
+    jobs:
+      - toolkit/verify_commit_signatures:
+          name: verify_commit_signatures_trusted
+          context: bot-check
+          post_comment: true
+          update_pcu: false
+          filters:
+            branches:
+              ignore:
+                - main
+                - /pull\/[0-9]+/
+
+      - toolkit/verify_commit_signatures:
+          name: verify_commit_signatures_forked
+          post_comment: false
+          update_pcu: false
+          filters:
+            branches:
+              only:
+                - /pull\/[0-9]+/
+
+      - toolkit/required_builds:
+          min_rust_version: << pipeline.parameters.min_rust_version >>
+
+      - toolkit/optional_builds:
+          filters:
+            branches:
+              ignore: main
+
+      - toolkit/test_doc_build:
+          filters:
+            branches:
+              ignore: main
+
+      - toolkit/idiomatic_rust:
+          clippy_report: true
+
+      - toolkit/common_tests:
+          min_rust_version: << pipeline.parameters.min_rust_version >>
+      - licenses_policy
+
+      - toolkit/security:
+          name: security audit only
+          sonarcloud: false
+          filters:
+            branches:
+              only:
+                - /pull\/[0-9]+/
+
+      - toolkit/security:
+          name: security with sonarcloud
+          clippy_report: true
+          no_sonarcloud_on_main: false
+          requires:
+            - toolkit/idiomatic_rust
+          context: SonarCloud
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
+
+      - toolkit/code_coverage:
+          context: SonarCloud
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
+                - main
+
