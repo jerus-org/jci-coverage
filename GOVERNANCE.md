@@ -74,8 +74,8 @@ This is a recognised limitation, mitigated by:
   handed over even though a single person maintains it day to day.
 - Heavily automated, documented CI/CD and release processes that reduce the tacit
   knowledge required to operate the project.
-- Comprehensive documentation ([`docs/`](docs/), `README.md`,
-  [CONTRIBUTING.md](CONTRIBUTING.md)).
+- Comprehensive documentation (`README.md`, [CONTRIBUTING.md](CONTRIBUTING.md), and a
+  `docs/` directory planned ahead of the 0.1.0 preview — see [ROADMAP.md](ROADMAP.md)).
 
 The project actively welcomes additional maintainers to raise the bus factor (see
 below).
