@@ -8,6 +8,55 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.2.0
 
+jobs:
+  # toolkit/test_doc_build hardcodes `cargo doc --lib`, which fails on
+  # jci-coverage: deliberately bin-only, no [lib] target (nothing depends on
+  # this crate as a library, so publishing one would misrepresent it on
+  # crates.io/docs.rs — see the P0 PR). Mirrors that job's shape without
+  # --lib, per the org's "prototype in the requiring repo, propose upstream
+  # once validated" policy for toolkit gaps. Proposed upstream as
+  # digital-prstv/circleci-toolkit#525 (a lib_only param); switch back to
+  # toolkit/test_doc_build once that lands.
+  test_doc_build:
+    executor: toolkit/rust_env_rolling
+    resource_class: medium
+    environment:
+      RUSTDOCFLAGS: --cfg docsrs -Dwarnings
+    steps:
+      - checkout
+      - run:
+          name: Record compiler version for cache key
+          command: rustc +nightly --version > rust-toolchain-version.txt
+      - restore_cache:
+          name: Restore dependency cache
+          keys:
+            - deps-v1-{{ arch }}-{{ checksum "Cargo.lock" }}
+            - deps-v1-{{ arch }}-
+      - restore_cache:
+          name: Restore build cache
+          keys:
+            - build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-{{ checksum "Cargo.lock" }}
+            - build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-
+            - build-v1-{{ arch }}-
+      - run:
+          name: Test generation of all of the documentation for the crate
+          command: |
+            cargo +nightly doc \
+            --no-deps \
+            --all-features \
+            --document-private-items
+      - save_cache:
+          name: Save dependency cache
+          key: deps-v1-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+      - save_cache:
+          name: Save build cache
+          key: build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - target
+
 workflows:
   validation:
     jobs:
@@ -39,7 +88,7 @@ workflows:
             branches:
               ignore: main
 
-      - toolkit/test_doc_build:
+      - test_doc_build:
           filters:
             branches:
               ignore: main
