@@ -1,6 +1,6 @@
 [package]
 name = "jci-coverage"
-version = "0.0.0"
+version = "0.0.1"
 description = "Source-based Rust code coverage (cargo-llvm-cov) with upload to OtterWise for code quality reporting"
 edition.workspace = true
 authors.workspace = true
@@ -53,4 +53,4 @@ bin-dir = "{ bin }{ binary-ext }"
 # pcu has nothing to replace and the signature is published unverifiable.
 [package.metadata.binstall.signing]
 algorithm = "minisign"
-pubkey = "RWSImK6yfWBJsXrcL0Pj4rGeuKAZBAHz1LtaE677qZGJ4Pd/O+L2A9vl"
+pubkey = "RWRefnBYPa2HDbDKmznqURh+0QqTf9vyiuFXZxXB/i4S8Tiyd2t/Jrvk"
