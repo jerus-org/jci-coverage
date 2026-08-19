@@ -32,9 +32,12 @@ unit-tests:
     cargo test --all
 
 # run various auditing tools to assure we are legal and safe.
-# TODO (P1): replace with `jci-audit check` once implemented, for local/CI parity.
+# jci-audit orchestrates cargo-deny (policy) + cargo-audit (live advisories);
+# deny.toml is the single source of truth it derives .cargo/audit.toml and
+# crates/jci-coverage/about.toml from (`jci-audit sync`). Requires the
+# workstation tool: cargo binstall jci-audit cargo-deny cargo-audit
 audit:
-    cargo deny check advisories bans licenses sources
+    jci-audit check
 
 # verify the crate builds at its declared MSRV (rust-version) against the
 # locked deps — CI's rolling toolchain never validates the true floor.
@@ -44,7 +47,7 @@ audit:
 # rust-version under [workspace.package], where cargo-msrv does not look for it,
 # and it exits 1 having verified nothing rather than falling back.
 msrv:
-    cargo msrv verify --manifest-path crates/jci-audit/Cargo.toml
+    cargo msrv verify --manifest-path crates/jci-coverage/Cargo.toml
 
 # run nightly rustfmt for its extra features, but check that it won't upset stable rustfmt
 fmt:
@@ -62,18 +65,16 @@ cov:
 cov-summary:
     cargo llvm-cov --all-features --summary-only
 
-# Regenerate the crate's third-party license notices file (cargo-about)
-# The invocation lives in the script so this and CI cannot drift apart — `just`
-# is not installed in the CI image, so CI runs the script directly.
+# Regenerate the crate's third-party license notices file (cargo-about).
+# --locked so a local run cannot quietly rewrite Cargo.lock. Matches the
+# invocation in crates/jci-coverage/release-hook.sh (which runs
+# independently of this recipe — every release regenerates the file fresh).
 licenses:
-    ./scripts/licenses.sh
+    cd crates/jci-coverage && cargo about generate --locked about.hbs --output-file THIRD-PARTY-LICENSES.md
 
 # Verify the committed license notices are current (fails if stale).
-# Local only — the rendered text depends on the local cargo cache, so CI runs
-# licenses-policy instead. See the comment in scripts/licenses.sh.
-licenses-check:
-    ./scripts/licenses.sh --check
-
-# The gate CI runs: every dependency's license must be accepted by the policy.
-licenses-policy:
-    ./scripts/licenses.sh --policy
+# Local only — the rendered text depends on the local cargo cache (see
+# jci-audit's scripts/licenses.sh for the measured example), so this isn't
+# run in CI.
+licenses-check: licenses
+    git diff --exit-code crates/jci-coverage/THIRD-PARTY-LICENSES.md

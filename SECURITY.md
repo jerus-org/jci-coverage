@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supported versions
 
-jci-otterwise is pre-1.0 software; the public API and CLI surface may still change
+jci-coverage is pre-1.0 software; the public API and CLI surface may still change
 ahead of 1.0 (see the README). Security fixes are made against the **latest
 released `0.1.x` version**. Users should track the latest release.
 
@@ -28,7 +28,7 @@ discussions, or pull requests.**
 
 Report vulnerabilities privately using **GitHub's private vulnerability reporting**:
 
-➡️ **<https://github.com/jerus-org/jci-otterwise/security/advisories/new>**
+➡️ **<https://github.com/jerus-org/jci-coverage/security/advisories/new>**
 
 (From the repository, use the **Security** tab → **Report a vulnerability**.)
 
@@ -61,7 +61,7 @@ acknowledgement within the target window, please re-send via the same channel.
 - We will **credit reporters** for their responsible disclosure in the release notes
   and/or advisory, unless you ask to remain anonymous.
 - Publicly-known fixed vulnerabilities are published in the corresponding
-  [GitHub Security Advisory](https://github.com/jerus-org/jci-otterwise/security/advisories)
+  [GitHub Security Advisory](https://github.com/jerus-org/jci-coverage/security/advisories)
   and recorded in the project's release notes (see below).
 
 ### How fixed vulnerabilities are recorded in release notes

@@ -6,26 +6,56 @@ parameters:
     default: "1.89"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@7.1.0
+  toolkit: jerus-org/circleci-toolkit@7.2.0
 
 jobs:
-  # An unaccepted licence stops the release in its pre-release hook — after the
-  # approval gate and the build, at the most expensive point in the pipeline.
-  # This asks the same question at PR time instead.
-  #
-  # It checks that cargo-about can RESOLVE the licences, not that the committed
-  # notices match byte for byte: the rendered text varies with what the local
-  # cargo cache has unpacked, so comparing bytes here would fail on a correct
-  # tree. See the comment in scripts/licenses.sh. `just` is not in the CI image,
-  # so the invocation is shared through the script rather than copied here.
-  licenses_policy:
+  # toolkit/test_doc_build hardcodes `cargo doc --lib`, which fails on
+  # jci-coverage: deliberately bin-only, no [lib] target (nothing depends on
+  # this crate as a library, so publishing one would misrepresent it on
+  # crates.io/docs.rs — see the P0 PR). Mirrors that job's shape without
+  # --lib, per the org's "prototype in the requiring repo, propose upstream
+  # once validated" policy for toolkit gaps. Proposed upstream as
+  # digital-prstv/circleci-toolkit#525 (a lib_only param); switch back to
+  # toolkit/test_doc_build once that lands.
+  test_doc_build:
     executor: toolkit/rust_env_rolling
     resource_class: medium
+    environment:
+      RUSTDOCFLAGS: --cfg docsrs -Dwarnings
     steps:
       - checkout
       - run:
-          name: Check every dependency's licence is accepted by the policy
-          command: ./scripts/licenses.sh --policy
+          name: Record compiler version for cache key
+          command: rustc +nightly --version > rust-toolchain-version.txt
+      - restore_cache:
+          name: Restore dependency cache
+          keys:
+            - deps-v1-{{ arch }}-{{ checksum "Cargo.lock" }}
+            - deps-v1-{{ arch }}-
+      - restore_cache:
+          name: Restore build cache
+          keys:
+            - build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-{{ checksum "Cargo.lock" }}
+            - build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-
+            - build-v1-{{ arch }}-
+      - run:
+          name: Test generation of all of the documentation for the crate
+          command: |
+            cargo +nightly doc \
+            --no-deps \
+            --all-features \
+            --document-private-items
+      - save_cache:
+          name: Save dependency cache
+          key: deps-v1-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+      - save_cache:
+          name: Save build cache
+          key: build-v1-{{ arch }}-{{ checksum "rust-toolchain-version.txt" }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - target
 
 workflows:
   validation:
@@ -58,7 +88,7 @@ workflows:
             branches:
               ignore: main
 
-      - toolkit/test_doc_build:
+      - test_doc_build:
           filters:
             branches:
               ignore: main
@@ -68,7 +98,6 @@ workflows:
 
       - toolkit/common_tests:
           min_rust_version: << pipeline.parameters.min_rust_version >>
-      - licenses_policy
 
       - toolkit/security:
           name: security audit only

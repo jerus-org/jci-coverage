@@ -1,0 +1,17 @@
+```
+$ jci-coverage upload -h
+Upload a coverage report to OtterWise
+
+Usage: jci-coverage upload [OPTIONS] --file <PATH>
+
+Options:
+      --file <PATH>         Path to the coverage report to upload
+  -v, --verbose...          Increase logging verbosity
+  -q, --quiet...            Decrease logging verbosity
+      --repo-token <TOKEN>  Repository token
+      --org-token <TOKEN>   Organisation token
+      --endpoint <URL>      Override the upload endpoint (primarily
+                            for testing)
+  -h, --help                Print help (see more with '--help')
+
+```

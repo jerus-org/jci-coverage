@@ -1,0 +1,37 @@
+```
+$ jci-coverage upload --help
+Standalone: takes a coverage file path and uploads it. Does not
+require `report`, Rust, or `cargo-llvm-cov` — the caller is
+responsible for the file existing at the given path in a format
+OtterWise accepts.
+
+Usage: jci-coverage upload [OPTIONS] --file <PATH>
+
+Options:
+      --file <PATH>
+          Path to the coverage report to upload
+
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+      --repo-token <TOKEN>
+          Repository token.
+          
+          Falls back to `OTTERWISE_TOKEN` when omitted.
+
+      --org-token <TOKEN>
+          Organisation token.
+          
+          Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least
+          one of repo/org token is required.
+
+      --endpoint <URL>
+          Override the upload endpoint (primarily for testing)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```
