@@ -1,0 +1,43 @@
+```
+$ jci-coverage report --help
+Writes `coverage/lcov.info` and prints a terminal summary. Requires
+`cargo-llvm-cov` and the `llvm-tools` rustup component on PATH (and
+`cargo-nextest` too, when `--runner nextest` is selected).
+
+Usage: jci-coverage report [OPTIONS]
+
+Options:
+      --package <NAME>
+          Limit coverage to one workspace package
+
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+      --runner <RUNNER>
+          Test runner to drive coverage with
+
+          Possible values:
+          - test:    `cargo llvm-cov` — plain `cargo test`
+          - nextest: `cargo llvm-cov nextest` — needs `cargo-nextest`
+            too
+          
+          [default: test]
+
+      --nextest-profile <NAME>
+          Nextest profile to use.
+          
+          Only meaningful with `--runner nextest`.
+
+      --no-all-features
+          Disable `--all-features` (on by default).
+          
+          Matches `toolkit/code_coverage`, so instrumented subprocess
+          coverage is captured.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```

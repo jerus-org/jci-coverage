@@ -1,0 +1,7 @@
+```
+$ RUST_LOG= jci-coverage report
+? 1
+[..]INFO jci_coverage::report: report [..]
+Error: jci-coverage report is not yet implemented (P1)
+
+```

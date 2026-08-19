@@ -1,0 +1,56 @@
+[package]
+name = "jci-coverage"
+version = "0.0.0"
+description = "Source-based Rust code coverage (cargo-llvm-cov) with upload to OtterWise for code quality reporting"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+# cargo-about tooling config: needed to regenerate THIRD-PARTY-LICENSES.md but
+# not part of the distributed crate.
+exclude = ["about.toml", "about.hbs"]
+
+# jci-coverage orchestrates the `cargo-llvm-cov` (and, when the nextest runner
+# is selected, `cargo-nextest`) *binary* as a subprocess for `report` — it
+# does not link either as a library crate. `upload` is a standalone,
+# language-agnostic subcommand: it takes a coverage file path and posts it to
+# OtterWise, with no dependency on `report` or on any Rust-specific tooling.
+
+[dependencies]
+# CLI
+clap.workspace = true
+clap-verbosity-flag.workspace = true
+
+# Error Handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-log.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+trycmd.workspace = true
+
+[[bin]]
+name = "jci-coverage"
+path = "src/main.rs"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/jci-coverage-v{ version }/jci-coverage-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
+
+# cargo-binstall signature verification. The pubkey is a placeholder in source:
+# the release pipeline generates an ephemeral minisign/rsign keypair, signs the
+# tarball, and `pcu release inject-pubkey` replaces the `pubkey` value below with
+# that release's public key before the crate is published. Without this section
+# pcu has nothing to replace and the signature is published unverifiable.
+[package.metadata.binstall.signing]
+algorithm = "minisign"
+pubkey = "RWSImK6yfWBJsXrcL0Pj4rGeuKAZBAHz1LtaE677qZGJ4Pd/O+L2A9vl"

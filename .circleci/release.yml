@@ -1,13 +1,17 @@
 version: 2.1
 
 parameters:
+  jci_coverage_version:
+    type: string
+    default: ""
+    description: "Override jci-coverage crate version (empty = nextsv auto-detect)"
   workspace_version:
     type: string
     default: ""
     description: "Override workspace v* version (empty = nextsv auto-detect)"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@7.1.0
+  toolkit: jerus-org/circleci-toolkit@7.2.0
 
 workflows:
   release:
@@ -15,14 +19,32 @@ workflows:
       - toolkit/calculate_versions:
           name: calculate-versions
           verify_tools: true
+          crates: "jci-coverage:jci-coverage-v"
+          crate_version_overrides: "jci-coverage:<< pipeline.parameters.jci_coverage_version >>"
           workspace_version_override: << pipeline.parameters.workspace_version >>
 
       - approve-release:
           type: approval
           requires: [calculate-versions]
 
+      - toolkit/release_crate:
+          name: release-jci-coverage
+          requires: [approve-release]
+          package: jci-coverage
+          crate_tag_prefix: jci-coverage-v
+          build_binary: true
+          binary_name: jci-coverage
+          # Required on repos with GitHub Immutable Releases: without it, the
+          # binary tarball/.sig uploads fail against an already-published
+          # release. See digital-prstv/circleci-toolkit#520/#521.
+          draft: true
+          context:
+            - release
+            - bot-check
+            - pcu-app
+
       - toolkit/release_prlog:
-          requires: [release-jci-audit]
+          requires: [release-jci-coverage]
           context:
             - release
             - bot-check

@@ -6,26 +6,37 @@ parameters:
     default: "1.89"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@7.1.0
+  toolkit: jerus-org/circleci-toolkit@7.2.0
 
 jobs:
-  # An unaccepted licence stops the release in its pre-release hook — after the
-  # approval gate and the build, at the most expensive point in the pipeline.
-  # This asks the same question at PR time instead.
+  # deny.toml is the single source of truth for both .cargo/audit.toml and
+  # every crate's about.toml (cargo-about's license-policy config); this
+  # catches drift between them at PR time.
   #
-  # It checks that cargo-about can RESOLVE the licences, not that the committed
-  # notices match byte for byte: the rendered text varies with what the local
-  # cargo cache has unpacked, so comparing bytes here would fail on a correct
-  # tree. See the comment in scripts/licenses.sh. `just` is not in the CI image,
-  # so the invocation is shared through the script rather than copied here.
+  # Deliberately NOT also checking that cargo-about can actually RESOLVE the
+  # licences (a real, distinct failure mode `jci-audit check`/`sync --check`
+  # don't cover — see jerus-org/jci-audit#80). jci-audit's own `release` gate
+  # already does that resolvability check at release time, and #80 proposes
+  # folding it into `jci-audit check` too; a hand-rolled `cargo-about
+  # generate --output-file /dev/null` PR-time script (as jci-audit's own repo
+  # currently carries, pending #80) would just be a workaround to delete
+  # again once that lands — not worth building fresh into a brand-new repo.
+  #
+  # jci-audit is not (yet) baked into the shared rust_env_rolling image — see
+  # circleci-toolkit's CI Container Philosophy — so it is cargo-binstalled
+  # here for now, the same prototype-before-promotion step every new CI tool
+  # takes before it earns a place in the image or a consumable orb.
   licenses_policy:
     executor: toolkit/rust_env_rolling
     resource_class: medium
     steps:
       - checkout
       - run:
-          name: Check every dependency's licence is accepted by the policy
-          command: ./scripts/licenses.sh --policy
+          name: Install jci-audit
+          command: cargo binstall --no-confirm jci-audit
+      - run:
+          name: Check deny.toml-derived files are in sync
+          command: jci-audit sync --check
 
 workflows:
   validation:

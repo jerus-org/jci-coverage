@@ -1,0 +1,28 @@
+```
+$ jci-coverage --help
+Generate source-based Rust code coverage with cargo-llvm-cov and
+upload the report to OtterWise for code quality reporting. `report`
+and `upload` are independent: `upload` works standalone against any
+coverage file, Rust or not.
+
+Usage: jci-coverage [OPTIONS] <COMMAND>
+
+Commands:
+  report  Generate a coverage report with cargo-llvm-cov
+  upload  Upload a coverage report to OtterWise
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+```
