@@ -40,6 +40,15 @@ implemented yet.
 
 ## Backlog (deliberately out of MVP scope, tracked here rather than built ahead of need)
 
+- **Wire `jci-audit check`/`sync --check` into CI once its orb is consumable.**
+  `jci-audit` is available as a workstation tool (`just audit`, `just` uses it locally)
+  but is deliberately **not** installed ad-hoc into a shared toolkit executor in CI
+  (tried this, reverted it — `cargo binstall`/`cargo install`-ing it per job is exactly
+  the kind of workaround the project is avoiding elsewhere; `jci-audit` is meant to be
+  consumed via its own generated orb, whose self-contained executor image already
+  bundles the binary with `cargo-audit`/`cargo-deny`/`cargo-about`). Its own roadmap
+  defers consumer migration until it reaches 0.1.0. Until then, `deny.toml`/
+  `about.toml` drift is a local-only check (`just audit`), not CI-enforced.
 - **Adopt `jci-audit check`'s cargo-about resolvability check once it lands
   ([jerus-org/jci-audit#80](https://github.com/jerus-org/jci-audit/issues/80)).**
   `jci-audit check`/`sync --check` only verify that a crate's `about.toml` matches
