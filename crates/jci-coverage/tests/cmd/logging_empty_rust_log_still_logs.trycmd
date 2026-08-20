@@ -1,7 +1,17 @@
+Regression test for the RUST_LOG="" (set-but-empty) vs. unset bug — see
+`resolve_filter_source` in `src/main.rs`. Uses `report --dry-run`: `report`
+otherwise drives a real `cargo-llvm-cov` subprocess as of P1, and running
+that live from inside this very `cargo test` process triggers a full
+instrumented rebuild-and-retest of the whole suite (confirmed OOM). `--dry-run`
+exercises the exact same code path — including this log line — without
+shelling out to a real tool or touching the filesystem, so it's safe
+regardless of what's on PATH or where trycmd runs it from.
+
 ```
-$ RUST_LOG= jci-coverage report
-? 1
+$ RUST_LOG= jci-coverage report --dry-run
 [..]INFO jci_coverage::report: report [..]
-Error: jci-coverage report is not yet implemented (P1)
+(dry run) would run: cargo llvm-cov --all-features --lcov --output-path coverage/lcov.info
+(dry run) would write [..]coverage/lcov.info
+(dry run) would run: cargo llvm-cov report --summary-only
 
 ```

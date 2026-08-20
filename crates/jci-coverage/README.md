@@ -22,8 +22,8 @@ Two independent subcommands, not one:
 Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.
 
-> **Status:** early scaffold (0.0.x). The CLI surface (flags, `--help`) is in place;
-> `report` and `upload` are not yet implemented — see [ROADMAP.md](../../ROADMAP.md).
+> **Status:** early (0.0.x). `report` is implemented; `upload` is not yet — see
+> [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
