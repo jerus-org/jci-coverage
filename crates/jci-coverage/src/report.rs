@@ -55,13 +55,9 @@ pub struct ReportArgs {
 
     /// Preview the cargo-llvm-cov invocation without running it.
     ///
-    /// Never fails on a missing tool or touches the filesystem — works
-    /// with zero tool setup, so it's usable for previewing the exact
-    /// argv, and for anything (CI smoke checks, this crate's own CLI
-    /// tests) that wants to exercise this command's logging without
-    /// cargo-llvm-cov installed at all. Still warns (without failing)
-    /// when a required tool is missing, so the preview stays honest
-    /// about whether a real run would actually work.
+    /// Works with zero tool setup: never fails on a missing tool or
+    /// touches the filesystem. Still warns (without failing) when a
+    /// required tool is missing.
     #[arg(long)]
     pub dry_run: bool,
 }
@@ -72,8 +68,7 @@ fn build_report_args(args: &ReportArgs) -> Vec<String> {
 
     if args.runner == Runner::Nextest {
         argv.push("nextest".to_string());
-        // Only meaningful with the nextest runner — silently dropped for
-        // `--runner test`, where a plain `cargo test` run has no concept of
+        // Silently dropped for --runner test, which has no concept of
         // nextest profiles.
         if let Some(profile) = &args.nextest_profile {
             argv.push("--profile".to_string());
@@ -121,15 +116,11 @@ pub trait CommandRunner {
     fn run(&self, argv: &[String], cwd: &Path) -> Result<bool>;
 }
 
-/// Set (to any value) on every real `cargo llvm-cov` child this crate spawns,
-/// and inherited by everything *that* process in turn spawns — including,
-/// transitively, `cargo llvm-cov`'s own internal `cargo test`, which runs
-/// this crate's `cli_tests` trycmd suite. If any fixture in that suite were
-/// to invoke `jci-coverage report` for real (not `--dry-run`), it would see
-/// this var already set and refuse (see [`is_unsafe_recursive_invocation`])
-/// instead of spawning `cargo llvm-cov` again from inside an already-running
-/// `cargo llvm-cov` — a recursion that doesn't terminate on its own and
-/// exhausts memory rather than erroring cleanly. Confirmed the hard way.
+/// Set on every real `cargo llvm-cov` child and inherited by everything it
+/// spawns in turn — including its own internal `cargo test`, which reruns
+/// this crate's trycmd suite. Lets [`is_unsafe_recursive_invocation`] refuse
+/// a real `report` invoked from inside another one, instead of recursing
+/// without bound.
 const RECURSION_GUARD_ENV: &str = "JCI_COVERAGE_REPORT_ACTIVE";
 
 /// Runs commands as real subprocesses, inheriting stdio rather than
@@ -153,22 +144,15 @@ impl CommandRunner for SystemRunner {
     }
 }
 
-/// Whether `report` must refuse to run for real because it's already nested
-/// inside another real `report` invocation. Dry runs never spawn a real
-/// subprocess, so nesting one inside another (or inside a real run) is
-/// always safe — the guard only applies when `dry_run` is false. Extracted
-/// as a pure function so this decision has a test independent of real
-/// environment variables and subprocesses; `run` (untestable — reads real
-/// env, spawns real processes) just wires it up.
+/// Whether `report` must refuse a real run because it's nested inside
+/// another one. Dry runs never spawn a subprocess, so nesting is always
+/// safe for them. Pure so this decision is testable without real env vars.
 fn is_unsafe_recursive_invocation(dry_run: bool, guard_env_is_set: bool) -> bool {
     !dry_run && guard_env_is_set
 }
 
-/// Whether the recursion-guard env var counts as active — set AND
-/// non-empty, matching this crate's established set-but-empty-means-unset
-/// convention (see `resolve_filter_source` in `main.rs`). An exported-but-
-/// blank var (a templated CI value left empty, an incomplete `unset` in some
-/// shells) must not false-positive block a legitimate top-level run.
+/// Set AND non-empty counts as active, matching `resolve_filter_source`'s
+/// set-but-empty-means-unset convention in `main.rs`.
 fn guard_is_active(raw: Option<&str>) -> bool {
     matches!(raw, Some(v) if !v.is_empty())
 }
@@ -199,13 +183,8 @@ pub fn run(args: &ReportArgs) -> Result<()> {
     }
     let cwd = std::env::current_dir()?;
     if args.dry_run {
-        // Never hard-fails on a missing tool (that's what keeps a dry run
-        // usable with zero tool setup — see the safety comment on
-        // is_unsafe_recursive_invocation's caller, and
-        // tests/cmd/logging_empty_rust_log_still_logs.trycmd, which relies
-        // on exactly that). But a preview that silently hid "this would
-        // actually fail" wouldn't be an effective preview, so still report
-        // what's missing — just as a warning, not an error.
+        // Warn, don't fail: a dry run must stay usable with zero tool setup
+        // (see tests/cmd/logging_empty_rust_log_still_logs.trycmd).
         for line in preflight::missing_tool_lines(&preflight_tools(args)) {
             println!("(dry run) warning: {line}");
         }
@@ -314,9 +293,6 @@ mod tests {
             ]
         );
 
-        // The flag is documented as only meaningful with --runner nextest;
-        // pin that it's silently dropped, not passed to a plain `cargo test`
-        // run where it would be meaningless (or worse, misapplied).
         let ignored = args(None, Runner::Test, Some("ci"), false);
         assert_eq!(
             build_report_args(&ignored),
@@ -465,10 +441,6 @@ mod tests {
 
     #[test]
     fn guard_env_set_but_empty_is_not_active() {
-        // Matches resolve_filter_source's convention in main.rs: an
-        // exported-but-blank var (a templated CI value left empty, an
-        // incomplete `unset`) must not false-positive block a legitimate
-        // top-level run.
         assert!(!guard_is_active(Some("")));
     }
 
@@ -484,16 +456,12 @@ mod tests {
 
     #[test]
     fn recursion_guard_never_blocks_dry_run() {
-        // Dry runs never spawn a real subprocess, so nesting one inside
-        // another is always safe regardless of the guard env var.
         assert!(!is_unsafe_recursive_invocation(true, true));
         assert!(!is_unsafe_recursive_invocation(true, false));
     }
 
     #[test]
     fn dry_run_runner_succeeds_without_a_real_subprocess() {
-        // No real cargo-llvm-cov/cargo-nextest on PATH is required for this
-        // to pass — that's the point: DryRunRunner never shells out.
         let dir = tempdir().expect("tempdir");
         let result = DryRunRunner.run(
             &["llvm-cov".to_string(), "--version".to_string()],
@@ -508,10 +476,6 @@ mod tests {
         let mut a = args(None, Runner::Test, None, false);
         a.dry_run = true;
 
-        // DryRunRunner itself has no call-recording; reuse report_with's
-        // existing sequencing contract (already pinned against MockRunner in
-        // report_with_runs_report_then_summary_in_order) — here we only need
-        // to confirm dry-run mode succeeds end-to-end without a real tool.
         report_with(&DryRunRunner, dir.path(), &a).expect("succeeds without any real subprocess");
     }
 

@@ -40,14 +40,9 @@ Options:
       --dry-run
           Preview the cargo-llvm-cov invocation without running it.
           
-          Never fails on a missing tool or touches the filesystem —
-          works with zero tool setup, so it's usable for previewing
-          the exact argv, and for anything (CI smoke checks, this
-          crate's own CLI tests) that wants to exercise this command's
-          logging without cargo-llvm-cov installed at all. Still warns
-          (without failing) when a required tool is missing, so the
-          preview stays honest about whether a real run would actually
-          work.
+          Works with zero tool setup: never fails on a missing tool or
+          touches the filesystem. Still warns (without failing) when a
+          required tool is missing.
 
   -h, --help
           Print help (see a summary with '-h')

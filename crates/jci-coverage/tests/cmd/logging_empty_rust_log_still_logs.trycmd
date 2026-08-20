@@ -1,11 +1,7 @@
-Regression test for the RUST_LOG="" (set-but-empty) vs. unset bug — see
-`resolve_filter_source` in `src/main.rs`. Uses `report --dry-run`: `report`
-otherwise drives a real `cargo-llvm-cov` subprocess as of P1, and running
-that live from inside this very `cargo test` process triggers a full
-instrumented rebuild-and-retest of the whole suite (confirmed OOM). `--dry-run`
-exercises the exact same code path — including this log line — without
-shelling out to a real tool or touching the filesystem, so it's safe
-regardless of what's on PATH or where trycmd runs it from.
+Regression test for RUST_LOG="" (set-but-empty) vs. unset — see
+`resolve_filter_source` in `src/main.rs`. Uses `--dry-run`: a real `report`
+shells out to `cargo-llvm-cov`, which reruns this crate's own test suite
+(including this fixture) under instrumentation, recursing without bound.
 
 ```
 $ RUST_LOG= jci-coverage report --dry-run

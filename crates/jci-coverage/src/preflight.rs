@@ -1,11 +1,9 @@
 //! Preflight tool-presence detection.
 //!
-//! `report` orchestrates `cargo-llvm-cov` (and, when the nextest runner is
-//! selected, `cargo-nextest`) as `cargo` subcommand plugins — it does not
-//! link either as a library. A missing plugin binary fails opaquely deep
-//! inside `cargo`'s own dispatch ("no such command"); every subcommand that
-//! shells out runs this preflight first so a missing tool fails loudly and
-//! actionably instead, mirroring jci-audit's identical pattern.
+//! `report` shells out to `cargo-llvm-cov`/`cargo-nextest` as `cargo`
+//! subcommand plugins rather than linking either as a library. A missing
+//! plugin binary otherwise fails opaquely deep inside `cargo`'s own dispatch
+//! ("no such command"); this preflight makes that fail loudly instead.
 
 use std::process::Command;
 
@@ -51,9 +49,8 @@ impl Tool {
     ///
     /// Not uniformly `--version`: unlike `cargo-nextest`, `cargo-llvm-cov`
     /// requires its own subcommand name as the first argument even for
-    /// `--version` — invoked bare it prints "expected subcommand 'llvm-cov'"
-    /// and exits non-zero, mirroring how `cargo llvm-cov ...` itself
-    /// dispatches. Verified directly against the installed binaries.
+    /// `--version` — bare, it prints "expected subcommand 'llvm-cov'" and
+    /// exits non-zero.
     fn probe_args(&self) -> &'static [&'static str] {
         match self {
             Tool::CargoLlvmCov => &["llvm-cov", "--version"],
@@ -83,7 +80,7 @@ pub fn missing_tools(tools: &[Tool], probe: impl Fn(&Tool) -> bool) -> Vec<Tool>
     tools.iter().copied().filter(|t| !probe(t)).collect()
 }
 
-/// One "`<invocation>` not found on PATH (<install hint>)" line for a
+/// One "`<invocation>` not found on PATH (`<install hint>`)" line for a
 /// missing tool. Shared by [`ensure_available`]'s hard error and
 /// [`missing_tool_lines`]'s non-fatal warning, so the two stay worded
 /// consistently.
@@ -125,10 +122,6 @@ mod tests {
 
     #[test]
     fn cargo_llvm_cov_probes_with_its_subcommand_prefix() {
-        // Unlike cargo-nextest, `cargo-llvm-cov --version` bare fails
-        // ("expected subcommand 'llvm-cov'") — pin the workaround so a
-        // future refactor can't silently drop it and reintroduce a preflight
-        // that always reports cargo-llvm-cov as missing.
         assert_eq!(Tool::CargoLlvmCov.probe_args(), &["llvm-cov", "--version"]);
         assert_eq!(Tool::CargoNextest.probe_args(), &["--version"]);
     }
