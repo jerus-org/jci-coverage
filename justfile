@@ -55,11 +55,12 @@ fmt:
     cargo +stable fmt --all -- --check
     just --fmt --unstable
 
-# Generate coverage report with cargo-llvm-cov (the tool used in CI). Uses
-# --all-features so the integration tests run and the spawned-binary coverage
-# is captured (tarpaulin cannot see subprocess coverage and under-reports).
+# Generate coverage report by dogfooding the report subcommand (the tool used
+# in CI). --all-features is report's default, so the integration tests run and
+# the spawned-binary coverage is captured (tarpaulin cannot see subprocess
+# coverage and under-reports).
 cov:
-    cargo llvm-cov --all-features --lcov --output-path coverage/lcov.info
+    cargo run --quiet -- report
 
 # Print a coverage summary to the terminal
 cov-summary:

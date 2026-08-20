@@ -1,7 +1,13 @@
+Regression test for RUST_LOG="" (set-but-empty) vs. unset — see
+`resolve_filter_source` in `src/main.rs`. Uses `--dry-run`: a real `report`
+shells out to `cargo-llvm-cov`, which reruns this crate's own test suite
+(including this fixture) under instrumentation, recursing without bound.
+
 ```
-$ RUST_LOG= jci-coverage report
-? 1
+$ RUST_LOG= jci-coverage report --dry-run
 [..]INFO jci_coverage::report: report [..]
-Error: jci-coverage report is not yet implemented (P1)
+(dry run) would run: cargo llvm-cov --all-features --lcov --output-path coverage/lcov.info
+(dry run) would write [..]coverage/lcov.info
+(dry run) would run: cargo llvm-cov report --summary-only
 
 ```

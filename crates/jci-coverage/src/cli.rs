@@ -92,7 +92,17 @@ mod tests {
                 assert_eq!(args.runner, report::Runner::Test);
                 assert_eq!(args.nextest_profile, None);
                 assert!(!args.no_all_features, "--all-features is on by default");
+                assert!(!args.dry_run, "--dry-run is off by default");
             }
+            other => panic!("expected Report, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_report_dry_run_flag() {
+        let cli = Cli::try_parse_from(["jci-coverage", "report", "--dry-run"]).expect("parses");
+        match cli.command {
+            Commands::Report(args) => assert!(args.dry_run),
             other => panic!("expected Report, got {other:?}"),
         }
     }

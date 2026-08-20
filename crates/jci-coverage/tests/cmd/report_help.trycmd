@@ -37,6 +37,13 @@ Options:
           Matches `toolkit/code_coverage`, so instrumented subprocess
           coverage is captured.
 
+      --dry-run
+          Preview the cargo-llvm-cov invocation without running it.
+          
+          Works with zero tool setup: never fails on a missing tool or
+          touches the filesystem. Still warns (without failing) when a
+          required tool is missing.
+
   -h, --help
           Print help (see a summary with '-h')
 

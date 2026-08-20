@@ -18,6 +18,8 @@ Options:
           Nextest profile to use
       --no-all-features
           Disable `--all-features` (on by default)
+      --dry-run
+          Preview the cargo-llvm-cov invocation without running it
   -h, --help
           Print help (see more with '--help')
 
