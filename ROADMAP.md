@@ -17,7 +17,7 @@ this document groups that work into themes and horizons.
 ## Current status
 
 jci-coverage is **pre-pre-release (0.0.x)**. The workspace and release machinery are
-scaffolded and `report` is implemented; `upload` is still stubbed.
+scaffolded and both `report` and `upload` are implemented.
 
 ## Phased plan to 0.1.0 (preview)
 
@@ -25,7 +25,7 @@ scaffolded and `report` is implemented; `upload` is still stubbed.
 |-------|-------|--------|
 | **P0 — scaffold** | Workspace, clap skeleton (flags settled, behaviour stubbed), release machinery, `jci-audit`-managed `deny.toml`/license policy | Done |
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
-| **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Planned |
+| **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Planned |
 | **P4 — dogfooding + first releases** | jci-coverage's own CI runs `report`/`upload`; `jci-coverage-v0.0.1` validates the full loop | Planned |
 
@@ -60,14 +60,19 @@ scaffolded and `report` is implemented; `upload` is still stubbed.
   are being developed together, and it's expected to land before jci-coverage reaches
   0.1.0. Accepted interim gap: an unresolvable licence is caught at release time
   (`crates/jci-coverage/release-hook.sh`'s `cargo about generate`), not at PR time.
-- **Other upload targets** (Codecov, Coveralls) — `upload`'s internal target
-  abstraction is designed for this, but only OtterWise is implemented for 0.1.0.
+- **Other upload targets** (Codecov, Coveralls) — `upload`'s field-mapping is
+  isolated in its own module (`otterwise.rs`) precisely so a second target is a new
+  module rather than a rewrite; only OtterWise is implemented for 0.1.0.
 - **OtterWise upload-splitting** (`--part`/`--part-total`) for very large coverage
   reports — OtterWise's reference uploader supports it; not needed at current scale.
 - **Mutation coverage / type coverage uploads** — OtterWise supports these for other
   language ecosystems (notably PHP); not applicable to a Rust-focused tool today.
 - **JUnit log/config file uploads** — same reasoning; revisit if OtterWise's Rust
   support grows to use them.
+- **`git_base_branch` (PR merge-target branch) is never sent.** CircleCI exposes no
+  env var for it, unlike every other CI field `upload` sends. Until this is filled in
+  (likely via the GitHub API using `CIRCLE_PR_NUMBER`), OtterWise falls back to
+  full-file coverage rather than diff coverage for PR builds.
 
 ## Medium term — toward 1.0
 
