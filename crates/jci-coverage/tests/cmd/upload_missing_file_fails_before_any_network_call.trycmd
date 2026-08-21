@@ -1,0 +1,10 @@
+Preflight (file existence, token presence) runs before any HTTP request, so
+this is safe to test for real: no network call is ever reached.
+
+```
+$ jci-coverage upload --file /no/such/file --repo-token x
+? 1
+[..]INFO jci_coverage::upload: upload [..]
+Error: coverage file not found: /no/such/file
+
+```

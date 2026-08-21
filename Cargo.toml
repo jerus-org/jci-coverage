@@ -29,6 +29,22 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-log = "0.2.0"
 
+# Git metadata for the OtterWise upload payload. No network git ops (only
+# local reads of the already-checked-out repo), so the default features
+# (which drop TLS/SSH backends as of git2 0.21) are fine as-is.
+git2 = "0.21.0"
+
+# HTTP client for the OtterWise multipart upload. rustls (not the default
+# native-tls), matching pcu's convention org-wide.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "rustls",
+    "blocking",
+    "multipart",
+] }
+
+# Commit timestamp formatting (RFC3339) for the OtterWise payload.
+time = { version = "0.3.44", features = ["formatting"] }
+
 # Testing
 tempfile = "3.27.0"
 trycmd = "1.2.1"

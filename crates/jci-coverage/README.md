@@ -22,8 +22,8 @@ Two independent subcommands, not one:
 Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.
 
-> **Status:** early (0.0.x). `report` is implemented; `upload` is not yet — see
-> [ROADMAP.md](../../ROADMAP.md).
+> **Status:** early (0.0.x). `report` and `upload` are implemented; the
+> generated orb is not yet — see [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
