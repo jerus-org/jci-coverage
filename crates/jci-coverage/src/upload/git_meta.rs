@@ -196,12 +196,26 @@ mod tests {
         assert_eq!(meta.head.sha, second_oid.to_string());
         let parent = meta.parent.expect("has a parent");
         assert_eq!(parent.sha, first_oid.to_string());
-        assert!(meta.diff.contains("+two"), "diff was: {:?}", meta.diff);
+
+        // Not a plain `assert_eq!` on the whole string: libgit2 appends the
+        // preceding line's content to the hunk header itself
+        // (`@@ -1,0 +2 @@ one`, not the clean `@@ -1,0 +2 @@` a
+        // hand-written fixture would have) since zero context lines leaves
+        // it nothing else to show as context — an undocumented libgit2
+        // formatting detail, not part of jci-coverage's own contract, so
+        // pinning the exact suffix byte-for-byte would make this test
+        // brittle to an unrelated future git2 bump. Assert the header
+        // prefix that actually matters (OtterWise parses `@@ -a,b +c,d @@`)
+        // and the exact changed line, which together still demonstrate the
+        // real end-to-end shape a substring-only check missed.
+        let mut lines = meta.diff.lines();
         assert!(
-            !meta.diff.contains("diff --git"),
+            lines.next().unwrap().starts_with("@@ -1,0 +2 @@"),
             "diff was: {:?}",
             meta.diff
         );
+        assert_eq!(lines.next(), Some("+two"));
+        assert_eq!(lines.next(), None);
     }
 
     #[test]

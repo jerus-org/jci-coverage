@@ -38,6 +38,42 @@ index 1234567..89abcde 100644\n\
 @@ -1,0 +2 @@\n\
 +// a new comment\n";
 
+    /// A realistic multi-file `git diff --unified=0` patch (a modified
+    /// existing file, then a brand-new file) reduced to its exact expected
+    /// output — demonstrates the actual before/after shape, not just that
+    /// individual substrings are absent.
+    #[test]
+    fn strip_reduces_a_realistic_multi_file_diff_to_hunks_and_changes_only() {
+        let raw = "diff --git a/src/lib.rs b/src/lib.rs\n\
+index 1234567..89abcde 100644\n\
+--- a/src/lib.rs\n\
++++ b/src/lib.rs\n\
+@@ -10,0 +11 @@\n\
++pub fn new_fn() {}\n\
+@@ -20 +21 @@\n\
+-old_line();\n\
++new_line();\n\
+diff --git a/src/main.rs b/src/main.rs\n\
+new file mode 100644\n\
+index 0000000..1234567\n\
+--- /dev/null\n\
++++ b/src/main.rs\n\
+@@ -0,0 +1,2 @@\n\
++fn main() {\n\
++}\n";
+
+        let expected = "@@ -10,0 +11 @@\n\
++pub fn new_fn() {}\n\
+@@ -20 +21 @@\n\
+-old_line();\n\
++new_line();\n\
+@@ -0,0 +1,2 @@\n\
++fn main() {\n\
++}";
+
+        assert_eq!(strip(raw), expected);
+    }
+
     #[test]
     fn strips_file_header_and_index_lines() {
         let stripped = strip(RAW);
