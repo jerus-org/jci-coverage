@@ -12,6 +12,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#7])
 - deps: lock file maintenance(pr [#13])
 - deps: update rust crate clap to 4.6.7(pr [#8])
+- deps: update rust crate reqwest to 0.13.5(pr [#9])
 
 ## [0.0.3] - 2026-08-21
 
@@ -38,6 +39,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#7]: https://github.com/jerus-org/jci-coverage/pull/7
 [#13]: https://github.com/jerus-org/jci-coverage/pull/13
 [#8]: https://github.com/jerus-org/jci-coverage/pull/8
+[#9]: https://github.com/jerus-org/jci-coverage/pull/9
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.3...HEAD
 [0.0.3]: https://github.com/jerus-org/jci-coverage/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-coverage/compare/v0.0.1...v0.0.2
