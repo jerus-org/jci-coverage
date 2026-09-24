@@ -15,7 +15,7 @@ categories = ["development-tools", "command-line-utilities"]
 # CLI
 # wrap_help: without it, clap's help wrapping is a no-op regardless of
 # `term_width` — the wrapping algorithm itself is compiled out.
-clap = { version = "4.6.6", features = ["derive", "wrap_help"] }
+clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
 # Verbosity flags, matching the organisation's other CLIs (jci-audit). The
 # tracing feature rather than the default log one, to match this crate's
 # logging stack.
