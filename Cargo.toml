@@ -36,7 +36,7 @@ git2 = "0.21.0"
 
 # HTTP client for the OtterWise multipart upload. rustls (not the default
 # native-tls), matching pcu's convention org-wide.
-reqwest = { version = "0.13.4", default-features = false, features = [
+reqwest = { version = "0.13.5", default-features = false, features = [
     "rustls",
     "blocking",
     "multipart",
