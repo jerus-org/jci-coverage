@@ -3,8 +3,14 @@ Regression test for RUST_LOG="" (set-but-empty) vs. unset — see
 shells out to `cargo-llvm-cov`, which reruns this crate's own test suite
 (including this fixture) under instrumentation, recursing without bound.
 
+The leading `...` absorbs the dry-run preflight warning printed when
+`cargo-llvm-cov` isn't on PATH, so this passes whether or not the host has it
+installed; that warning has its own snapshot in
+`report_dry_run_warns_about_missing_tools.trycmd`.
+
 ```
 $ RUST_LOG= jci-coverage report --dry-run
+...
 [..]INFO jci_coverage::report: report [..]
 (dry run) would run: cargo llvm-cov --all-features --lcov --output-path coverage/lcov.info
 (dry run) would write [..]coverage/lcov.info

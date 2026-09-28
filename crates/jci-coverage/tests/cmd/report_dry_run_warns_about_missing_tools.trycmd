@@ -1,0 +1,12 @@
+`report --dry-run` reports missing tools as a warning rather than failing.
+PATH points at a directory that doesn't exist, so the preflight probe finds
+nothing regardless of what the host has installed (trycmd runs `jci-coverage`
+itself by absolute path, so it's unaffected).
+
+```
+$ PATH=/nonexistent-jci-coverage-test-path jci-coverage report --dry-run --runner nextest
+(dry run) warning: `cargo llvm-cov` not found on PATH (provided by the `cargo-llvm-cov` crate — `cargo binstall cargo-llvm-cov`)
+(dry run) warning: `cargo nextest` not found on PATH (provided by the `cargo-nextest` crate — `cargo binstall cargo-nextest`)
+...
+
+```
