@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- Make CLI tests resilient to host environment(pr [#14])
+
 ### Fixed
 
 - deps: lock file maintenance(pr [#6])
@@ -44,6 +48,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#9]: https://github.com/jerus-org/jci-coverage/pull/9
 [#10]: https://github.com/jerus-org/jci-coverage/pull/10
 [#12]: https://github.com/jerus-org/jci-coverage/pull/12
+[#14]: https://github.com/jerus-org/jci-coverage/pull/14
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.3...HEAD
 [0.0.3]: https://github.com/jerus-org/jci-coverage/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-coverage/compare/v0.0.1...v0.0.2
