@@ -1,0 +1,38 @@
+description: 'Standalone: takes a coverage file path and uploads it. Does not require `report`, Rust, or `cargo-llvm-cov` — the caller is responsible for the file existing at the given path in a format OtterWise accepts.'
+parameters:
+  file:
+    type: string
+    description: Path to the coverage report to upload
+  log_level:
+    type: enum
+    description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
+  repo_token:
+    type: string
+    description: Repository token. Falls back to `OTTERWISE_TOKEN` when omitted.
+    default: ''
+  org_token:
+    type: string
+    description: Organisation token. Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least one of repo/org token is required.
+    default: ''
+  endpoint:
+    type: string
+    description: Override the upload endpoint (primarily for testing)
+    default: ''
+steps:
+- run:
+    name: 'Standalone: takes a coverage file path and uploads it. Does not require `report`, Rust, or `cargo-llvm-cov` — the caller is responsible for the file existing at the given path in a format OtterWise accepts.'
+    command: <<include(scripts/upload.sh)>>
+    environment:
+      GCO_FILE: << parameters.file >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_REPO_TOKEN: << parameters.repo_token >>
+      GCO_ORG_TOKEN: << parameters.org_token >>
+      GCO_ENDPOINT: << parameters.endpoint >>

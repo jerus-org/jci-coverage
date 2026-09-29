@@ -1,0 +1,64 @@
+description: Run report command in a dedicated job.
+executor: default
+parameters:
+  package:
+    type: string
+    description: Limit coverage to one workspace package
+    default: ''
+  log_level:
+    type: enum
+    description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
+  runner:
+    type: enum
+    description: Test runner to drive coverage with
+    default: test
+    enum:
+    - test
+    - nextest
+  nextest_profile:
+    type: string
+    description: Nextest profile to use. Only meaningful with `--runner nextest`.
+    default: ''
+  no_all_features:
+    type: boolean
+    description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
+    default: false
+  dry_run:
+    type: boolean
+    description: 'Preview the cargo-llvm-cov invocation without running it. Works with zero tool setup: never fails on a missing tool or touches the filesystem. Still warns (without failing) when a required tool is missing.'
+    default: false
+  attach_workspace:
+    type: boolean
+    description: Attach a workspace before running the command (use when the binary was built in a prior job).
+    default: false
+  workspace_root:
+    type: string
+    description: Path at which to attach the workspace; also prepended to PATH (only used when attach_workspace is true).
+    default: /tmp/workspace
+steps:
+- checkout
+- when:
+    condition: << parameters.attach_workspace >>
+    steps:
+    - attach_workspace:
+        at: << parameters.workspace_root >>
+    - run:
+        name: Add workspace binaries to PATH
+        command: <<include(scripts/add-workspace-to-path.sh)>>
+        environment:
+          WORKSPACE_ROOT: << parameters.workspace_root >>
+- report:
+    package: << parameters.package >>
+    log_level: << parameters.log_level >>
+    runner: << parameters.runner >>
+    nextest_profile: << parameters.nextest_profile >>
+    no_all_features: << parameters.no_all_features >>
+    dry_run: << parameters.dry_run >>

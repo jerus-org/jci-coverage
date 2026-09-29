@@ -1,0 +1,119 @@
+[orb]
+binary = "jci-coverage"
+namespaces = ["jerus-org"]
+orb_dir = "orb"
+home_url = "https://github.com/jerus-org/jci-coverage"
+source_url = "https://github.com/jerus-org/jci-coverage"
+# `report` drives cargo-llvm-cov (and cargo-nextest for `--runner nextest`) as
+# subprocesses, so the executor image must carry both. Installed via
+# cargo-binstall into the generated Dockerfile, pinned for reproducible images.
+# `llvm-tools-preview` is not pre-installed: cargo-llvm-cov adds it with rustup
+# on first use when `CI` is set (CircleCI always sets it), which also covers a
+# consumer's own rust-toolchain.toml selecting a different toolchain.
+cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
+# Digest-pinned base images, as in jci-audit: pinned here (not left to the
+# generator's moving-tag default) so the @sha256 survives every regeneration.
+builder_image = "rust:1-slim-trixie@sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7"
+# The runtime needs a full Rust toolchain, not just the tool binaries: `report`
+# compiles and runs the consumer's test suite under instrumentation. Same image
+# and digest as the builder stage.
+base_image = "rust:1-slim-trixie@sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7"
+# Hand-authored orb files the generator does not produce; without this the
+# prune step would delete them as orphans on the next `generate`.
+custom_files = [
+    "src/examples/rust_report_and_upload.yml",
+    "src/examples/upload_only.yml",
+]
+
+[ci]
+build_workflow = "validation"
+release_workflow = "release"
+requires_job = "toolkit/common_tests"
+release_after_job = "release-jci-coverage"
+crate_tag_prefix = "jci-coverage-v"
+docker_namespace = "jerusdp"
+docker_context = "docker"
+orb_context = "orb-publishing"
+mcp = false
+# Compile build-binary in the same executor as the workspace's other test jobs.
+build_executor = "toolkit/rust_env_rolling"
+
+# Commit the regenerated orb source back to the PR branch (signed), so the
+# published orb stays in sync with the CLI and changes are reviewable pre-merge.
+# Values are env-var *names* (secrets live in the `release` context), except the
+# SSH fingerprint, which add_ssh_keys resolves at config-compile time. Same org
+# bot key as jci-audit and gen-circleci-orb — it must also be added to this
+# repo's CircleCI project settings (Additional SSH Keys).
+[record]
+enabled = true
+gpg_key_env = "BOT_GPG_KEY"
+gpg_trust_env = "BOT_TRUST"
+user_name_env = "BOT_USER_NAME"
+user_email_env = "BOT_USER_EMAIL"
+signing_key_env = "BOT_SIGN_KEY"
+push_ssh_fingerprint = "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
+contexts = ["release"]
+
+# Keep the regen+record chain off Renovate branches (a foreign commit freezes a
+# Renovate PR, gen-circleci-orb#326/#328); run it after merge in the existing
+# "PR merged"-triggered update_prlog workflow instead.
+[post_merge_regen]
+branch_patterns = ["renovate/*"]
+workflow = "update_prlog"
+file = "update_prlog.yml"
+
+# The drop-in replacement for circleci-toolkit's code_coverage job: generate and
+# upload in one job. `report` writes coverage/lcov.info into its own job's
+# working directory, so a separate `upload` job would need a workspace hand-off;
+# composing both here avoids that. Tokens are deliberately NOT exposed as job
+# parameters: `upload` falls back to OTTERWISE_TOKEN / OTTERWISE_ORG_TOKEN, which
+# a consumer supplies through a context, so a token never lands in config.
+[[job_group]]
+name = "report_and_upload"
+description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context."
+
+[[job_group.parameter]]
+name = "package"
+default = ""
+description = "Limit coverage to one workspace package."
+
+[[job_group.parameter]]
+name = "runner"
+default = "test"
+description = "Test runner to drive coverage with: test (cargo llvm-cov) or nextest (cargo llvm-cov nextest)."
+
+[[job_group.parameter]]
+name = "nextest_profile"
+default = ""
+description = "Nextest profile to use. Only meaningful with runner nextest."
+
+[[job_group.parameter]]
+name = "no_all_features"
+type = "boolean"
+default = "false"
+description = "Disable --all-features (on by default)."
+
+[[job_group.parameter]]
+name = "log_level"
+default = "default"
+description = "Logging verbosity for both steps: quiet, default, v, vv, vvv or vvvv."
+
+[[job_group.step]]
+builtin = "checkout"
+
+[[job_group.step]]
+command = "report"
+
+[job_group.step.with]
+package = "<< parameters.package >>"
+runner = "<< parameters.runner >>"
+nextest_profile = "<< parameters.nextest_profile >>"
+no_all_features = "<< parameters.no_all_features >>"
+log_level = "<< parameters.log_level >>"
+
+[[job_group.step]]
+command = "upload"
+
+[job_group.step.with]
+file = "coverage/lcov.info"
+log_level = "<< parameters.log_level >>"

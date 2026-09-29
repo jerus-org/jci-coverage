@@ -1,0 +1,8 @@
+description: Execution environment with jci-coverage pre-installed.
+docker:
+- image: jerusdp/jci-coverage:<< parameters.tag >>
+parameters:
+  tag:
+    type: string
+    description: Docker image tag.
+    default: latest

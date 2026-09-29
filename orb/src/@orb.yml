@@ -1,0 +1,6 @@
+version: 2.1
+description: >
+  Generate source-based Rust code coverage with cargo-llvm-cov and upload the report to OtterWise for code quality reporting. `report` and `upload` are independent: `upload` works standalone against any coverage file, Rust or not.
+display:
+  home_url: "https://github.com/jerus-org/jci-coverage"
+  source_url: "https://github.com/jerus-org/jci-coverage"

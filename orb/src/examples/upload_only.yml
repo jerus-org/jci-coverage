@@ -1,0 +1,32 @@
+description: >
+  Any project, Rust or not: upload a coverage report your own build already
+  produces. upload needs no Rust toolchain or cargo-llvm-cov.
+
+  Persist the report to the workspace in the job that creates it, then run
+  jci-coverage/upload with attach_workspace so the file is available. The
+  upload job checks out the repository itself, because OtterWise needs the
+  commit and branch metadata. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN)
+  through a context, never as a parameter.
+usage:
+  version: 2.1
+  orbs:
+    jci-coverage: jerus-org/jci-coverage@0.0
+  jobs:
+    test:
+      docker:
+        - image: cimg/node:lts
+      steps:
+        - checkout
+        - run: npm ci && npm test -- --coverage --coverageReporters=lcov
+        - persist_to_workspace:
+            root: .
+            paths: [coverage/lcov.info]
+  workflows:
+    validation:
+      jobs:
+        - test
+        - jci-coverage/upload:
+            requires: [test]
+            attach_workspace: true
+            file: /tmp/workspace/coverage/lcov.info
+            context: [otterwise]
