@@ -3,7 +3,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    jci-coverage: jerus-org/jci-coverage@1.0
+    jci-coverage: jerus-org/jci-coverage@0.0
   workflows:
     use-my-orb:
       jobs:

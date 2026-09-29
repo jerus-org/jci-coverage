@@ -67,16 +67,18 @@ file = "update_prlog.yml"
 # working directory, so a separate `upload` job would need a workspace hand-off;
 # composing both here avoids that. Simple mode (steps + params), not rich mode:
 # the exposed job parameters are derived from the commands themselves, so
-# `runner` and `log_level` keep their enum types (a rich-mode parameter can only
-# be a plain string, which CircleCI rejects when passed to an enum argument:
-# "Type error for argument runner: expected type: enum"). The cost: upload's
-# required `file` becomes a required job parameter with no default, since
-# simple mode can't set one, so consumers pass `file: coverage/lcov.info`.
-# Tokens are deliberately NOT exposed: `upload` falls back to OTTERWISE_TOKEN /
-# OTTERWISE_ORG_TOKEN, which a consumer supplies through a context.
+# `runner` and `log_level` keep their enum types. Tokens are deliberately NOT
+# exposed: `upload` falls back to OTTERWISE_TOKEN / OTTERWISE_ORG_TOKEN, which a
+# consumer supplies through a context.
 [[job_group]]
 name = "report_and_upload"
-description = "Generate Rust coverage with cargo-llvm-cov and upload it to OtterWise. report writes coverage/lcov.info, so pass file: coverage/lcov.info. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context."
+description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context."
 steps = ["report", "upload"]
 params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"]
 
+# `report` always writes coverage/lcov.info, so make that `upload`'s default.
+# gen-circleci-orb >= 0.1.28 applies this to report_and_upload's `file` too
+# (gen-circleci-orb#458), so the composed job no longer requires it; the
+# standalone `upload` job gets the same default.
+[subcommand.upload.param.file]
+default = "coverage/lcov.info"
