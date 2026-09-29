@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- default report_and_upload file to coverage/lcov.info(pr [#20])
+
 ### Fixed
 
 - deps: update dependency gen-circleci-orb to v0.1.28(pr [#19])
@@ -68,6 +72,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#17]: https://github.com/jerus-org/jci-coverage/pull/17
 [#18]: https://github.com/jerus-org/jci-coverage/pull/18
 [#19]: https://github.com/jerus-org/jci-coverage/pull/19
+[#20]: https://github.com/jerus-org/jci-coverage/pull/20
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.5...HEAD
 [0.0.5]: https://github.com/jerus-org/jci-coverage/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-coverage/compare/v0.0.3...v0.0.4
