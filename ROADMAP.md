@@ -27,7 +27,7 @@ scaffolded and both `report` and `upload` are implemented.
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Planned ([#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
-| **P4 — dogfooding + first releases** | jci-coverage's own CI runs `report`/`upload`; `jci-coverage-v0.0.1` validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16), after [#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
+| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `jci-coverage-v0.0.4`) validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16), after [#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
