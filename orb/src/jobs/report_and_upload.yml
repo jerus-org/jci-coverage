@@ -1,4 +1,4 @@
-description: 'Generate Rust coverage with cargo-llvm-cov and upload it to OtterWise. report writes coverage/lcov.info, so pass file: coverage/lcov.info. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context.'
+description: Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context.
 executor: default
 parameters:
   package:
@@ -34,6 +34,7 @@ parameters:
   file:
     type: string
     description: Path to the coverage report to upload
+    default: coverage/lcov.info
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).

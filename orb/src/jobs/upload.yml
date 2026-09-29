@@ -4,6 +4,7 @@ parameters:
   file:
     type: string
     description: Path to the coverage report to upload
+    default: coverage/lcov.info
   log_level:
     type: enum
     description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'

@@ -81,8 +81,7 @@ workflows:
   validation:
     jobs:
       - jci-coverage/report_and_upload:
-          file: coverage/lcov.info   # where report writes it
-          context: [otterwise]       # provides OTTERWISE_TOKEN
+          context: [otterwise]   # provides OTTERWISE_TOKEN
 ```
 
 Supply the OtterWise token as `OTTERWISE_TOKEN` (or `OTTERWISE_ORG_TOKEN`) through a
