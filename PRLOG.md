@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- deps: update dependency gen-circleci-orb to v0.1.28(pr [#19])
+
 ## [0.0.5] - 2026-09-29
 
 ### Added
@@ -61,6 +67,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#14]: https://github.com/jerus-org/jci-coverage/pull/14
 [#17]: https://github.com/jerus-org/jci-coverage/pull/17
 [#18]: https://github.com/jerus-org/jci-coverage/pull/18
+[#19]: https://github.com/jerus-org/jci-coverage/pull/19
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.5...HEAD
 [0.0.5]: https://github.com/jerus-org/jci-coverage/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-coverage/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-coverage/compare/v0.0.2...v0.0.3
