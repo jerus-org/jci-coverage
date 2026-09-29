@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-08-20._
+_Last updated: 2026-09-29._
 
 This roadmap describes the intended direction of jci-coverage over roughly the next
 year. It is a statement of intent, not a commitment: priorities may shift with user
@@ -26,8 +26,8 @@ scaffolded and both `report` and `upload` are implemented.
 | **P0 — scaffold** | Workspace, clap skeleton (flags settled, behaviour stubbed), release machinery, `jci-audit`-managed `deny.toml`/license policy | Done |
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
-| **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Planned |
-| **P4 — dogfooding + first releases** | jci-coverage's own CI runs `report`/`upload`; `jci-coverage-v0.0.1` validates the full loop | Planned |
+| **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Planned ([#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
+| **P4 — dogfooding + first releases** | jci-coverage's own CI runs `report`/`upload`; `jci-coverage-v0.0.1` validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16), after [#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
