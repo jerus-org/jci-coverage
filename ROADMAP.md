@@ -17,7 +17,8 @@ this document groups that work into themes and horizons.
 ## Current status
 
 jci-coverage is **pre-pre-release (0.0.x)**. The workspace and release machinery are
-scaffolded and both `report` and `upload` are implemented.
+scaffolded, both `report` and `upload` are implemented, and the CircleCI orb is
+generated from them.
 
 ## Phased plan to 0.1.0 (preview)
 
@@ -26,7 +27,7 @@ scaffolded and both `report` and `upload` are implemented.
 | **P0 — scaffold** | Workspace, clap skeleton (flags settled, behaviour stubbed), release machinery, `jci-audit`-managed `deny.toml`/license policy | Done |
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
-| **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Planned ([#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
+| **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); first published with the next crate release |
 | **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `jci-coverage-v0.0.4`) validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16), after [#15](https://github.com/jerus-org/jci-coverage/issues/15)) |
 
 ## Near term (before 1.0 preview / `0.1.0`)

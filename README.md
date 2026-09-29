@@ -10,9 +10,9 @@ This is a Cargo workspace. The published crate lives in
 [README](crates/jci-coverage/README.md) for installation, usage, and the runtime
 prerequisites.
 
-> **Status:** early scaffold (0.0.x, pre-pre-release). The CLI surface (`report` and
-> `upload`) is in place; subcommand behaviour is landing incrementally. See
-> [ROADMAP.md](ROADMAP.md) for the phased plan.
+> **Status:** early (0.0.x, pre-pre-release). `report` and `upload` are implemented,
+> and the `jerus-org/jci-coverage` CircleCI orb is generated from them (first published
+> with the next crate release). See [ROADMAP.md](ROADMAP.md) for the phased plan.
 
 ## Why
 

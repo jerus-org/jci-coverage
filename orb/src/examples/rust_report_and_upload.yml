@@ -1,0 +1,20 @@
+description: >
+  Rust project: generate coverage with cargo-llvm-cov and upload it to
+  OtterWise in one job, replacing circleci-toolkit's code_coverage job.
+
+  report_and_upload writes coverage/lcov.info and uploads it straight away;
+  file must name that path.
+  Supply the OtterWise repository token as OTTERWISE_TOKEN (or an organisation
+  token as OTTERWISE_ORG_TOKEN) through a context. Never pass a token as a
+  parameter: it would be stored in your config and appear on the command line.
+usage:
+  version: 2.1
+  orbs:
+    jci-coverage: jerus-org/jci-coverage@0.0
+  workflows:
+    validation:
+      jobs:
+        - jci-coverage/report_and_upload:
+            file: coverage/lcov.info
+            # Optional: runner: nextest, package: my-crate, ...
+            context: [otterwise]

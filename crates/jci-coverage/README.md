@@ -22,8 +22,9 @@ Two independent subcommands, not one:
 Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.
 
-> **Status:** early (0.0.x). `report` and `upload` are implemented; the
-> generated orb is not yet — see [ROADMAP.md](../../ROADMAP.md).
+> **Status:** early (0.0.x). `report` and `upload` are implemented, and the
+> `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is first
+> published with the next crate release — see [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
@@ -56,6 +57,43 @@ jci-coverage upload --file coverage/lcov.info # uploads it to OtterWise
 
 See `jci-coverage report --help` / `jci-coverage upload --help` for the full flag
 reference.
+
+## CircleCI orb
+
+The `jerus-org/jci-coverage` orb is generated from this CLI by
+[`gen-circleci-orb`](https://github.com/jerus-org/gen-circleci-orb) (source in
+[`orb/`](../../orb), config in [`gen-circleci-orb.toml`](../../gen-circleci-orb.toml)).
+Its executor image carries `jci-coverage`, `cargo-llvm-cov`, `cargo-nextest` and a
+Rust toolchain; `cargo-llvm-cov` adds the `llvm-tools-preview` component itself on
+first use in CI.
+
+| Job | Use it for |
+|-----|------------|
+| `report_and_upload` | Rust projects: generate `coverage/lcov.info` and upload it in one job. The replacement for `circleci-toolkit`'s `code_coverage` job. |
+| `report` | Generate coverage only, e.g. to persist or store the report yourself. |
+| `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
+
+```yaml
+orbs:
+  jci-coverage: jerus-org/jci-coverage@0.0
+
+workflows:
+  validation:
+    jobs:
+      - jci-coverage/report_and_upload:
+          file: coverage/lcov.info   # where report writes it
+          context: [otterwise]       # provides OTTERWISE_TOKEN
+```
+
+Supply the OtterWise token as `OTTERWISE_TOKEN` (or `OTTERWISE_ORG_TOKEN`) through a
+context. The `upload` job's `repo_token`/`org_token` parameters exist because they
+mirror the CLI flags, but a token passed that way is stored in your config and
+shown on the command line, so don't use them. See
+[`orb/src/examples`](../../orb/src/examples) for a non-Rust, upload-only workflow.
+
+Each job runs in the orb's own image, so `report` compiles your crate there. A crate
+that needs extra system libraries to build can't use the orb's `report` jobs yet;
+generate the report in your own executor and use the `upload` job.
 
 ## License
 
