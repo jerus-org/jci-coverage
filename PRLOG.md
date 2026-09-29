@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- generate the jci-coverage CircleCI orb (P3)(pr [#18])
+
 ### Changed
 
 - docs-link roadmap P3/P4 to tracking issues and update P4 release reference(pr [#17])
@@ -56,6 +60,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#12]: https://github.com/jerus-org/jci-coverage/pull/12
 [#14]: https://github.com/jerus-org/jci-coverage/pull/14
 [#17]: https://github.com/jerus-org/jci-coverage/pull/17
+[#18]: https://github.com/jerus-org/jci-coverage/pull/18
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/jerus-org/jci-coverage/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-coverage/compare/v0.0.2...v0.0.3
