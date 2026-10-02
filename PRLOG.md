@@ -10,6 +10,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - ci-adopt the post-merge check and release gate(pr [#25])
 
+### Fixed
+
+- deps: update rust:1-slim-trixie docker digest to 70d3b1a(pr [#21])
+
 ## [0.0.6] - 2026-09-29
 
 ### Added
@@ -80,6 +84,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#19]: https://github.com/jerus-org/jci-coverage/pull/19
 [#20]: https://github.com/jerus-org/jci-coverage/pull/20
 [#25]: https://github.com/jerus-org/jci-coverage/pull/25
+[#21]: https://github.com/jerus-org/jci-coverage/pull/21
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-coverage/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-coverage/compare/v0.0.4...v0.0.5
