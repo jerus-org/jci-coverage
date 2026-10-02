@@ -31,6 +31,11 @@ release_workflow = "release"
 requires_job = "toolkit/common_tests"
 release_after_job = "release-jci-coverage"
 crate_tag_prefix = "jci-coverage-v"
+# Release gate (gen-circleci-orb#462): release.yml's release workflow checks,
+# packs and reviews the orb about to be released before approve-release can
+# be given. `update` adds the gate jobs; approve-release's `requires:` names
+# release-gate-review-orb by hand (update verifies it, never edits it).
+release_gate_before = "approve-release"
 docker_namespace = "jerusdp"
 docker_context = "docker"
 orb_context = "orb-publishing"
@@ -54,10 +59,15 @@ signing_key_env = "BOT_SIGN_KEY"
 push_ssh_fingerprint = "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
 contexts = ["release"]
 
-# Keep the regen+record chain off Renovate branches (a foreign commit freezes a
-# Renovate PR, gen-circleci-orb#326/#328); run it after merge in the existing
-# "PR merged"-triggered update_prlog workflow instead.
-[post_merge_regen]
+# Check-only post-merge chain (gen-circleci-orb#462): after a Renovate PR
+# merges, build the binary fresh, run `generate --check` against main, then
+# pack and review the committed orb. Nothing is recorded or pushed to main.
+# Renovate branches skip the validation workflow's orb jobs (skip patterns
+# default to branch_patterns): a regen commit on a bot branch makes Renovate
+# stop rebasing it (gen-circleci-orb#326/#328), and this check covers what
+# merged. Runs last in this repo's "PR merged"-triggered update_prlog
+# workflow, after toolkit/update_prlog.
+[post_merge_check]
 branch_patterns = ["renovate/*"]
 workflow = "update_prlog"
 file = "update_prlog.yml"
