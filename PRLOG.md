@@ -17,6 +17,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#24])
 - deps: update dependency toolkit to v8.0.3(pr [#26])
 - deps: update dependency gen-circleci-orb to v0.2.4(pr [#23])
+- deps: lock file maintenance(pr [#27])
 
 ## [0.0.6] - 2026-09-29
 
@@ -93,6 +94,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#24]: https://github.com/jerus-org/jci-coverage/pull/24
 [#26]: https://github.com/jerus-org/jci-coverage/pull/26
 [#23]: https://github.com/jerus-org/jci-coverage/pull/23
+[#27]: https://github.com/jerus-org/jci-coverage/pull/27
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-coverage/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-coverage/compare/v0.0.4...v0.0.5
