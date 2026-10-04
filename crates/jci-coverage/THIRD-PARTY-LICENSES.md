@@ -13,7 +13,7 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 ## Overview
 
-- **Apache License 2.0** — 120 crate(s)
+- **Apache License 2.0** — 119 crate(s)
 - **MIT License** — 34 crate(s)
 - **Unicode License v3** — 19 crate(s)
 - **ISC License** — 4 crate(s)
@@ -1105,7 +1105,7 @@ Used by:
 
 Used by:
 
-- rustls-platform-verifier 0.7.0
+- rustls-platform-verifier 0.7.1
 
 ```text
                                  Apache License
@@ -2603,7 +2603,7 @@ limitations under the License.
 
 Used by:
 
-- tokio-rustls 0.26.5
+- tokio-rustls 0.26.6
 
 ```text
                               Apache License
@@ -3026,18 +3026,17 @@ limitations under the License.
 Used by:
 
 - atomic-waker 1.1.2
-- base64 0.22.1
 - base64 0.23.1
 - bitflags 2.13.2
 - bumpalo 3.20.3
-- cc 1.4.7
+- cc 1.6.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
 - core-foundation 0.10.1
 - displaydoc 0.2.7
 - errno 0.3.14
-- find-msvc-tools 0.1.13
+- find-msvc-tools 0.1.14
 - form_urlencoded 1.2.2
 - git2 0.21.0
 - heck 0.5.0
@@ -3046,8 +3045,8 @@ Used by:
 - idna 1.1.0
 - idna_adapter 1.2.2
 - jobserver 0.1.35
-- js-sys 0.3.105
-- lazy_static 1.5.0
+- js-sys 0.3.106
+- lazy_static 1.5.1
 - libgit2-sys 0.18.8+1.9.7
 - libz-sys 1.1.29
 - linux-raw-sys 0.12.1
@@ -3066,19 +3065,19 @@ Used by:
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.16.1
+- smallvec 1.16.2
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - thread_local 1.1.10
 - unicase 2.9.0
 - url 2.5.8
 - wasi 0.11.1+wasi-snapshot-preview1
-- wasm-bindgen-futures 0.4.78
-- wasm-bindgen-macro-support 0.2.128
-- wasm-bindgen-macro 0.2.128
-- wasm-bindgen-shared 0.2.128
-- wasm-bindgen 0.2.128
-- web-sys 0.3.105
+- wasm-bindgen-futures 0.4.79
+- wasm-bindgen-macro-support 0.2.129
+- wasm-bindgen-macro 0.2.129
+- wasm-bindgen-shared 0.2.129
+- wasm-bindgen 0.2.129
+- web-sys 0.3.106
 
 ```text
                               Apache License
@@ -3289,7 +3288,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.6
+- jci-coverage 0.0.7
 
 ```text
                               Apache License
@@ -3930,13 +3929,13 @@ Used by:
 - jni-macros 0.22.4
 - jni-sys-macros 0.4.1
 - jni 0.22.4
-- libc 0.2.189
+- libc 0.2.190
 - num-conv 0.2.2
 - pin-project-lite 0.2.17
 - proc-macro2 1.0.107
 - quote 1.0.47
 - r-efi 6.0.0
-- rustls-platform-verifier-android 0.1.1
+- rustls-platform-verifier-android 0.2.0
 - rustversion 1.0.23
 - semver 1.0.28
 - shlex 2.0.1
@@ -4234,7 +4233,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 
 Used by:
 
-- mio 1.2.3
+- mio 1.2.4
 
 ```text
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -4645,7 +4644,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- hyper-util 0.1.20
+- hyper-util 0.1.21
 
 ```text
 Copyright (c) 2023-2025 Sean McArthur
@@ -4722,7 +4721,7 @@ SOFTWARE.
 
 Used by:
 
-- tokio 1.53.1
+- tokio 1.53.2
 
 ```text
 MIT License
@@ -5069,7 +5068,7 @@ Used by:
 - potential_utf 0.1.6
 - tinystr 0.8.4
 - writeable 0.6.4
-- yoke-derive 0.8.3
+- yoke-derive 0.8.4
 - yoke 0.8.3
 - zerofrom-derive 0.1.8
 - zerofrom 0.1.8
