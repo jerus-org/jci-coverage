@@ -23,8 +23,8 @@ Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.
 
 > **Status:** early (0.0.x). `report` and `upload` are implemented, and the
-> `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is first
-> published with the next crate release — see [ROADMAP.md](../../ROADMAP.md).
+> `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is
+> published (from 0.0.5); this repo's own CI is moving onto it — see [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
