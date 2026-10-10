@@ -83,10 +83,9 @@ workflows:
       - jci-coverage/report_and_upload
 ```
 
-Set the OtterWise token as the `OTTERWISE_TOKEN` (or `OTTERWISE_ORG_TOKEN`)
-environment variable in each project's settings; the token differs per repo, so it
-isn't shared through a context. The `upload` job's `repo_token`/`org_token` parameters exist because they
-mirror the CLI flags, but a token passed that way is stored in your config and
+Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
+project's settings. The `upload` job's `repo_token`/`org_token` parameters exist
+because they mirror the CLI flags, but a token passed that way is stored in your config and
 shown on the command line, so don't use them. See
 [`orb/src/examples`](../../orb/src/examples) for a non-Rust, upload-only workflow.
 
