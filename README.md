@@ -11,8 +11,7 @@ This is a Cargo workspace. The published crate lives in
 prerequisites.
 
 > **Status:** early (0.0.x, pre-pre-release). `report` and `upload` are implemented,
-> and the `jerus-org/jci-coverage` CircleCI orb is generated from them and published.
-> This repo's own CI is being switched to dogfood it. See [ROADMAP.md](ROADMAP.md) for the phased plan.
+> and the `jerus-org/jci-coverage` CircleCI orb is generated from them and published. See [ROADMAP.md](ROADMAP.md) for the phased plan.
 
 ## Why
 
