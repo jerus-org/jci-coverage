@@ -18,10 +18,6 @@ parameters:
     type: string
     description: Repository token. Falls back to `OTTERWISE_TOKEN` when omitted.
     default: ''
-  org_token:
-    type: string
-    description: Organisation token. Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least one of repo/org token is required.
-    default: ''
   endpoint:
     type: string
     description: Override the upload endpoint (primarily for testing)
@@ -34,5 +30,4 @@ steps:
       GCO_FILE: << parameters.file >>
       GCO_LOG_LEVEL: << parameters.log_level >>
       GCO_REPO_TOKEN: << parameters.repo_token >>
-      GCO_ORG_TOKEN: << parameters.org_token >>
       GCO_ENDPOINT: << parameters.endpoint >>

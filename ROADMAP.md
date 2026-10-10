@@ -26,7 +26,7 @@ generated from them.
 |-------|-------|--------|
 | **P0 — scaffold** | Workspace, clap skeleton (flags settled, behaviour stubbed), release machinery, `jci-audit`-managed `deny.toml`/license policy | Done |
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
-| **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
+| **P2 — `upload`** | Standalone multipart upload to OtterWise (repo token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); published from `0.0.5` |
 | **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after the release carrying that fix) validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16)); a first attempt found and fixed an `upload` bug on CI checkouts, so the wiring returns with the next release |
 

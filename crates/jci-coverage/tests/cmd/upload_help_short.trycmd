@@ -9,7 +9,6 @@ Options:
   -v, --verbose...          Increase logging verbosity
   -q, --quiet...            Decrease logging verbosity
       --repo-token <TOKEN>  Repository token
-      --org-token <TOKEN>   Organisation token
       --endpoint <URL>      Override the upload endpoint (primarily
                             for testing)
   -h, --help                Print help (see more with '--help')

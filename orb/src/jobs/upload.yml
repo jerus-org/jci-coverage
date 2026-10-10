@@ -20,10 +20,6 @@ parameters:
     type: string
     description: Repository token. Falls back to `OTTERWISE_TOKEN` when omitted.
     default: ''
-  org_token:
-    type: string
-    description: Organisation token. Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least one of repo/org token is required.
-    default: ''
   endpoint:
     type: string
     description: Override the upload endpoint (primarily for testing)
@@ -52,5 +48,4 @@ steps:
     file: << parameters.file >>
     log_level: << parameters.log_level >>
     repo_token: << parameters.repo_token >>
-    org_token: << parameters.org_token >>
     endpoint: << parameters.endpoint >>
