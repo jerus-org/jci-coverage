@@ -126,10 +126,10 @@ workflows:
                 - /pull\/[0-9]+/
 
       # Dogfooding (P4, #16): coverage via this crate's own orb, replacing
-      # toolkit/code_coverage. Needs OTTERWISE_TOKEN in the `otterwise`
-      # context, so forked-PR builds (/pull/N, no secrets) are skipped.
+      # toolkit/code_coverage. Needs OTTERWISE_TOKEN set as a project
+      # environment variable, so forked-PR builds (/pull/N, no secrets) are
+      # skipped.
       - jci-coverage/report_and_upload:
-          context: [otterwise]
           filters:
             branches:
               ignore:

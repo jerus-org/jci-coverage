@@ -48,7 +48,7 @@ steps:
         name: Set GCO_DRY_RUN flag
         command: echo 'export GCO_DRY_RUN=true' >> "$BASH_ENV"
 - run:
-    name: Writes `coverage/lcov.info` and prints a terminal summary. Requires `cargo-llvm-cov` and the `llvm-tools` rustup component on PATH (and `cargo-nextest` too, when `--runner nextest` is selected).
+    name: Generate coverage report
     command: <<include(scripts/report.sh)>>
     environment:
       GCO_PACKAGE: << parameters.package >>

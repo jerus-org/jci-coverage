@@ -29,4 +29,3 @@ usage:
             requires: [test]
             attach_workspace: true
             file: /tmp/workspace/coverage/lcov.info
-            context: [otterwise]

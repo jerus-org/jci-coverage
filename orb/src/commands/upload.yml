@@ -28,7 +28,7 @@ parameters:
     default: ''
 steps:
 - run:
-    name: 'Standalone: takes a coverage file path and uploads it. Does not require `report`, Rust, or `cargo-llvm-cov` — the caller is responsible for the file existing at the given path in a format OtterWise accepts.'
+    name: Upload coverage to OtterWise
     command: <<include(scripts/upload.sh)>>
     environment:
       GCO_FILE: << parameters.file >>

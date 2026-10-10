@@ -28,7 +28,7 @@ generated from them.
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo/org token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); published from `0.0.5` |
-| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `jci-coverage-v0.0.7`) validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): CI wired to the orb; awaiting OtterWise token context and first dogfooded release |
+| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `jci-coverage-v0.0.7`) validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): CI wired to the orb; awaiting the `OTTERWISE_TOKEN` project variable and first dogfooded release |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
