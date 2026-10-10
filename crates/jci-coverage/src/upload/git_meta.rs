@@ -91,14 +91,21 @@ fn stripped_diff(repo: &Repository, base: &Commit, head: &Commit) -> Result<Stri
     Ok(diff::strip(&raw))
 }
 
+/// Whether `e` is libgit2 reporting an object absent from the object database.
+fn is_missing_object(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<git2::Error>()
+        .is_some_and(|g| g.code() == git2::ErrorCode::NotFound)
+}
+
 /// Read HEAD/parent commit metadata, branch, remote, and the stripped diff
 /// between them from the repo containing `path`.
 ///
 /// `upload` is documented as standalone (works on any coverage file, no
 /// Rust/git assumption) — so the *absence* of a git repo, or a repo with no
 /// commits yet, is not a failure here, just `Ok(None)`: those callers get
-/// every field except the git-derived ones. A genuine git2 error (a corrupt
-/// object, an unreadable tree) still propagates as `Err`.
+/// every field except the git-derived ones. A parent whose objects are missing
+/// (shallow/blobless checkout) yields an empty diff; any other git2 error (a
+/// corrupt object, an unreadable tree) still propagates as `Err`.
 pub fn collect(path: &Path) -> Result<Option<GitMetadata>> {
     let Ok(repo) = Repository::discover(path) else {
         return Ok(None);
@@ -112,7 +119,16 @@ pub fn collect(path: &Path) -> Result<Option<GitMetadata>> {
     let parent_commit = head_commit.parent(0).ok();
 
     let diff = match &parent_commit {
-        Some(parent) => stripped_diff(&repo, parent, &head_commit)?,
+        Some(parent) => match stripped_diff(&repo, parent, &head_commit) {
+            Ok(diff) => diff,
+            // A shallow/blobless CI checkout has the parent commit but not
+            // its blobs; upload without diff coverage rather than fail.
+            Err(e) if is_missing_object(&e) => {
+                tracing::warn!(error = %e, "parent objects unavailable; uploading without a diff");
+                String::new()
+            }
+            Err(e) => return Err(e),
+        },
         None => String::new(),
     };
 
@@ -216,6 +232,41 @@ mod tests {
         );
         assert_eq!(lines.next(), Some("+two"));
         assert_eq!(lines.next(), None);
+    }
+
+    /// A shallow or blobless CI checkout (CircleCI's) has the parent commit
+    /// but not its tree's blobs, so the diff cannot be computed. That must
+    /// degrade to "no diff", not fail the whole upload.
+    #[test]
+    fn unreadable_parent_blobs_degrade_to_an_empty_diff() {
+        let (dir, _) = init_repo_one_commit();
+        // Blob content "one\n" is only in the parent's tree once the second
+        // commit rewrites a.txt.
+        let blob = Repository::open(dir.path())
+            .expect("open")
+            .blob(b"one\n")
+            .expect("blob");
+        add_second_commit(dir.path());
+
+        let hex = blob.to_string();
+        let loose = dir
+            .path()
+            .join(".git/objects")
+            .join(&hex[..2])
+            .join(&hex[2..]);
+        let mut perms = std::fs::metadata(&loose)
+            .expect("loose object")
+            .permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&loose, perms).expect("chmod");
+        std::fs::remove_file(&loose).expect("remove parent blob");
+
+        let meta = collect(dir.path())
+            .expect("not an error")
+            .expect("in a repo");
+        assert!(meta.parent.is_some());
+        assert_eq!(meta.diff, "");
     }
 
     #[test]
