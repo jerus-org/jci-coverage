@@ -30,13 +30,6 @@ pub struct UploadArgs {
     #[arg(long, value_name = "TOKEN")]
     pub repo_token: Option<String>,
 
-    /// Organisation token.
-    ///
-    /// Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least
-    /// one of repo/org token is required.
-    #[arg(long, value_name = "TOKEN")]
-    pub org_token: Option<String>,
-
     /// Override the upload endpoint (primarily for testing).
     #[arg(long, value_name = "URL")]
     pub endpoint: Option<String>,
@@ -61,15 +54,12 @@ fn token_present(token: Option<&str>) -> bool {
 /// token both indicate misconfiguration, not something an upload retry
 /// would fix. Checks emptiness directly (not just `is_none`) so this stays
 /// a real gate even if a caller skips `resolve_token`.
-fn ensure_ready(file: &Path, repo_token: Option<&str>, org_token: Option<&str>) -> Result<()> {
+fn ensure_ready(file: &Path, repo_token: Option<&str>) -> Result<()> {
     if !file.is_file() {
         bail!("coverage file not found: {}", file.display());
     }
-    if !token_present(repo_token) && !token_present(org_token) {
-        bail!(
-            "no upload token: set --repo-token/--org-token or \
-             OTTERWISE_TOKEN/OTTERWISE_ORG_TOKEN"
-        );
+    if !token_present(repo_token) {
+        bail!("no upload token: set --repo-token or OTTERWISE_TOKEN");
     }
     Ok(())
 }
@@ -87,19 +77,13 @@ fn upload_with<C: UploadClient>(
     get_env: impl Fn(&str) -> Option<String>,
 ) -> Result<()> {
     let repo_token = resolve_token(args.repo_token.as_deref(), get_env("OTTERWISE_TOKEN"));
-    let org_token = resolve_token(args.org_token.as_deref(), get_env("OTTERWISE_ORG_TOKEN"));
-    ensure_ready(&args.file, repo_token.as_deref(), org_token.as_deref())?;
+    ensure_ready(&args.file, repo_token.as_deref())?;
 
     // `None` outside a git repo (or one with no commits) — not an error, per
     // `upload`'s standalone contract (see `cli.rs`'s long_about).
     let git = git_meta::collect(cwd)?;
     let ci = ci_meta::collect(&get_env);
-    let fields = otterwise::build_fields(
-        git.as_ref(),
-        &ci,
-        repo_token.as_deref(),
-        org_token.as_deref(),
-    );
+    let fields = otterwise::build_fields(git.as_ref(), &ci, repo_token.as_deref());
 
     let (primary, fallback) = http::resolve_endpoints(args.endpoint.as_deref());
     let response = http::post_with_fallback(
@@ -176,7 +160,7 @@ mod tests {
 
     #[test]
     fn ensure_ready_rejects_a_missing_coverage_file() {
-        let err = ensure_ready(Path::new("/no/such/file"), Some("t"), None).unwrap_err();
+        let err = ensure_ready(Path::new("/no/such/file"), Some("t")).unwrap_err();
         assert!(err.to_string().contains("coverage file not found"));
     }
 
@@ -186,7 +170,7 @@ mod tests {
         let file = dir.path().join("lcov.info");
         std::fs::write(&file, "").expect("write");
 
-        let err = ensure_ready(&file, None, None).unwrap_err();
+        let err = ensure_ready(&file, None).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
     }
 
@@ -196,17 +180,8 @@ mod tests {
         let file = dir.path().join("lcov.info");
         std::fs::write(&file, "").expect("write");
 
-        let err = ensure_ready(&file, Some(""), Some("")).unwrap_err();
+        let err = ensure_ready(&file, Some("")).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
-    }
-
-    #[test]
-    fn ensure_ready_accepts_org_token_without_a_repo_token() {
-        let dir = tempdir().expect("tempdir");
-        let file = dir.path().join("lcov.info");
-        std::fs::write(&file, "").expect("write");
-
-        ensure_ready(&file, None, Some("org")).expect("org token alone is enough");
     }
 
     struct MockClient {
@@ -256,7 +231,6 @@ mod tests {
         UploadArgs {
             file,
             repo_token: Some("rt".to_string()),
-            org_token: None,
             endpoint: None,
         }
     }

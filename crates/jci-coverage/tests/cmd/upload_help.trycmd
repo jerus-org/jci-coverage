@@ -22,12 +22,6 @@ Options:
           
           Falls back to `OTTERWISE_TOKEN` when omitted.
 
-      --org-token <TOKEN>
-          Organisation token.
-          
-          Falls back to `OTTERWISE_ORG_TOKEN` when omitted. At least
-          one of repo/org token is required.
-
       --endpoint <URL>
           Override the upload endpoint (primarily for testing)
 

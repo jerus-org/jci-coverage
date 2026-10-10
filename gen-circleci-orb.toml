@@ -78,13 +78,21 @@ file = "update_prlog.yml"
 # composing both here avoids that. Simple mode (steps + params), not rich mode:
 # the exposed job parameters are derived from the commands themselves, so
 # `runner` and `log_level` keep their enum types. Tokens are deliberately NOT
-# exposed: `upload` falls back to OTTERWISE_TOKEN / OTTERWISE_ORG_TOKEN, which a
-# consumer supplies through a context.
+# exposed: `upload` falls back to OTTERWISE_TOKEN, which a consumer sets as a
+# per-project environment variable.
 [[job_group]]
 name = "report_and_upload"
-description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context."
+description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Set OTTERWISE_TOKEN as a project environment variable."
 steps = ["report", "upload"]
 params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"]
+
+# Curated step names: without a label the generator uses the first paragraph of
+# each subcommand's `--help`, which for these is the whole long description.
+[subcommand.report]
+label = "Generate coverage report"
+
+[subcommand.upload]
+label = "Upload coverage to OtterWise"
 
 # `report` always writes coverage/lcov.info, so make that `upload`'s default.
 # gen-circleci-orb >= 0.1.28 applies this to report_and_upload's `file` too

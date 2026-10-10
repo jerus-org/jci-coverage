@@ -29,7 +29,6 @@ pub fn build_fields(
     git: Option<&GitMetadata>,
     ci: &CiMetadata,
     repo_token: Option<&str>,
-    org_token: Option<&str>,
 ) -> Vec<(String, String)> {
     let mut fields = Vec::new();
     let mut push = |k: &str, v: Option<&str>| {
@@ -45,7 +44,6 @@ pub fn build_fields(
     push("ci_build", ci.build_num.as_deref());
     push("ci_author", ci.username.as_deref());
     push("repo_token", repo_token);
-    push("org_token", org_token);
     push("git_pr", ci.pr_number.as_deref());
     push("git_branch", ci.branch.as_deref());
     push("base_dir", Some("."));
@@ -117,7 +115,7 @@ mod tests {
 
     #[test]
     fn maps_every_field_to_its_source() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), Some("ot"));
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
 
         assert_eq!(field(&fields, "diff"), Some("@@ -1 +1 @@\n-a\n+b"));
         assert_eq!(field(&fields, "ci_provider"), Some("circleci"));
@@ -125,7 +123,6 @@ mod tests {
         assert_eq!(field(&fields, "ci_build"), Some("100"));
         assert_eq!(field(&fields, "ci_author"), Some("jrussell"));
         assert_eq!(field(&fields, "repo_token"), Some("rt"));
-        assert_eq!(field(&fields, "org_token"), Some("ot"));
         assert_eq!(
             field(&fields, "git_repo"),
             Some("https://example.com/org/repo.git")
@@ -140,7 +137,7 @@ mod tests {
 
     #[test]
     fn omits_parent_fields_when_there_is_no_parent_commit() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), None);
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
         assert_eq!(field(&fields, "parent_commit_sha"), None);
     }
 
@@ -148,25 +145,19 @@ mod tests {
     fn includes_parent_fields_when_a_parent_commit_exists() {
         let mut parent = head();
         parent.sha = "parentsha".to_string();
-        let fields = build_fields(Some(&git(Some(parent))), &ci(), Some("rt"), None);
+        let fields = build_fields(Some(&git(Some(parent))), &ci(), Some("rt"));
         assert_eq!(field(&fields, "parent_commit_sha"), Some("parentsha"));
     }
 
     #[test]
-    fn omits_org_token_when_not_provided() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), None);
-        assert_eq!(field(&fields, "org_token"), None);
-    }
-
-    #[test]
     fn git_base_branch_is_never_sent() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), Some("ot"));
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
         assert_eq!(field(&fields, "git_base_branch"), None);
     }
 
     #[test]
     fn no_git_repo_omits_every_git_derived_field_but_keeps_ci_and_tokens() {
-        let fields = build_fields(None, &ci(), Some("rt"), Some("ot"));
+        let fields = build_fields(None, &ci(), Some("rt"));
 
         for key in [
             "diff",
