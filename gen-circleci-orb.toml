@@ -13,11 +13,11 @@ source_url = "https://github.com/jerus-org/jci-coverage"
 cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
 # Digest-pinned base images, as in jci-audit: pinned here (not left to the
 # generator's moving-tag default) so the @sha256 survives every regeneration.
-builder_image = "rust:1-slim-trixie@sha256:70d3b1a5e21806b8615c3fb2a59abea6e931aa29bf93f0a9d9c46e743beae096"
+builder_image = "rust:1-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581"
 # The runtime needs a full Rust toolchain, not just the tool binaries: `report`
 # compiles and runs the consumer's test suite under instrumentation. Same image
 # and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:70d3b1a5e21806b8615c3fb2a59abea6e931aa29bf93f0a9d9c46e743beae096"
+base_image = "rust:1-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581"
 # Hand-authored orb files the generator does not produce; without this the
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
