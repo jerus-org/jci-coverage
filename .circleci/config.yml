@@ -10,7 +10,7 @@ orbs:
 
   orb-tools: circleci/orb-tools@12.5.0
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.4
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.5
   # <<< gen-circleci-orb
 jobs:
   # toolkit/test_doc_build hardcodes `cargo doc --lib`, which fails on
@@ -135,10 +135,6 @@ workflows:
           name: build-binary
           package: jci-coverage
           executor: toolkit/rust_env_rolling
-          filters:
-            branches:
-              ignore:
-                - /^renovate\/.*$/
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-coverage
@@ -153,7 +149,6 @@ workflows:
             branches:
               ignore:
                 - main
-                - /^renovate\/.*$/
       - gen-circleci-orb/update:
           name: check-ci-wiring
           check: true
