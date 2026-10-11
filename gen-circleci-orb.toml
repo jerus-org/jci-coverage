@@ -7,10 +7,13 @@ source_url = "https://github.com/jerus-org/jci-coverage"
 # `report` drives cargo-llvm-cov (and cargo-nextest for `--runner nextest`) as
 # subprocesses, so the executor image must carry both. Installed via
 # cargo-binstall into the generated Dockerfile, pinned for reproducible images.
-# `llvm-tools-preview` is not pre-installed: cargo-llvm-cov adds it with rustup
-# on first use when `CI` is set (CircleCI always sets it), which also covers a
-# consumer's own rust-toolchain.toml selecting a different toolchain.
 cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
+# `cargo-llvm-cov` needs the `llvm-tools-preview` rustup component and otherwise
+# downloads it (about 39 MiB) on every `report` run, so bake it into the image for
+# the image's default toolchain (the `rust:` base image provides rustup). A
+# consumer whose rust-toolchain.toml selects another toolchain still gets the
+# component added by cargo-llvm-cov on first use when `CI` is set.
+rustup_components = ["llvm-tools-preview"]
 # Digest-pinned base images, as in jci-audit: pinned here (not left to the
 # generator's moving-tag default) so the @sha256 survives every regeneration.
 builder_image = "rust:1-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581"

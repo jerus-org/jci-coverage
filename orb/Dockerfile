@@ -40,5 +40,7 @@ RUN apt-get update \
 COPY --from=builder /usr/local/cargo/bin/jci-coverage /usr/local/bin/jci-coverage
 COPY --from=builder /usr/local/cargo/bin/cargo-llvm-cov /usr/local/bin/cargo-llvm-cov
 COPY --from=builder /usr/local/cargo/bin/cargo-nextest /usr/local/bin/cargo-nextest
+RUN rustup component add \
+    llvm-tools-preview
 USER circleci
 WORKDIR /home/circleci/project
