@@ -24,7 +24,7 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 Used by:
 
-- powerfmt 0.2.0
+- powerfmt 0.2.1
 
 ```text
 
@@ -449,7 +449,7 @@ Used by:
 Used by:
 
 - utf8_iter 1.0.4
-- zeroize 1.9.0
+- zeroize 1.9.1
 
 ```text
 
@@ -3029,7 +3029,7 @@ Used by:
 - base64 0.23.1
 - bitflags 2.13.2
 - bumpalo 3.20.3
-- cc 1.6.0
+- cc 1.7.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
@@ -3065,11 +3065,11 @@ Used by:
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.16.2
+- smallvec 1.16.3
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - thread_local 1.1.10
-- unicase 2.9.0
+- unicase 2.10.0
 - url 2.5.8
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasm-bindgen-futures 0.4.79
@@ -3288,7 +3288,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.7
+- jci-coverage 0.0.8
 
 ```text
                               Apache License
@@ -3941,7 +3941,7 @@ Used by:
 - shlex 2.0.1
 - simdutf8 0.1.5
 - syn 2.0.119
-- syn 3.0.6
+- syn 3.0.7
 - sync_wrapper 1.0.2
 - thiserror-impl 2.0.21
 - thiserror 2.0.21
@@ -4262,7 +4262,7 @@ THE SOFTWARE.
 
 Used by:
 
-- hyper 1.11.1
+- hyper 1.12.0
 
 ```text
 Copyright (c) 2014-2026 Sean McArthur
@@ -4343,7 +4343,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- want 0.3.1
+- want 0.3.2
 
 ```text
 Copyright (c) 2018-2019 Sean McArthur
