@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: lock file maintenance(pr [#28])
 - deps: lock file maintenance(pr [#32])
+- deps: update rust:1-slim-trixie docker digest to 2752b33(pr [#30])
 
 ## [0.0.7] - 2026-10-04
 
@@ -104,6 +105,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#27]: https://github.com/jerus-org/jci-coverage/pull/27
 [#28]: https://github.com/jerus-org/jci-coverage/pull/28
 [#32]: https://github.com/jerus-org/jci-coverage/pull/32
+[#30]: https://github.com/jerus-org/jci-coverage/pull/30
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.7...HEAD
 [0.0.7]: https://github.com/jerus-org/jci-coverage/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/jerus-org/jci-coverage/compare/v0.0.5...v0.0.6
