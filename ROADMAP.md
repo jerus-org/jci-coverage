@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-10-08._
+_Last updated: 2026-10-11._
 
 This roadmap describes the intended direction of jci-coverage over roughly the next
 year. It is a statement of intent, not a commitment: priorities may shift with user
@@ -28,7 +28,7 @@ generated from them.
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); published from `0.0.5` |
-| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after the release carrying that fix) validates the full loop | Planned ([#16](https://github.com/jerus-org/jci-coverage/issues/16)); a first attempt found and fixed an `upload` bug on CI checkouts, so the wiring returns with the next release |
+| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `0.0.8`) validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): CI runs the orb's `report_and_upload` (0.0.8, which carries the `upload` fix); needs `OTTERWISE_TOKEN` set as a project variable, then the first dogfooded release |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
