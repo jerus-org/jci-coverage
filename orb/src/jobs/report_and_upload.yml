@@ -1,4 +1,4 @@
-description: Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN) through a context.
+description: Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Set OTTERWISE_TOKEN as a project environment variable.
 executor: default
 parameters:
   package:

@@ -8,6 +8,5 @@ case "${GCO_LOG_LEVEL:-default}" in
   vvvv) set -- "$@" --verbose --verbose --verbose --verbose ;;
 esac
 [[ ! "${GCO_REPO_TOKEN:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --repo-token "${GCO_REPO_TOKEN}"
-[[ ! "${GCO_ORG_TOKEN:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --org-token "${GCO_ORG_TOKEN}"
 [[ ! "${GCO_ENDPOINT:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --endpoint "${GCO_ENDPOINT}"
 "$@"

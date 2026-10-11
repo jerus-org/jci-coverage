@@ -23,8 +23,8 @@ Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.
 
 > **Status:** early (0.0.x). `report` and `upload` are implemented, and the
-> `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is first
-> published with the next crate release — see [ROADMAP.md](../../ROADMAP.md).
+> `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is
+> published (from 0.0.5) — see [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
@@ -80,14 +80,13 @@ orbs:
 workflows:
   validation:
     jobs:
-      - jci-coverage/report_and_upload:
-          context: [otterwise]   # provides OTTERWISE_TOKEN
+      - jci-coverage/report_and_upload
 ```
 
-Supply the OtterWise token as `OTTERWISE_TOKEN` (or `OTTERWISE_ORG_TOKEN`) through a
-context. The `upload` job's `repo_token`/`org_token` parameters exist because they
-mirror the CLI flags, but a token passed that way is stored in your config and
-shown on the command line, so don't use them. See
+Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
+project's settings. The `upload` job's `repo_token` parameter exists
+because it mirrors the CLI flag, but a token passed that way is stored in your
+config and shown on the command line, so don't use it. See
 [`orb/src/examples`](../../orb/src/examples) for a non-Rust, upload-only workflow.
 
 Each job runs in the orb's own image, so `report` compiles your crate there. A crate

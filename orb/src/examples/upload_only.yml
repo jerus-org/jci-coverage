@@ -5,8 +5,8 @@ description: >
   Persist the report to the workspace in the job that creates it, then run
   jci-coverage/upload with attach_workspace so the file is available. The
   upload job checks out the repository itself, because OtterWise needs the
-  commit and branch metadata. Supply OTTERWISE_TOKEN (or OTTERWISE_ORG_TOKEN)
-  through a context, never as a parameter.
+  commit and branch metadata. Set OTTERWISE_TOKEN as an environment
+  variable in each project's settings, never as a parameter.
 usage:
   version: 2.1
   orbs:
@@ -29,4 +29,3 @@ usage:
             requires: [test]
             attach_workspace: true
             file: /tmp/workspace/coverage/lcov.info
-            context: [otterwise]

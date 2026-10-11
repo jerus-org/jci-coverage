@@ -118,6 +118,19 @@ mod tests {
     }
 
     #[test]
+    fn upload_has_no_org_token_flag() {
+        let parsed = Cli::try_parse_from([
+            "jci-coverage",
+            "upload",
+            "--file",
+            "coverage/lcov.info",
+            "--org-token",
+            "t",
+        ]);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
     fn upload_requires_file() {
         assert!(Cli::try_parse_from(["jci-coverage", "upload"]).is_err());
         let cli = Cli::try_parse_from(["jci-coverage", "upload", "--file", "coverage/lcov.info"])
