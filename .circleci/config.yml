@@ -135,10 +135,6 @@ workflows:
           name: build-binary
           package: jci-coverage
           executor: toolkit/rust_env_rolling
-          filters:
-            branches:
-              ignore:
-                - /^renovate\/.*$/
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-coverage
@@ -153,7 +149,6 @@ workflows:
             branches:
               ignore:
                 - main
-                - /^renovate\/.*$/
       - gen-circleci-orb/update:
           name: check-ci-wiring
           check: true
