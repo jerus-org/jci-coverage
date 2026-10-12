@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- detailed debug logging with the token withheld(pr [#36])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.9(pr [#35])
@@ -129,6 +133,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#33]: https://github.com/jerus-org/jci-coverage/pull/33
 [#34]: https://github.com/jerus-org/jci-coverage/pull/34
 [#35]: https://github.com/jerus-org/jci-coverage/pull/35
+[#36]: https://github.com/jerus-org/jci-coverage/pull/36
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...HEAD
 [0.0.9]: https://github.com/jerus-org/jci-coverage/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/jerus-org/jci-coverage/compare/v0.0.7...v0.0.8
