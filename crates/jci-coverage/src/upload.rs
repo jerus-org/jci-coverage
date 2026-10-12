@@ -74,9 +74,9 @@ fn token_present(token: Option<&str>) -> bool {
 /// token both indicate misconfiguration, not something an upload retry
 /// would fix. Checks emptiness directly (not just `is_none`) so this stays
 /// a real gate even if a caller skips `resolve_token`.
-fn ensure_ready(file: &Path, repo_token: Option<&str>) -> Result<()> {
+fn ensure_ready(file: &Path, cwd: &Path, repo_token: Option<&str>) -> Result<()> {
     if !file.is_file() {
-        bail!("coverage file not found: {}", file.display());
+        bail!("{}", diagnostics::file_not_found_message(file, cwd));
     }
     if !token_present(repo_token) {
         bail!("no upload token: set --repo-token or OTTERWISE_TOKEN");
@@ -110,7 +110,8 @@ fn upload_with<C: UploadClient>(
         "upload token"
     );
     let repo_token = resolve_token(args.repo_token.as_deref(), env_token);
-    ensure_ready(&args.file, repo_token.as_deref())?;
+    ensure_ready(&args.file, cwd, repo_token.as_deref())?;
+    tracing::info!(file = %diagnostics::describe_file(&args.file, cwd), "report file");
 
     // `None` outside a git repo (or one with no commits) — not an error, per
     // `upload`'s standalone contract (see `cli.rs`'s long_about).
@@ -246,7 +247,7 @@ mod tests {
 
     #[test]
     fn ensure_ready_rejects_a_missing_coverage_file() {
-        let err = ensure_ready(Path::new("/no/such/file"), Some("t")).unwrap_err();
+        let err = ensure_ready(Path::new("/no/such/file"), Path::new("/"), Some("t")).unwrap_err();
         assert!(err.to_string().contains("coverage file not found"));
     }
 
@@ -256,7 +257,7 @@ mod tests {
         let file = dir.path().join("lcov.info");
         std::fs::write(&file, "").expect("write");
 
-        let err = ensure_ready(&file, None).unwrap_err();
+        let err = ensure_ready(&file, dir.path(), None).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
     }
 
@@ -266,7 +267,7 @@ mod tests {
         let file = dir.path().join("lcov.info");
         std::fs::write(&file, "").expect("write");
 
-        let err = ensure_ready(&file, Some("")).unwrap_err();
+        let err = ensure_ready(&file, dir.path(), Some("")).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
     }
 

@@ -1,6 +1,8 @@
 //! Safe, descriptive logging helpers for `upload`: what was provided and
 //! sent, without ever revealing a secret.
 
+use std::path::{Path, PathBuf};
+
 /// How the upload token was supplied, without its value. The raw
 /// `--repo-token` flag is `None` when the token comes from the environment
 /// (the normal CI case), so the flag alone says nothing about whether a token
@@ -56,6 +58,81 @@ pub fn strip_userinfo(url: &str) -> String {
     format!("{scheme}://{host}{tail}")
 }
 
+/// `path` made absolute against `cwd` (as `upload` will open it), with symlinks
+/// resolved when the file exists.
+pub fn absolute_path(path: &Path, cwd: &Path) -> PathBuf {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+    std::fs::canonicalize(&joined).unwrap_or(joined)
+}
+
+/// One line saying which file is being uploaded: its absolute path, size and
+/// how long ago it was written (a stale report from an earlier run shows here).
+pub fn describe_file(path: &Path, cwd: &Path) -> String {
+    let abs = absolute_path(path, cwd);
+    match std::fs::metadata(&abs) {
+        Ok(meta) => {
+            let age = meta
+                .modified()
+                .ok()
+                .and_then(|m| std::time::SystemTime::now().duration_since(m).ok())
+                .map_or_else(
+                    || "unknown".to_string(),
+                    |d| format!("{}s ago", d.as_secs()),
+                );
+            format!("{} ({} bytes, modified {age})", abs.display(), meta.len())
+        }
+        Err(e) => format!("{} (cannot read: {e})", abs.display()),
+    }
+}
+
+/// The error text for a coverage file that is not there: the absolute path that
+/// was looked up, and what the directory holds instead — so `lcov.ino` sitting
+/// beside a missing `lcov.info` (or a report written to another directory) is
+/// visible at once.
+pub fn file_not_found_message(path: &Path, cwd: &Path) -> String {
+    const MAX_LISTED: usize = 20;
+    let abs = absolute_path(path, cwd);
+    let mut msg = format!(
+        "coverage file not found: {} (looked in the working directory {})",
+        abs.display(),
+        cwd.display()
+    );
+    let Some(dir) = abs.parent() else {
+        return msg;
+    };
+    match std::fs::read_dir(dir) {
+        Ok(entries) => {
+            let mut names: Vec<String> = entries
+                .filter_map(Result::ok)
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            if names.is_empty() {
+                msg.push_str(&format!("; the directory {} is empty", dir.display()));
+            } else {
+                let more = names.len().saturating_sub(MAX_LISTED);
+                names.truncate(MAX_LISTED);
+                msg.push_str(&format!(
+                    "; the directory {} contains: {}{}",
+                    dir.display(),
+                    names.join(", "),
+                    if more > 0 {
+                        format!(" (and {more} more)")
+                    } else {
+                        String::new()
+                    }
+                ));
+            }
+        }
+        Err(_) => msg.push_str(&format!("; the directory {} does not exist", dir.display())),
+    }
+    msg
+}
+
 /// What a coverage report says about its source paths, for checking them
 /// against `base_dir`.
 #[derive(Debug, PartialEq, Eq)]
@@ -96,7 +173,65 @@ pub fn summarize_lcov(content: &str, base_dir: &str) -> ReportSummary {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use tempfile::tempdir;
+
     use super::*;
+
+    #[test]
+    fn missing_file_message_shows_the_absolute_path_and_the_neighbouring_files() {
+        let dir = tempdir().expect("tempdir");
+        let coverage = dir.path().join("coverage");
+        std::fs::create_dir(&coverage).expect("mkdir");
+        std::fs::write(coverage.join("lcov.ino"), "").expect("write typo file");
+
+        let msg = file_not_found_message(Path::new("coverage/lcov.info"), dir.path());
+
+        let expected = coverage.join("lcov.info");
+        assert!(msg.contains(&expected.display().to_string()), "{msg}");
+        assert!(msg.contains("lcov.ino"), "{msg}");
+    }
+
+    #[test]
+    fn missing_file_message_says_when_the_directory_does_not_exist() {
+        let dir = tempdir().expect("tempdir");
+        let msg = file_not_found_message(Path::new("coverage/lcov.info"), dir.path());
+        assert!(msg.contains("does not exist"), "{msg}");
+    }
+
+    #[test]
+    fn missing_file_message_says_when_the_directory_is_empty() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("coverage")).expect("mkdir");
+        let msg = file_not_found_message(Path::new("coverage/lcov.info"), dir.path());
+        assert!(msg.contains("is empty"), "{msg}");
+    }
+
+    #[test]
+    fn describe_file_gives_the_absolute_path_size_and_age() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("lcov.info"), "TN:\n").expect("write");
+
+        let d = describe_file(Path::new("lcov.info"), dir.path());
+
+        let abs = std::fs::canonicalize(dir.path().join("lcov.info")).expect("canonical");
+        assert!(d.contains(&abs.display().to_string()), "{d}");
+        assert!(d.contains("4 bytes"), "{d}");
+        assert!(d.contains("modified"), "{d}");
+    }
+
+    #[test]
+    fn absolute_path_joins_relative_paths_to_the_working_directory() {
+        assert_eq!(
+            absolute_path(Path::new("coverage/lcov.info"), Path::new("/work")),
+            Path::new("/work/coverage/lcov.info")
+        );
+        assert_eq!(
+            absolute_path(Path::new("/abs/lcov.info"), Path::new("/work")),
+            Path::new("/abs/lcov.info")
+        );
+    }
 
     fn kv(k: &str, v: &str) -> (String, String) {
         (k.to_string(), v.to_string())
