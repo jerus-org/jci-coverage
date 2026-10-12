@@ -143,6 +143,13 @@ impl UploadClient for SystemClient {
         for (key, value) in fields {
             form = form.text(key.clone(), value.clone());
         }
+        // reqwest names the multipart part after the file's own name.
+        tracing::debug!(
+            form_field = file_field,
+            filename = ?file_path.file_name(),
+            path = %file_path.display(),
+            "attaching report file"
+        );
         form = form
             .file(file_field.to_string(), file_path)
             .with_context(|| format!("failed to attach {}", file_path.display()))?;
