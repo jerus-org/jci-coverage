@@ -10,6 +10,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - ci-dogfood the jci-coverage orb for coverage (P4)(pr [#33])
 
+### Fixed
+
+- upload: send absolute base_dir; log OtterWise response(pr [#34])
+
 ## [0.0.8] - 2026-10-11
 
 ### Fixed
@@ -117,6 +121,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#31]: https://github.com/jerus-org/jci-coverage/pull/31
 [#29]: https://github.com/jerus-org/jci-coverage/pull/29
 [#33]: https://github.com/jerus-org/jci-coverage/pull/33
+[#34]: https://github.com/jerus-org/jci-coverage/pull/34
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.8...HEAD
 [0.0.8]: https://github.com/jerus-org/jci-coverage/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/jerus-org/jci-coverage/compare/v0.0.6...v0.0.7
