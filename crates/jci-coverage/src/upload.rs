@@ -117,12 +117,12 @@ fn upload_with<C: UploadClient>(
     let git = git_meta::collect(cwd)?;
     let ci = ci_meta::collect(&get_env);
     let base_dir = cwd.to_string_lossy();
-    tracing::debug!(?ci, "ci metadata");
+    // The full field list (redacted) is logged below, so this stays to a summary
+    // and avoids Debug-printing the metadata structs, which would log any field
+    // added to them later without a second thought.
     match git.as_ref() {
         Some(g) => tracing::debug!(
             head = %g.head.sha,
-            branch = ?g.branch,
-            remote = ?g.remote_url,
             has_parent = g.parent.is_some(),
             diff_bytes = g.diff.len(),
             "git metadata"
@@ -164,24 +164,28 @@ fn log_request_details(file: &Path, base_dir: &str, fields: &[(String, String)])
     for (key, value) in diagnostics::redact_fields(fields) {
         tracing::debug!(field = %key, value = %value, "upload field");
     }
-    match std::fs::read_to_string(file) {
+    // Lossy, so a report with stray non-UTF-8 bytes is still summarised.
+    match std::fs::read(file).map(|b| String::from_utf8_lossy(&b).into_owned()) {
         Ok(content) => {
             let summary = diagnostics::summarize_lcov(&content, base_dir);
             tracing::debug!(
                 file = %file.display(),
                 bytes = content.len(),
                 source_files = summary.source_files,
+                absolute = summary.absolute,
                 under_base_dir = summary.under_base_dir,
                 base_dir,
                 samples = ?summary.samples,
                 "coverage report"
             );
-            if summary.source_files > 0 && summary.under_base_dir == 0 {
+            // Relative paths are resolvable as they are; only absolute paths that
+            // all miss `base_dir` suggest OtterWise cannot map the report.
+            if summary.absolute > 0 && summary.under_base_dir == 0 {
                 tracing::warn!(
                     base_dir,
                     samples = ?summary.samples,
-                    "none of the report's source paths are under base_dir; OtterWise may not be \
-                     able to map them to repository files"
+                    "none of the report's absolute source paths are under base_dir; OtterWise may \
+                     not be able to map them to repository files"
                 );
             }
         }
@@ -371,6 +375,24 @@ mod tests {
         assert!(!shown.contains("s3cret-value"), "{shown}");
         assert!(shown.contains("<redacted>"), "{shown}");
         assert!(shown.contains("coverage/lcov.info"), "{shown}");
+    }
+
+    /// The logged provenance must agree with what `resolve_token` decides, for
+    /// every flag/environment combination.
+    #[test]
+    fn token_description_agrees_with_token_resolution() {
+        let values = [None, Some(""), Some("v")];
+        for flag in values {
+            for env in values {
+                let resolved = resolve_token(flag, env.map(String::from));
+                let said = diagnostics::describe_token(flag, "OTTERWISE_TOKEN", env);
+                assert_eq!(
+                    resolved.is_some(),
+                    !said.contains("not provided"),
+                    "flag={flag:?} env={env:?}: resolved={resolved:?}, said={said}"
+                );
+            }
+        }
     }
 
     /// `None` must not read as "no token": in CI the token comes from the

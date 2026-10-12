@@ -25,6 +25,7 @@ pub fn redact_fields(fields: &[(String, String)]) -> Vec<(String, String)> {
         .map(|(k, v)| {
             let shown = match k.as_str() {
                 "repo_token" => "<redacted>".to_string(),
+                "git_repo" => strip_userinfo(v),
                 "diff" => format!("<{} bytes>", v.len()),
                 _ if v.chars().count() > MAX_TEXT => {
                     let cut: String = v.chars().take(MAX_TEXT).collect();
@@ -37,12 +38,32 @@ pub fn redact_fields(fields: &[(String, String)]) -> Vec<(String, String)> {
         .collect()
 }
 
+/// A URL with any `user:password@` / `token@` part removed, so a remote such as
+/// `https://x-access-token:ghp_XXXX@github.com/org/repo.git` is safe to log.
+/// SCP-style remotes (`git@github.com:org/repo.git`) carry no secret and are
+/// returned unchanged.
+pub fn strip_userinfo(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    let (authority, tail) = match rest.find('/') {
+        Some(i) => rest.split_at(i),
+        None => (rest, ""),
+    };
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    format!("{scheme}://{host}{tail}")
+}
+
 /// What a coverage report says about its source paths, for checking them
 /// against `base_dir`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ReportSummary {
     /// `SF:` records in the report.
     pub source_files: usize,
+    /// Of those, how many are absolute paths.
+    pub absolute: usize,
     /// Of those, how many sit under `base_dir`.
     pub under_base_dir: usize,
     /// The first few `SF:` paths, verbatim.
@@ -54,11 +75,15 @@ pub fn summarize_lcov(content: &str, base_dir: &str) -> ReportSummary {
     const MAX_SAMPLES: usize = 3;
     let mut summary = ReportSummary {
         source_files: 0,
+        absolute: 0,
         under_base_dir: 0,
         samples: Vec::new(),
     };
     for path in content.lines().filter_map(|l| l.strip_prefix("SF:")) {
         summary.source_files += 1;
+        if std::path::Path::new(path).is_absolute() {
+            summary.absolute += 1;
+        }
         if std::path::Path::new(path).starts_with(base_dir) {
             summary.under_base_dir += 1;
         }
@@ -138,6 +163,38 @@ mod tests {
             none.under_base_dir, 0,
             "a relative base_dir matches nothing"
         );
+    }
+
+    #[test]
+    fn summarize_lcov_counts_absolute_paths_separately_from_relative_ones() {
+        let lcov = "SF:src/a.rs\nend_of_record\nSF:/work/proj/b.rs\nend_of_record\n";
+        let s = summarize_lcov(lcov, "/work/proj");
+        assert_eq!((s.source_files, s.absolute, s.under_base_dir), (2, 1, 1));
+    }
+
+    #[test]
+    fn strip_userinfo_removes_embedded_credentials() {
+        assert_eq!(
+            strip_userinfo("https://x-access-token:ghp_SECRET@github.com/org/repo.git"),
+            "https://github.com/org/repo.git"
+        );
+        assert_eq!(
+            strip_userinfo("https://token@github.com/org/repo"),
+            "https://github.com/org/repo"
+        );
+        let clean = "https://github.com/org/repo.git";
+        assert_eq!(strip_userinfo(clean), clean);
+        let scp = "git@github.com:org/repo.git";
+        assert_eq!(strip_userinfo(scp), scp);
+    }
+
+    #[test]
+    fn redact_fields_strips_credentials_from_the_repository_url() {
+        let out = redact_fields(&[kv(
+            "git_repo",
+            "https://x-access-token:ghp_SECRET@github.com/org/repo.git",
+        )]);
+        assert_eq!(out[0].1, "https://github.com/org/repo.git");
     }
 
     #[test]
