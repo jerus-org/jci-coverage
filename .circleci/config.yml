@@ -130,6 +130,10 @@ workflows:
       # environment variable, so forked-PR builds (/pull/N, no secrets) are
       # skipped.
       - jci-coverage/report_and_upload:
+          # Temporary: full verbosity while OtterWise shows no coverage (#16).
+          # Logs every upload field (token withheld) and how the report's paths
+          # relate to base_dir. Remove once uploads are confirmed.
+          log_level: vvvv
           filters:
             branches:
               ignore:

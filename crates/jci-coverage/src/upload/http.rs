@@ -49,6 +49,19 @@ pub fn resolve_endpoints(override_url: Option<&str>) -> (String, Option<String>)
     }
 }
 
+/// Debug line for one POST attempt: where, and what came back.
+fn log_attempt(endpoint: &str, result: &Result<RawResponse>) {
+    match result {
+        Ok(r) => tracing::debug!(
+            endpoint,
+            status = %r.status,
+            body_bytes = r.body.len(),
+            "upload attempt answered"
+        ),
+        Err(e) => tracing::debug!(endpoint, error = %e, "upload attempt failed"),
+    }
+}
+
 /// POST to `primary`; retry once against `fallback` (if any) when the first
 /// attempt errors or `is_success` rejects it. When both attempts fail, the
 /// returned error/response carries diagnostics from both — not just the
@@ -63,7 +76,14 @@ pub fn post_with_fallback<C: UploadClient>(
     file_path: &Path,
     is_success: impl Fn(&RawResponse) -> bool,
 ) -> Result<RawResponse> {
+    tracing::debug!(
+        endpoint = primary,
+        file_field,
+        fields = fields.len(),
+        "posting upload"
+    );
     let first = client.post_multipart(primary, fields, file_field, file_path);
+    log_attempt(primary, &first);
     if matches!(&first, Ok(r) if is_success(r)) {
         return first;
     }
@@ -74,7 +94,13 @@ pub fn post_with_fallback<C: UploadClient>(
         Ok(r) => format!("{} {}", r.status, r.body),
         Err(e) => e.to_string(),
     };
-    match client.post_multipart(fallback_url, fields, file_field, file_path) {
+    tracing::debug!(
+        endpoint = fallback_url,
+        "primary failed; posting to fallback"
+    );
+    let second = client.post_multipart(fallback_url, fields, file_field, file_path);
+    log_attempt(fallback_url, &second);
+    match second {
         Ok(r) if is_success(&r) => Ok(r),
         Ok(r) => Ok(RawResponse {
             status: r.status,

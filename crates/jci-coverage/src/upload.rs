@@ -5,6 +5,7 @@
 //! was produced.
 
 mod ci_meta;
+mod diagnostics;
 mod diff;
 mod git_meta;
 mod http;
@@ -18,7 +19,10 @@ use clap::Args;
 use http::UploadClient;
 
 /// Parsed `upload` subcommand arguments.
-#[derive(Debug, Args)]
+///
+/// `Debug` is written by hand: the derived one would print `--repo-token` in
+/// clear text into the CI log.
+#[derive(Args)]
 pub struct UploadArgs {
     /// Path to the coverage report to upload.
     #[arg(long, value_name = "PATH")]
@@ -33,6 +37,22 @@ pub struct UploadArgs {
     /// Override the upload endpoint (primarily for testing).
     #[arg(long, value_name = "URL")]
     pub endpoint: Option<String>,
+}
+
+impl std::fmt::Debug for UploadArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UploadArgs")
+            .field("file", &self.file)
+            .field(
+                "repo_token",
+                &match &self.repo_token {
+                    Some(_) => "<redacted>",
+                    None => "<flag not passed; OTTERWISE_TOKEN is read separately>",
+                },
+            )
+            .field("endpoint", &self.endpoint)
+            .finish()
+    }
 }
 
 /// CLI flag wins; falls back to the given env value. An empty string from
@@ -76,7 +96,20 @@ fn upload_with<C: UploadClient>(
     cwd: &Path,
     get_env: impl Fn(&str) -> Option<String>,
 ) -> Result<()> {
-    let repo_token = resolve_token(args.repo_token.as_deref(), get_env("OTTERWISE_TOKEN"));
+    let env_token = get_env("OTTERWISE_TOKEN");
+    // `args.repo_token` is only the `--repo-token` flag, which is `None` in CI
+    // where the token comes from the environment: say where the token came from
+    // (never its value), so a `None` in the args line is not misread as "no
+    // token".
+    tracing::info!(
+        repo_token = %diagnostics::describe_token(
+            args.repo_token.as_deref(),
+            "OTTERWISE_TOKEN",
+            env_token.as_deref(),
+        ),
+        "upload token"
+    );
+    let repo_token = resolve_token(args.repo_token.as_deref(), env_token);
     ensure_ready(&args.file, repo_token.as_deref())?;
 
     // `None` outside a git repo (or one with no commits) — not an error, per
@@ -84,7 +117,20 @@ fn upload_with<C: UploadClient>(
     let git = git_meta::collect(cwd)?;
     let ci = ci_meta::collect(&get_env);
     let base_dir = cwd.to_string_lossy();
+    tracing::debug!(?ci, "ci metadata");
+    match git.as_ref() {
+        Some(g) => tracing::debug!(
+            head = %g.head.sha,
+            branch = ?g.branch,
+            remote = ?g.remote_url,
+            has_parent = g.parent.is_some(),
+            diff_bytes = g.diff.len(),
+            "git metadata"
+        ),
+        None => tracing::debug!("no git metadata (not a git repository)"),
+    }
     let fields = otterwise::build_fields(git.as_ref(), &ci, repo_token.as_deref(), &base_dir);
+    log_request_details(&args.file, &base_dir, &fields);
 
     let (primary, fallback) = http::resolve_endpoints(args.endpoint.as_deref());
     let response = http::post_with_fallback(
@@ -109,6 +155,38 @@ fn upload_with<C: UploadClient>(
     tracing::info!(status = %response.status, body = %response.body, "OtterWise response");
     println!("uploaded {} to OtterWise", args.file.display());
     Ok(())
+}
+
+/// Debug-level description of what is about to be sent: the redacted fields
+/// and what the report's source paths look like against `base_dir` — the
+/// first place to look when OtterWise accepts an upload but shows no coverage.
+fn log_request_details(file: &Path, base_dir: &str, fields: &[(String, String)]) {
+    for (key, value) in diagnostics::redact_fields(fields) {
+        tracing::debug!(field = %key, value = %value, "upload field");
+    }
+    match std::fs::read_to_string(file) {
+        Ok(content) => {
+            let summary = diagnostics::summarize_lcov(&content, base_dir);
+            tracing::debug!(
+                file = %file.display(),
+                bytes = content.len(),
+                source_files = summary.source_files,
+                under_base_dir = summary.under_base_dir,
+                base_dir,
+                samples = ?summary.samples,
+                "coverage report"
+            );
+            if summary.source_files > 0 && summary.under_base_dir == 0 {
+                tracing::warn!(
+                    base_dir,
+                    samples = ?summary.samples,
+                    "none of the report's source paths are under base_dir; OtterWise may not be \
+                     able to map them to repository files"
+                );
+            }
+        }
+        Err(e) => tracing::debug!(file = %file.display(), error = %e, "could not read report"),
+    }
 }
 
 /// Run the `upload` subcommand.
@@ -278,6 +356,35 @@ mod tests {
             .find(|(k, _)| k == "base_dir")
             .map(|(_, v)| v.as_str());
         assert_eq!(base_dir, Some(dir.path().to_str().expect("utf-8 path")));
+    }
+
+    /// `run` logs the parsed arguments. A token passed with `--repo-token` must
+    /// never reach the log (CI logs are often public).
+    #[test]
+    fn debug_output_of_the_arguments_withholds_the_token() {
+        let args = UploadArgs {
+            file: PathBuf::from("coverage/lcov.info"),
+            repo_token: Some("s3cret-value".to_string()),
+            endpoint: None,
+        };
+        let shown = format!("{args:?}");
+        assert!(!shown.contains("s3cret-value"), "{shown}");
+        assert!(shown.contains("<redacted>"), "{shown}");
+        assert!(shown.contains("coverage/lcov.info"), "{shown}");
+    }
+
+    /// `None` must not read as "no token": in CI the token comes from the
+    /// environment, so an absent flag is the normal case.
+    #[test]
+    fn debug_output_explains_an_absent_token_flag() {
+        let args = UploadArgs {
+            file: PathBuf::from("coverage/lcov.info"),
+            repo_token: None,
+            endpoint: None,
+        };
+        let shown = format!("{args:?}");
+        assert!(shown.contains("OTTERWISE_TOKEN"), "{shown}");
+        assert!(!shown.contains("repo_token: None"), "{shown}");
     }
 
     #[test]

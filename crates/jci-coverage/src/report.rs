@@ -131,6 +131,7 @@ pub struct SystemRunner;
 
 impl CommandRunner for SystemRunner {
     fn run(&self, argv: &[String], cwd: &Path) -> Result<bool> {
+        tracing::debug!(cwd = %cwd.display(), argv = ?argv, "running `cargo`");
         let status = Command::new("cargo")
             .args(argv)
             .current_dir(cwd)
