@@ -25,10 +25,16 @@ pub fn is_success(response: &RawResponse) -> bool {
 /// equivalent, unlike every other field here — CircleCI doesn't expose it.
 /// Left unsent; OtterWise falls back to full-file coverage instead of diff
 /// coverage until this is filled in. See ROADMAP.md.
+///
+/// `base_dir` is the absolute project directory. Coverage tools such as
+/// `cargo llvm-cov` write absolute source paths, and OtterWise uses this to map
+/// them back to repository files (its own uploader defaults it to the working
+/// directory); a relative `.` would strip nothing.
 pub fn build_fields(
     git: Option<&GitMetadata>,
     ci: &CiMetadata,
     repo_token: Option<&str>,
+    base_dir: &str,
 ) -> Vec<(String, String)> {
     let mut fields = Vec::new();
     let mut push = |k: &str, v: Option<&str>| {
@@ -46,7 +52,7 @@ pub fn build_fields(
     push("repo_token", repo_token);
     push("git_pr", ci.pr_number.as_deref());
     push("git_branch", ci.branch.as_deref());
-    push("base_dir", Some("."));
+    push("base_dir", Some(base_dir));
 
     if let Some(git) = git {
         push("diff", Some(&git.diff));
@@ -115,7 +121,7 @@ mod tests {
 
     #[test]
     fn maps_every_field_to_its_source() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), "/work/proj");
 
         assert_eq!(field(&fields, "diff"), Some("@@ -1 +1 @@\n-a\n+b"));
         assert_eq!(field(&fields, "ci_provider"), Some("circleci"));
@@ -132,12 +138,12 @@ mod tests {
         assert_eq!(field(&fields, "git_head_branch"), Some("feat/x"));
         assert_eq!(field(&fields, "git_branch"), Some("feat/x"));
         assert_eq!(field(&fields, "head_commit_author_name"), Some("Jer"));
-        assert_eq!(field(&fields, "base_dir"), Some("."));
+        assert_eq!(field(&fields, "base_dir"), Some("/work/proj"));
     }
 
     #[test]
     fn omits_parent_fields_when_there_is_no_parent_commit() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), "/work/proj");
         assert_eq!(field(&fields, "parent_commit_sha"), None);
     }
 
@@ -145,19 +151,19 @@ mod tests {
     fn includes_parent_fields_when_a_parent_commit_exists() {
         let mut parent = head();
         parent.sha = "parentsha".to_string();
-        let fields = build_fields(Some(&git(Some(parent))), &ci(), Some("rt"));
+        let fields = build_fields(Some(&git(Some(parent))), &ci(), Some("rt"), "/work/proj");
         assert_eq!(field(&fields, "parent_commit_sha"), Some("parentsha"));
     }
 
     #[test]
     fn git_base_branch_is_never_sent() {
-        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"));
+        let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), "/work/proj");
         assert_eq!(field(&fields, "git_base_branch"), None);
     }
 
     #[test]
     fn no_git_repo_omits_every_git_derived_field_but_keeps_ci_and_tokens() {
-        let fields = build_fields(None, &ci(), Some("rt"));
+        let fields = build_fields(None, &ci(), Some("rt"), "/work/proj");
 
         for key in [
             "diff",
@@ -172,7 +178,7 @@ mod tests {
         assert_eq!(field(&fields, "ci_provider"), Some("circleci"));
         assert_eq!(field(&fields, "repo_token"), Some("rt"));
         assert_eq!(field(&fields, "git_pr"), Some("42"));
-        assert_eq!(field(&fields, "base_dir"), Some("."));
+        assert_eq!(field(&fields, "base_dir"), Some("/work/proj"));
     }
 
     fn response(status: u16, body: &str) -> RawResponse {

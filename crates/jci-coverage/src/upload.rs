@@ -83,7 +83,8 @@ fn upload_with<C: UploadClient>(
     // `upload`'s standalone contract (see `cli.rs`'s long_about).
     let git = git_meta::collect(cwd)?;
     let ci = ci_meta::collect(&get_env);
-    let fields = otterwise::build_fields(git.as_ref(), &ci, repo_token.as_deref());
+    let base_dir = cwd.to_string_lossy();
+    let fields = otterwise::build_fields(git.as_ref(), &ci, repo_token.as_deref(), &base_dir);
 
     let (primary, fallback) = http::resolve_endpoints(args.endpoint.as_deref());
     let response = http::post_with_fallback(
@@ -103,6 +104,9 @@ fn upload_with<C: UploadClient>(
             response.body
         );
     }
+    // The ingest is asynchronous ("Queued for processing"): what OtterWise says
+    // here is the only trace of the upload we get in CI, so keep it.
+    tracing::info!(status = %response.status, body = %response.body, "OtterWise response");
     println!("uploaded {} to OtterWise", args.file.display());
     Ok(())
 }
@@ -233,6 +237,47 @@ mod tests {
             repo_token: Some("rt".to_string()),
             endpoint: None,
         }
+    }
+
+    /// Records the multipart fields it is asked to post, then reports success.
+    struct CapturingClient {
+        fields: RefCell<Vec<(String, String)>>,
+    }
+
+    impl UploadClient for CapturingClient {
+        fn post_multipart(
+            &self,
+            _endpoint: &str,
+            fields: &[(String, String)],
+            _file_field: &str,
+            _file_path: &Path,
+        ) -> Result<RawResponse> {
+            *self.fields.borrow_mut() = fields.to_vec();
+            Ok(resp(200, "Queued for processing"))
+        }
+    }
+
+    /// `cargo llvm-cov` writes absolute source paths (`SF:/home/circleci/...`),
+    /// so OtterWise needs the absolute project directory to map them back to
+    /// repository files (its uploader defaults `--base-dir` to the working
+    /// directory). A literal `.` strips nothing: the upload was accepted but no
+    /// coverage appeared.
+    #[test]
+    fn upload_with_sends_the_absolute_working_directory_as_base_dir() {
+        let dir = fixture_repo();
+        let client = CapturingClient {
+            fields: RefCell::new(Vec::new()),
+        };
+        let args = args_with_file(dir.path().join("lcov.info"));
+
+        upload_with(&client, &args, dir.path(), |_| None).expect("succeeds");
+
+        let fields = client.fields.borrow();
+        let base_dir = fields
+            .iter()
+            .find(|(k, _)| k == "base_dir")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(base_dir, Some(dir.path().to_str().expect("utf-8 path")));
     }
 
     #[test]
