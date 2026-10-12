@@ -5,6 +5,7 @@ this is safe to test for real: no network call is ever reached.
 $ jci-coverage upload --file /no/such/file --repo-token x
 ? 1
 [..]INFO jci_coverage::upload: upload [..]
-Error: coverage file not found: /no/such/file
+[..]INFO jci_coverage::upload: upload token repo_token=provided via --repo-token (value withheld)
+Error: coverage file not found: /no/such/file [..]
 
 ```
