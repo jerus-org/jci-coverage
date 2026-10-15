@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: lock file maintenance(pr [#38])
 - deps: update dependency jci-coverage to v0.0.10(pr [#37])
+- upload: match OtterWise uploader's field formats(pr [#39])
 
 ## [0.0.10] - 2026-10-12
 
@@ -143,6 +144,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#36]: https://github.com/jerus-org/jci-coverage/pull/36
 [#38]: https://github.com/jerus-org/jci-coverage/pull/38
 [#37]: https://github.com/jerus-org/jci-coverage/pull/37
+[#39]: https://github.com/jerus-org/jci-coverage/pull/39
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...HEAD
 [0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/jerus-org/jci-coverage/compare/v0.0.8...v0.0.9
