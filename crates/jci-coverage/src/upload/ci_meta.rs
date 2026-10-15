@@ -31,7 +31,7 @@ fn pr_number(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
     })
 }
 
-fn repo_slug(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
+fn circle_repo(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
     let owner = get_env("CIRCLE_PROJECT_USERNAME").filter(|v| !v.is_empty())?;
     let name = get_env("CIRCLE_PROJECT_REPONAME").filter(|v| !v.is_empty())?;
     Some(format!("{owner}/{name}"))
@@ -45,7 +45,7 @@ pub fn collect(get_env: impl Fn(&str) -> Option<String>) -> CiMetadata {
         build_num: get_env("CIRCLE_BUILD_NUM"),
         job: get_env("CIRCLE_JOB"),
         username: get_env("CIRCLE_USERNAME"),
-        repo: repo_slug(&get_env),
+        repo: circle_repo(&get_env),
     }
 }
 

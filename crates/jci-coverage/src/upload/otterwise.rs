@@ -17,13 +17,22 @@ pub fn is_success(response: &RawResponse) -> bool {
     response.status.is_success() && response.body.contains(SUCCESS_MARKER)
 }
 
-/// `owner/repo` from a GitHub remote URL (`git@github.com:o/r.git`,
+/// `owner/repo` from a github.com remote URL (`git@github.com:o/r.git`,
 /// `https://github.com/o/r`), the form OtterWise's own uploader sends as
-/// `git_repo`. `None` for anything else: better omitted than sent as a URL,
-/// which would also carry any credentials embedded in it.
+/// `git_repo`. `None` for any other host or shape: better omitted than sent as
+/// a URL, which would also carry any credentials embedded in it.
 fn repo_slug(url: &str) -> Option<String> {
-    let rest = url.split_once("github.com")?.1;
-    let path = rest.strip_prefix([':', '/'])?.trim_end_matches('/');
+    let (host, path) = match url.split_once("://") {
+        // `scheme://[user[:pass]@]host[:port]/owner/repo`
+        Some((_, rest)) => rest.split_once('/')?,
+        // scp-like `[user@]host:owner/repo`
+        None => url.split_once(':')?,
+    };
+    let host = host.rsplit('@').next()?.split(':').next()?;
+    if !host.eq_ignore_ascii_case("github.com") {
+        return None;
+    }
+    let path = path.trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     let (owner, name) = path.split_once('/')?;
     (!owner.is_empty() && !name.is_empty() && !name.contains('/'))
@@ -237,6 +246,14 @@ mod tests {
     }
 
     #[test]
+    fn git_repo_prefers_the_ci_slug_over_the_remote_url() {
+        let mut g = git(None);
+        g.remote_url = Some("git@github.com:someone-else/fork.git".to_string());
+        let fields = build_fields(Some(&g), &ci(), Some("rt"), "/work/proj");
+        assert_eq!(field(&fields, "git_repo"), Some("org/repo"));
+    }
+
+    #[test]
     fn git_repo_is_omitted_rather_than_sent_as_a_raw_url() {
         let mut ci = ci();
         ci.repo = None;
@@ -258,6 +275,9 @@ mod tests {
             assert_eq!(repo_slug(url).as_deref(), Some("o/r"), "{url}");
         }
         assert_eq!(repo_slug("https://github.com/o"), None);
+        assert_eq!(repo_slug("https://notgithub.com/o/r"), None);
+        assert_eq!(repo_slug("https://github.com.evil.example/o/r"), None);
+        assert_eq!(repo_slug("https://gitlab.com/o/r.git"), None);
         assert_eq!(repo_slug("https://example.com/o/r"), None);
     }
 

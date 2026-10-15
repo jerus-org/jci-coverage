@@ -17,8 +17,11 @@ else
     script="$(curl --fail --silent --show-error --location --retry 3 "$source_arg")"
 fi
 
-# `-F name=` / `-F name=@file` arguments of the uploader's curl calls.
-live="$(grep -oE -- '-F [a-z_]+=' <<<"$script" | sed -E 's/^-F //; s/=$//' | sort -u)"
+# `-F name=...` / `--form name=...` arguments of the uploader's curl calls,
+# with the name optionally quoted. `|| true`: no match is reported below, not
+# as a silent pipefail exit.
+live="$(grep -oE -- "(-F|--form)[ =][\"']?[A-Za-z0-9_.-]+=" <<<"$script" \
+    | sed -E "s/^(-F|--form)[ =][\"']?//; s/=\$//" | sort -u || true)"
 [ -n "$live" ] || { echo "no form fields found in $source_arg" >&2; exit 2; }
 
 recorded="$(grep -vE '^\s*(#|$)' "$manifest" | sort -u)"
