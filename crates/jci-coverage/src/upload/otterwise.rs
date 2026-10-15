@@ -95,8 +95,78 @@ pub fn build_fields(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use crate::upload::git_meta::CommitMeta;
+
+    /// Form fields OtterWise's own bash uploader posts, recorded in a file the
+    /// `scripts/check-otterwise-drift.sh` check keeps in step with the live script.
+    const REFERENCE_FIELDS: &str = include_str!("../../tests/otterwise_reference_fields.txt");
+
+    /// Reference fields jci-coverage deliberately does not send, and why. A new
+    /// divergence needs an entry here; a closed one must be removed.
+    const KNOWN_UNSENT: &[(&str, &str)] = &[
+        ("org_token", "org tokens dropped deliberately (8fba9de)"),
+        (
+            "git_base_branch",
+            "CircleCI exposes no PR base branch (ROADMAP)",
+        ),
+        ("log_file", "junit log upload not supported"),
+        ("config_file", ".otterwise.yml upload not supported"),
+        ("mutation_file", "mutation reports not supported"),
+        ("type_coverage_file", "type coverage not supported"),
+        ("type_coverage_format", "type coverage not supported"),
+        ("flag", "flags not supported"),
+        ("component", "components not supported"),
+        ("part", "split uploads not supported"),
+        ("part_total", "split uploads not supported"),
+    ];
+
+    fn reference() -> BTreeSet<&'static str> {
+        REFERENCE_FIELDS
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect()
+    }
+
+    /// Every field jci-coverage can send: all inputs present, plus the report file.
+    fn sent_fields() -> BTreeSet<String> {
+        let mut parent = head();
+        parent.sha = "parentsha".to_string();
+        let fields = build_fields(Some(&git(Some(parent))), &ci(), Some("rt"), "/work/proj");
+        let mut sent: BTreeSet<String> = fields.into_iter().map(|(k, _)| k).collect();
+        sent.insert(crate::upload::FILE_FIELD.to_string());
+        sent
+    }
+
+    #[test]
+    fn reference_fields_we_send_are_all_fields_the_reference_uploader_posts() {
+        let reference = reference();
+        let invented: Vec<_> = sent_fields()
+            .into_iter()
+            .filter(|f| !reference.contains(f.as_str()))
+            .collect();
+        assert!(
+            invented.is_empty(),
+            "fields the reference uploader never sends: {invented:?}"
+        );
+    }
+
+    #[test]
+    fn reference_fields_we_do_not_send_are_exactly_the_documented_divergences() {
+        let sent = sent_fields();
+        let unsent: BTreeSet<_> = reference()
+            .into_iter()
+            .filter(|f| !sent.contains(*f))
+            .collect();
+        let documented: BTreeSet<_> = KNOWN_UNSENT.iter().map(|(f, _)| *f).collect();
+        assert_eq!(
+            unsent, documented,
+            "reference fields we skip must match KNOWN_UNSENT (add the reason, or remove the entry once sent)"
+        );
+    }
 
     fn head() -> CommitMeta {
         CommitMeta {
