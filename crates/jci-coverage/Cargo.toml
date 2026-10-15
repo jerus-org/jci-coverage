@@ -36,7 +36,6 @@ tracing-log.workspace = true
 # upload: git metadata + OtterWise HTTP client
 git2.workspace = true
 reqwest.workspace = true
-time.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

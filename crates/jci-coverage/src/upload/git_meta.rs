@@ -31,18 +31,10 @@ pub struct GitMetadata {
     pub diff: String,
 }
 
-/// RFC3339, matching what the reference bash uploader sends (`git log
-/// --format=%aI`).
+/// Unix seconds, matching what OtterWise's own bash uploader sends (`git log
+/// --format=%at`).
 fn format_time(t: git2::Time) -> String {
-    let offset = time::UtcOffset::from_whole_seconds(t.offset_minutes() * 60)
-        .unwrap_or(time::UtcOffset::UTC);
-    match time::OffsetDateTime::from_unix_timestamp(t.seconds()) {
-        Ok(utc) => utc
-            .to_offset(offset)
-            .format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_default(),
-        Err(_) => String::new(),
-    }
+    t.seconds().to_string()
 }
 
 fn commit_meta(commit: &Commit) -> CommitMeta {
@@ -200,6 +192,17 @@ mod tests {
         assert_eq!(
             meta.remote_url.as_deref(),
             Some("https://example.com/org/repo.git")
+        );
+    }
+
+    #[test]
+    fn commit_dates_are_unix_seconds() {
+        let (dir, _) = init_repo_one_commit();
+        let meta = collect(dir.path()).expect("collect").expect("in a repo");
+        assert!(
+            !meta.head.date.is_empty() && meta.head.date.chars().all(|c| c.is_ascii_digit()),
+            "date was: {:?}",
+            meta.head.date
         );
     }
 

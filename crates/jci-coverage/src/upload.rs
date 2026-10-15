@@ -85,7 +85,8 @@ fn ensure_ready(file: &Path, cwd: &Path, repo_token: Option<&str>) -> Result<()>
 }
 
 /// Field name OtterWise's ingress endpoint expects the coverage file under,
-/// regardless of its format.
+/// regardless of its format: its own bash uploader posts LCOV, Clover and
+/// Cobertura all as `clover` and detects the format from the content.
 const FILE_FIELD: &str = "clover";
 
 /// Core orchestration, testable without real tools or network — the caller

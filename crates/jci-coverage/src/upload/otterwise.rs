@@ -17,6 +17,19 @@ pub fn is_success(response: &RawResponse) -> bool {
     response.status.is_success() && response.body.contains(SUCCESS_MARKER)
 }
 
+/// `owner/repo` from a GitHub remote URL (`git@github.com:o/r.git`,
+/// `https://github.com/o/r`), the form OtterWise's own uploader sends as
+/// `git_repo`. `None` for anything else: better omitted than sent as a URL,
+/// which would also carry any credentials embedded in it.
+fn repo_slug(url: &str) -> Option<String> {
+    let rest = url.split_once("github.com")?.1;
+    let path = rest.strip_prefix([':', '/'])?.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let (owner, name) = path.split_once('/')?;
+    (!owner.is_empty() && !name.is_empty() && !name.contains('/'))
+        .then(|| format!("{owner}/{name}"))
+}
+
 /// `git` is `None` when `upload` is run outside a git repo (or one with no
 /// commits yet) — `upload`'s own docs (see `cli.rs`) call it standalone, so
 /// that's not a failure: every git-derived field below is simply omitted.
@@ -56,7 +69,11 @@ pub fn build_fields(
 
     if let Some(git) = git {
         push("diff", Some(&git.diff));
-        push("git_repo", git.remote_url.as_deref());
+        let repo = ci
+            .repo
+            .clone()
+            .or_else(|| git.remote_url.as_deref().and_then(repo_slug));
+        push("git_repo", repo.as_deref());
         push("git_head_commit", Some(&git.head.sha));
         push("git_head_branch", git.branch.as_deref());
         push("head_commit_author_name", Some(&git.head.author_name));
@@ -87,7 +104,7 @@ mod tests {
             author_name: "Jer".to_string(),
             author_email: "jer@example.com".to_string(),
             message: "a commit".to_string(),
-            date: "2026-08-20T00:00:00Z".to_string(),
+            date: "1787184000".to_string(),
         }
     }
 
@@ -103,12 +120,13 @@ mod tests {
 
     fn ci() -> CiMetadata {
         CiMetadata {
-            provider: "circleci",
+            provider: "circle-ci",
             pr_number: Some("42".to_string()),
             branch: Some("feat/x".to_string()),
             build_num: Some("100".to_string()),
             job: Some("test".to_string()),
             username: Some("jrussell".to_string()),
+            repo: Some("org/repo".to_string()),
         }
     }
 
@@ -124,21 +142,53 @@ mod tests {
         let fields = build_fields(Some(&git(None)), &ci(), Some("rt"), "/work/proj");
 
         assert_eq!(field(&fields, "diff"), Some("@@ -1 +1 @@\n-a\n+b"));
-        assert_eq!(field(&fields, "ci_provider"), Some("circleci"));
+        assert_eq!(field(&fields, "ci_provider"), Some("circle-ci"));
         assert_eq!(field(&fields, "ci_job"), Some("test"));
         assert_eq!(field(&fields, "ci_build"), Some("100"));
         assert_eq!(field(&fields, "ci_author"), Some("jrussell"));
         assert_eq!(field(&fields, "repo_token"), Some("rt"));
-        assert_eq!(
-            field(&fields, "git_repo"),
-            Some("https://example.com/org/repo.git")
-        );
+        assert_eq!(field(&fields, "git_repo"), Some("org/repo"));
         assert_eq!(field(&fields, "git_pr"), Some("42"));
         assert_eq!(field(&fields, "git_head_commit"), Some("deadbeef"));
         assert_eq!(field(&fields, "git_head_branch"), Some("feat/x"));
         assert_eq!(field(&fields, "git_branch"), Some("feat/x"));
         assert_eq!(field(&fields, "head_commit_author_name"), Some("Jer"));
         assert_eq!(field(&fields, "base_dir"), Some("/work/proj"));
+    }
+
+    #[test]
+    fn git_repo_falls_back_to_the_slug_of_the_remote_url() {
+        let mut ci = ci();
+        ci.repo = None;
+        let mut g = git(None);
+        g.remote_url = Some("git@github.com:jerus-org/jci-coverage.git".to_string());
+        let fields = build_fields(Some(&g), &ci, Some("rt"), "/work/proj");
+        assert_eq!(field(&fields, "git_repo"), Some("jerus-org/jci-coverage"));
+    }
+
+    #[test]
+    fn git_repo_is_omitted_rather_than_sent_as_a_raw_url() {
+        let mut ci = ci();
+        ci.repo = None;
+        let mut g = git(None);
+        g.remote_url = Some("https://user:secret@example.com/org/repo.git".to_string());
+        let fields = build_fields(Some(&g), &ci, Some("rt"), "/work/proj");
+        assert_eq!(field(&fields, "git_repo"), None);
+    }
+
+    #[test]
+    fn repo_slug_handles_the_common_github_url_forms() {
+        for url in [
+            "git@github.com:o/r.git",
+            "https://github.com/o/r.git",
+            "https://github.com/o/r",
+            "https://x-access-token:tok@github.com/o/r.git",
+            "ssh://git@github.com/o/r.git",
+        ] {
+            assert_eq!(repo_slug(url).as_deref(), Some("o/r"), "{url}");
+        }
+        assert_eq!(repo_slug("https://github.com/o"), None);
+        assert_eq!(repo_slug("https://example.com/o/r"), None);
     }
 
     #[test]
@@ -175,7 +225,7 @@ mod tests {
         ] {
             assert_eq!(field(&fields, key), None, "{key} should be absent");
         }
-        assert_eq!(field(&fields, "ci_provider"), Some("circleci"));
+        assert_eq!(field(&fields, "ci_provider"), Some("circle-ci"));
         assert_eq!(field(&fields, "repo_token"), Some("rt"));
         assert_eq!(field(&fields, "git_pr"), Some("42"));
         assert_eq!(field(&fields, "base_dir"), Some("/work/proj"));
