@@ -1,0 +1,38 @@
+# Multipart form fields OtterWise's own bash uploader (https://otterwise.app/bash)
+# posts to /ingress/upload. One name per line, sorted. The `upload` module's
+# `reference_fields_*` tests compare what jci-coverage sends against this list,
+# and `scripts/check-otterwise-drift.sh` compares this list against the live
+# script. Last reviewed against the script: 2026-10-15.
+base_dir
+ci_author
+ci_build
+ci_job
+ci_provider
+clover
+component
+config_file
+diff
+flag
+git_base_branch
+git_branch
+git_head_branch
+git_head_commit
+git_pr
+git_repo
+head_commit_author_date
+head_commit_author_email
+head_commit_author_message
+head_commit_author_name
+log_file
+mutation_file
+org_token
+parent_commit_author_date
+parent_commit_author_email
+parent_commit_author_message
+parent_commit_author_name
+parent_commit_sha
+part
+part_total
+repo_token
+type_coverage_file
+type_coverage_format

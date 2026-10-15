@@ -12,6 +12,8 @@ pub struct CiMetadata {
     pub build_num: Option<String>,
     pub job: Option<String>,
     pub username: Option<String>,
+    /// `owner/repo`, from `CIRCLE_PROJECT_USERNAME`/`CIRCLE_PROJECT_REPONAME`.
+    pub repo: Option<String>,
 }
 
 /// `CIRCLE_PR_NUMBER` is only set for forked-repo PRs; same-repo PRs (this
@@ -29,14 +31,21 @@ fn pr_number(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
     })
 }
 
+fn circle_repo(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
+    let owner = get_env("CIRCLE_PROJECT_USERNAME").filter(|v| !v.is_empty())?;
+    let name = get_env("CIRCLE_PROJECT_REPONAME").filter(|v| !v.is_empty())?;
+    Some(format!("{owner}/{name}"))
+}
+
 pub fn collect(get_env: impl Fn(&str) -> Option<String>) -> CiMetadata {
     CiMetadata {
-        provider: "circleci",
+        provider: "circle-ci",
         pr_number: pr_number(&get_env),
         branch: get_env("CIRCLE_BRANCH"),
         build_num: get_env("CIRCLE_BUILD_NUM"),
         job: get_env("CIRCLE_JOB"),
         username: get_env("CIRCLE_USERNAME"),
+        repo: circle_repo(&get_env),
     }
 }
 
@@ -62,8 +71,11 @@ mod tests {
             ("CIRCLE_BUILD_NUM", "100"),
             ("CIRCLE_JOB", "test"),
             ("CIRCLE_USERNAME", "jrussell"),
+            ("CIRCLE_PROJECT_USERNAME", "jerus-org"),
+            ("CIRCLE_PROJECT_REPONAME", "jci-coverage"),
         ]));
-        assert_eq!(meta.provider, "circleci");
+        assert_eq!(meta.repo.as_deref(), Some("jerus-org/jci-coverage"));
+        assert_eq!(meta.provider, "circle-ci");
         assert_eq!(meta.pr_number.as_deref(), Some("42"));
         assert_eq!(meta.branch.as_deref(), Some("feat/x"));
         assert_eq!(meta.build_num.as_deref(), Some("100"));
@@ -79,6 +91,13 @@ mod tests {
         assert_eq!(meta.build_num, None);
         assert_eq!(meta.job, None);
         assert_eq!(meta.username, None);
+        assert_eq!(meta.repo, None);
+    }
+
+    #[test]
+    fn repo_needs_both_the_owner_and_the_name() {
+        let meta = collect(lookup(&[("CIRCLE_PROJECT_USERNAME", "jerus-org")]));
+        assert_eq!(meta.repo, None);
     }
 
     #[test]

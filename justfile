@@ -31,6 +31,11 @@ doc $RUSTDOCFLAGS="-D warnings":
 unit-tests:
     cargo test --all
 
+# Fail if OtterWise's bash uploader posts different form fields than we track
+# (needs network; see scripts/check-otterwise-drift.sh)
+otterwise-drift:
+    scripts/check-otterwise-drift.sh
+
 # run various auditing tools to assure we are legal and safe.
 # jci-audit orchestrates cargo-deny (policy) + cargo-audit (live advisories);
 # deny.toml is the single source of truth it derives .cargo/audit.toml and
