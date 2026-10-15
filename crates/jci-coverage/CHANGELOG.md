@@ -5,9 +5,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.11] - 2026-10-15
+
+Summary: Fixed[3], Testing[1]
+
+### Fixed
+
+ - fix(deps): update rustls to 0.23.46
+ - fix(upload): address review of the field alignment
+ - fix(upload): match OtterWise uploader's field formats
+
 ## [0.0.10] - 2026-10-12
 
-Summary: Added[3], Fixed[1]
+Summary: Added[3], Chore[1], Fixed[1]
 
 ### Added
 
@@ -66,11 +76,10 @@ Summary: Added[1], Chore[1], Fixed[1]
 
 ## [0.0.4] - 2026-09-28
 
-Summary: Chore[1], Fixed[3], Testing[1]
+Summary: Chore[1], Fixed[2], Testing[1]
 
 ### Fixed
 
- - fix(deps): update rust crate time to 0.3.55
  - fix(deps): update rust crate reqwest to 0.13.5
  - fix(deps): update rust crate clap to 4.6.7
 
@@ -102,7 +111,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...HEAD
+[0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/jerus-org/jci-coverage/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/jerus-org/jci-coverage/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/jerus-org/jci-coverage/compare/v0.0.6...v0.0.7
