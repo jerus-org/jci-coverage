@@ -138,6 +138,17 @@ workflows:
             branches:
               ignore:
                 - /pull\/[0-9]+/
+      # EXPERIMENT (draft PR, never merge): upload a hand-edited Cobertura report
+      # after the normal upload, to see whether OtterWise reads its complexity.
+      - jci-coverage/upload:
+          name: upload-complexity-experiment
+          file: experiments/cobertura/A-levels.xml
+          log_level: vvvv
+          requires:
+            - jci-coverage/report_and_upload
+          filters:
+            branches:
+              only: claude/amazing-bohr-59qtz2
       # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
