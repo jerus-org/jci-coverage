@@ -142,7 +142,7 @@ workflows:
       # after the normal upload, to see whether OtterWise reads its complexity.
       - jci-coverage/upload:
           name: upload-complexity-experiment
-          file: experiments/cobertura/A-levels.xml
+          file: experiments/cobertura/B-flat3.xml
           log_level: vvvv
           requires:
             - jci-coverage/report_and_upload
