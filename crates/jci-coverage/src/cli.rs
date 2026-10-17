@@ -49,10 +49,11 @@ pub struct Cli {
 enum Commands {
     /// Generate a coverage report with cargo-llvm-cov.
     #[command(
-        long_about = "Writes `coverage/lcov.info` and prints a terminal \
-            summary. Requires `cargo-llvm-cov` and the `llvm-tools` rustup \
-            component on PATH (and `cargo-nextest` too, when `--runner \
-            nextest` is selected).",
+        long_about = "Writes `coverage/lcov.info` (or, with `--format`, \
+            `coverage/cobertura.xml` as well or instead) and prints a \
+            terminal summary. Requires \
+            `cargo-llvm-cov` and the `llvm-tools` rustup component on PATH \
+            (and `cargo-nextest` too, when `--runner nextest` is selected).",
         term_width = 70
     )]
     Report(report::ReportArgs),

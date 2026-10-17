@@ -9,6 +9,7 @@ case "${GCO_LOG_LEVEL:-default}" in
 esac
 [[ ! "${GCO_RUNNER:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --runner "${GCO_RUNNER}"
 [[ ! "${GCO_NEXTEST_PROFILE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --nextest-profile "${GCO_NEXTEST_PROFILE}"
+[[ ! "${GCO_FORMAT:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --format "${GCO_FORMAT}"
 [[ "${GCO_NO_ALL_FEATURES:-false}" = "true" ]] && set -- "$@" --no-all-features
 [[ "${GCO_DRY_RUN:-false}" = "true" ]] && set -- "$@" --dry-run
 "$@"

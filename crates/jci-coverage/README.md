@@ -13,7 +13,8 @@ Source-based Rust code coverage with
 Two independent subcommands, not one:
 
 - **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
-  write `coverage/lcov.info` and print a terminal summary. Rust-specific; aims to be a
+  write `coverage/lcov.info` and print a terminal summary. `--format cobertura|both` also
+  writes `coverage/cobertura.xml` (one test run). Rust-specific; aims to be a
   drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against

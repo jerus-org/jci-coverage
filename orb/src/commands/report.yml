@@ -1,4 +1,4 @@
-description: Writes `coverage/lcov.info` and prints a terminal summary. Requires `cargo-llvm-cov` and the `llvm-tools` rustup component on PATH (and `cargo-nextest` too, when `--runner nextest` is selected).
+description: Writes `coverage/lcov.info` (or, with `--format`, `coverage/cobertura.xml` as well or instead) and prints a terminal summary. Requires `cargo-llvm-cov` and the `llvm-tools` rustup component on PATH (and `cargo-nextest` too, when `--runner nextest` is selected).
 parameters:
   package:
     type: string
@@ -26,6 +26,14 @@ parameters:
     type: string
     description: Nextest profile to use. Only meaningful with `--runner nextest`.
     default: ''
+  format:
+    type: enum
+    description: Report format(s) to write. `both` runs the tests once and writes `coverage/lcov.info` and `coverage/cobertura.xml` from the same profile data; `cobertura` writes only `coverage/cobertura.xml`.
+    default: lcov
+    enum:
+    - lcov
+    - cobertura
+    - both
   no_all_features:
     type: boolean
     description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
@@ -55,3 +63,4 @@ steps:
       GCO_LOG_LEVEL: << parameters.log_level >>
       GCO_RUNNER: << parameters.runner >>
       GCO_NEXTEST_PROFILE: << parameters.nextest_profile >>
+      GCO_FORMAT: << parameters.format >>

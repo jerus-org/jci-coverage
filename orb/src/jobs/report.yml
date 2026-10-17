@@ -27,6 +27,14 @@ parameters:
     type: string
     description: Nextest profile to use. Only meaningful with `--runner nextest`.
     default: ''
+  format:
+    type: enum
+    description: Report format(s) to write. `both` runs the tests once and writes `coverage/lcov.info` and `coverage/cobertura.xml` from the same profile data; `cobertura` writes only `coverage/cobertura.xml`.
+    default: lcov
+    enum:
+    - lcov
+    - cobertura
+    - both
   no_all_features:
     type: boolean
     description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
@@ -60,5 +68,6 @@ steps:
     log_level: << parameters.log_level >>
     runner: << parameters.runner >>
     nextest_profile: << parameters.nextest_profile >>
+    format: << parameters.format >>
     no_all_features: << parameters.no_all_features >>
     dry_run: << parameters.dry_run >>
