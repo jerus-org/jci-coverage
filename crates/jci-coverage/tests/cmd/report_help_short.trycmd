@@ -16,6 +16,9 @@ Options:
           values: test, nextest]
       --nextest-profile <NAME>
           Nextest profile to use
+      --format <FORMAT>
+          Report format(s) to write [default: lcov] [possible values:
+          lcov, cobertura, both]
       --no-all-features
           Disable `--all-features` (on by default)
       --dry-run
