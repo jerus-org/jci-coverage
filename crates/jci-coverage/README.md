@@ -78,6 +78,17 @@ inside macro arguments. `--rules mccabe` counts one less per `match` and ignores
 Generic functions appear once per instantiation in the report; they are merged into one
 entry by default (`--duplicates keep` leaves them), since OtterWise sums every entry.
 
+Limitations of reading source rather than compiled code:
+
+- A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is reported by
+  `cargo llvm-cov` but cannot be seen by the parser. It is left unmatched (`--unmatched
+  keep|one|fail` chooses its value) and its decisions count towards the enclosing function.
+- Sources are read relative to `--source-root` (default `.`), not the report's `<sources>`.
+  Run from the directory the report was built in, or pass `--source-root`; if nothing
+  matches, a warning says so.
+- The report is replaced by a new regular file, so a symlink is not followed and the file's
+  mode is not kept. Use `--output` to write the annotated report elsewhere.
+
 See `jci-coverage report --help`, `jci-coverage complexity --help` and
 `jci-coverage upload --help` for the full flag reference.
 

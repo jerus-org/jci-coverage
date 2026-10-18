@@ -121,22 +121,41 @@ pub(crate) fn closure_path(name: &str) -> Option<Vec<u32>> {
     (!path.is_empty()).then_some(path)
 }
 
-/// `name` without its `<...>` groups (generic arguments and qualified paths).
+/// `name` without its generic arguments. The self type and trait of a qualified
+/// path (`<u8 as T>::f`) are kept, since `impl T for u8` and `impl T for u16`
+/// are different functions, but generic arguments inside them are dropped.
 pub(crate) fn strip_generics(name: &str) -> String {
-    let mut depth = 0usize;
-    name.chars()
-        .filter(|&c| match c {
+    // One flag per open `<`: true when it opens generic arguments.
+    let mut open: Vec<bool> = Vec::new();
+    let mut out = String::with_capacity(name.len());
+    let mut prev = None::<char>;
+    for c in name.chars() {
+        let dropping = open.iter().any(|&generic| generic);
+        match c {
             '<' => {
-                depth += 1;
-                false
+                let generic = prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == ':');
+                open.push(generic);
+                if !generic && !dropping {
+                    out.push(c);
+                }
             }
             '>' => {
-                depth = depth.saturating_sub(1);
-                false
+                if open.pop() == Some(false) && !open.iter().any(|&generic| generic) {
+                    out.push(c);
+                }
             }
-            _ => depth == 0,
-        })
-        .collect()
+            _ if !dropping => out.push(c),
+            _ => {}
+        }
+        prev = Some(c);
+    }
+    out
+}
+
+/// The final identifier of a function's path, without generic arguments.
+fn function_name(name: &str) -> &str {
+    let name = name.trim_end_matches("::");
+    name.rsplit("::").next().unwrap_or(name)
 }
 
 /// The closure with index `path` that covers `line`, for when no closure starts
@@ -158,14 +177,18 @@ fn covering_closure<'a>(
         .max_by_key(|e| e.line)
 }
 
+/// The entries of one file by (start line, closure path).
+type EntryIndex<'a> = HashMap<(usize, Vec<u32>), Vec<&'a Entry>>;
+
 /// Work out the edit for `report` from the analysed sources.
 pub(crate) fn plan(report: &Report, analyses: &Analyses, opts: &Options) -> Plan {
-    // (line, closure path) -> entry, per file; the first entry wins.
-    let mut index: HashMap<&str, HashMap<(usize, Vec<u32>), &Entry>> = HashMap::new();
+    // (line, closure path) -> entries, per file, in source order. Several
+    // functions can start on one line; they are told apart by name.
+    let mut index: HashMap<&str, EntryIndex> = HashMap::new();
     for (file, entries) in analyses {
         let by_key = index.entry(file.as_str()).or_default();
         for e in entries {
-            by_key.entry((e.line, e.path.clone())).or_insert(e);
+            by_key.entry((e.line, e.path.clone())).or_default().push(e);
         }
     }
 
@@ -179,6 +202,13 @@ pub(crate) fn plan(report: &Report, analyses: &Analyses, opts: &Options) -> Plan
             let found = index
                 .get(file)
                 .and_then(|by_key| by_key.get(&(m.line as usize, path.clone())))
+                .and_then(|entries| {
+                    let wanted = function_name(&m.name);
+                    entries
+                        .iter()
+                        .find(|e| path.is_empty() && e.name == wanted)
+                        .or_else(|| entries.first())
+                })
                 .copied()
                 .or_else(|| covering_closure(analyses.get(file), &path, m.line as usize));
             match found {
@@ -359,8 +389,38 @@ mod tests {
     fn strip_generics_removes_balanced_angle_groups() {
         assert_eq!(strip_generics("a::f::<u8>"), "a::f::");
         assert_eq!(strip_generics("a::f::<Vec<u8>, &'a str>::g"), "a::f::::g");
-        assert_eq!(strip_generics("<a::X as a::T>::run"), "::run");
         assert_eq!(strip_generics("a::f"), "a::f");
+    }
+
+    #[test]
+    fn strip_generics_keeps_the_self_type_and_trait_of_a_qualified_path() {
+        assert_eq!(strip_generics("<a::X as a::T>::run"), "<a::X as a::T>::run");
+        assert_eq!(
+            strip_generics("<a::X<u8> as a::T<i8>>::run::<u16>"),
+            "<a::X as a::T>::run::"
+        );
+        assert_eq!(strip_generics("<u8 as a::T>::f"), "<u8 as a::T>::f");
+    }
+
+    #[test]
+    fn distinct_impls_on_one_line_are_not_merged() {
+        let r = report(vec![
+            method(0, "<u8 as x::T>::f", 1, 1),
+            method(0, "<u16 as x::T>::f", 1, 0),
+            method(0, "<u16 as x::T>::f", 1, 2),
+        ]);
+        let plan = plan(&r, &analyses(), &opts());
+        assert_eq!(plan.summary.merged_away, 1);
+        assert_eq!(sets(&plan), vec![Some((1, None)), Some((1, Some(2))), None]);
+    }
+
+    #[test]
+    fn functions_sharing_a_source_line_get_their_own_value() {
+        let src = "fn a() {} fn b() { if true {} }\n";
+        let analyses = Analyses::from([("src/lib.rs".to_string(), analyze(src).expect("parses"))]);
+        let r = report(vec![method(0, "x::a", 1, 1), method(0, "x::b", 1, 1)]);
+        let plan = plan(&r, &analyses, &opts());
+        assert_eq!(sets(&plan), vec![Some((1, None)), Some((2, None))]);
     }
 
     #[test]

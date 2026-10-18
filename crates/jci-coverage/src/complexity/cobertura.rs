@@ -133,14 +133,20 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
                 if is(e, "package") {
                     report.package_count += 1;
                 } else if is(e, "class") {
+                    if report.package_count == 0 {
+                        bail!("malformed report: a <class> is not inside a <package>");
+                    }
                     report.classes.push(Class {
                         filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
-                        package: report.package_count.saturating_sub(1),
+                        package: report.package_count - 1,
                     });
                 } else if is(e, "method") {
+                    if report.classes.is_empty() {
+                        bail!("malformed report: a <method> is not inside a <class>");
+                    }
                     method = Some((
                         Method {
-                            class: report.classes.len().saturating_sub(1),
+                            class: report.classes.len() - 1,
                             name: attribute(e, "name")?.context("<method> has no `name`")?,
                             line: 0,
                             hits: 0,
@@ -231,7 +237,8 @@ pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
                     }
                     MethodEdit::Set { complexity, hits } => {
                         let mut set = vec![("complexity", complexity.to_string())];
-                        line_hits = *hits;
+                        // An empty element has no `<line>` to carry the hits.
+                        line_hits = hits.filter(|_| matches!(event, Event::Start(_)));
                         if let Some(h) = hits {
                             set.push(("line-rate", u8::from(*h > 0).to_string()));
                         }
@@ -547,5 +554,28 @@ mod tests {
     fn a_report_without_methods_parses_to_nothing() {
         let r = parse("<coverage><packages/></coverage>").expect("parses");
         assert!(r.methods.is_empty() && r.classes.is_empty());
+    }
+
+    #[test]
+    fn a_class_outside_a_package_or_a_method_outside_a_class_is_an_error() {
+        let err = parse(r#"<coverage><class filename="a.rs"/></coverage>"#).unwrap_err();
+        assert!(err.to_string().contains("<package>"), "{err}");
+        let err =
+            parse(r#"<coverage><package><method name="f"/></package></coverage>"#).unwrap_err();
+        assert!(err.to_string().contains("<class>"), "{err}");
+    }
+
+    #[test]
+    fn merged_hits_of_an_empty_method_do_not_leak_into_the_next_line() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods><method name="f"/></methods><lines><line hits="1" number="1"/></lines></class></classes></package></packages></coverage>"#;
+        let edit = Edit {
+            methods: vec![MethodEdit::Set {
+                complexity: 1,
+                hits: Some(5),
+            }],
+            rollup: None,
+        };
+        let out = rewrite(xml, &edit).expect("rewrites");
+        assert!(out.contains(r#"<line hits="1" number="1"/>"#), "{out}");
     }
 }

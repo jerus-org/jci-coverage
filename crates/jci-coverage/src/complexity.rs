@@ -4,6 +4,20 @@
 //! because LLVM coverage data has no complexity. This subcommand computes it
 //! from the source and writes it into each `<method>`, which is where OtterWise
 //! reads it for its Complexity and CRAP scores.
+//!
+//! Limitations, from reading source rather than compiled code:
+//!
+//! - A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is
+//!   reported by `cargo llvm-cov` but invisible to the parser, so it is
+//!   unmatched; its decisions count towards the enclosing function instead.
+//! - Two functions that start on one source line are told apart by name, and
+//!   two closures on one line by their `{closure#N}` index.
+//! - Sources are read relative to `--source-root` (default `.`), not the
+//!   report's `<sources>`: run from the directory the report was built in, or
+//!   pass `--source-root`.
+//! - The annotated report replaces `--file` with a regular file, so a symlink
+//!   is not followed and the original's mode is not kept. Use `--output` to
+//!   write elsewhere.
 
 mod cobertura;
 mod counter;
@@ -189,9 +203,19 @@ fn format_summary(s: &Summary) -> String {
     out
 }
 
+/// A hint for the usual cause of a report where nothing matched.
+fn nothing_matched(s: &Summary) -> Option<&'static str> {
+    (s.kept() > 0 && s.matched == 0).then_some(
+        "no method matched a source function; run from the directory the report was built in, or set --source-root",
+    )
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
     let summary = execute(args)?;
+    if let Some(hint) = nothing_matched(&summary) {
+        tracing::warn!("{hint}");
+    }
     for m in summary.unmatched.iter().take(10) {
         tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
     }
@@ -432,5 +456,15 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert!(text.contains("max 4"), "{text}");
         assert!(text.contains("x::pick::<u8>"), "{text}");
         assert!(text.contains("1 not matched"), "{text}");
+    }
+
+    #[test]
+    fn a_report_where_nothing_matched_gets_a_hint() {
+        let (dir, mut args) = setup();
+        args.source_root = dir.path().join("coverage");
+        let summary = execute(&args).expect("runs");
+        assert!(nothing_matched(&summary).is_some_and(|h| h.contains("--source-root")));
+        let (_dir, args) = setup();
+        assert_eq!(nothing_matched(&execute(&args).expect("runs")), None);
     }
 }

@@ -69,6 +69,9 @@ pub(crate) struct Entry {
     /// function. Tells apart closures that start on the same line.
     pub(crate) path: Vec<u32>,
     pub(crate) counts: Counts,
+    /// The function's own identifier; empty for a closure. Tells apart
+    /// functions that start on the same line.
+    pub(crate) name: String,
     /// Inside `#[cfg(test)]` code, or a `#[test]` function.
     pub(crate) is_test: bool,
 }
@@ -89,13 +92,20 @@ struct Walker {
 }
 
 impl Walker {
-    fn enter(&mut self, line: usize, end_line: usize, path: Vec<u32>, is_test: bool) {
+    fn enter(
+        &mut self,
+        (line, end_line): (usize, usize),
+        path: Vec<u32>,
+        name: String,
+        is_test: bool,
+    ) {
         self.stack.push(Frame {
             entry: Entry {
                 line,
                 end_line,
                 path,
                 counts: Counts::default(),
+                name,
                 is_test: is_test || self.test_depth > 0,
             },
             next_closure: 0,
@@ -123,18 +133,25 @@ impl Walker {
     fn function(
         &mut self,
         attrs: &[syn::Attribute],
+        name: &syn::Ident,
         lines: (usize, usize),
         walk: impl FnOnce(&mut Self),
     ) {
         self.in_cfg_test(attrs, |w| {
-            w.enter(lines.0, lines.1, Vec::new(), attrs.iter().any(is_test_attr));
+            w.enter(
+                lines,
+                Vec::new(),
+                name.to_string(),
+                attrs.iter().any(is_test_attr),
+            );
             walk(w);
             w.leave();
         });
     }
 }
 
-/// `#[cfg(test)]` (but not `#[cfg(not(test))]`).
+/// `#[cfg(test)]`, including `cfg(all(test, ..))` and `cfg(any(test, ..))`, but
+/// not `#[cfg(not(test))]`.
 fn is_cfg_test(attr: &syn::Attribute) -> bool {
     if !attr.path().is_ident("cfg") {
         return false;
@@ -142,8 +159,26 @@ fn is_cfg_test(attr: &syn::Attribute) -> bool {
     let Ok(list) = attr.meta.require_list() else {
         return false;
     };
-    let idents = ident_names(list.tokens.clone());
-    idents.iter().any(|i| i == "test") && !idents.iter().any(|i| i == "not")
+    mentions_test(list.tokens.clone())
+}
+
+/// Whether `test` appears in a cfg predicate other than under a `not(..)`.
+fn mentions_test(tokens: TokenStream) -> bool {
+    let mut negated = false;
+    for tree in tokens {
+        match tree {
+            TokenTree::Ident(i) if i == "test" => return true,
+            TokenTree::Ident(i) => negated = i == "not",
+            TokenTree::Group(g) => {
+                if !negated && mentions_test(g.stream()) {
+                    return true;
+                }
+                negated = false;
+            }
+            _ => negated = false,
+        }
+    }
+    false
 }
 
 /// `#[test]`, or a runtime's variant such as `#[tokio::test]`.
@@ -152,18 +187,6 @@ fn is_test_attr(attr: &syn::Attribute) -> bool {
         .segments
         .last()
         .is_some_and(|s| s.ident == "test")
-}
-
-fn ident_names(tokens: TokenStream) -> Vec<String> {
-    let mut out = Vec::new();
-    for tree in tokens {
-        match tree {
-            TokenTree::Ident(i) => out.push(i.to_string()),
-            TokenTree::Group(g) => out.extend(ident_names(g.stream())),
-            _ => {}
-        }
-    }
-    out
 }
 
 /// Count the decision keywords in a macro's unparsed arguments.
@@ -192,19 +215,25 @@ impl<'ast> Visit<'ast> for Walker {
 
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
         let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-        self.function(&i.attrs, lines, |w| syn::visit::visit_item_fn(w, i));
+        self.function(&i.attrs, &i.sig.ident, lines, |w| {
+            syn::visit::visit_item_fn(w, i)
+        });
     }
 
     fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
         let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-        self.function(&i.attrs, lines, |w| syn::visit::visit_impl_item_fn(w, i));
+        self.function(&i.attrs, &i.sig.ident, lines, |w| {
+            syn::visit::visit_impl_item_fn(w, i)
+        });
     }
 
     fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
         // A declaration without a body has nothing to count.
         if i.default.is_some() {
             let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-            self.function(&i.attrs, lines, |w| syn::visit::visit_trait_item_fn(w, i));
+            self.function(&i.attrs, &i.sig.ident, lines, |w| {
+                syn::visit::visit_trait_item_fn(w, i)
+            });
         } else {
             syn::visit::visit_trait_item_fn(self, i);
         }
@@ -226,7 +255,8 @@ impl<'ast> Visit<'ast> for Walker {
             }
         };
         let is_test = self.stack.last().is_some_and(|f| f.entry.is_test);
-        self.enter(c.span().start().line, c.span().end().line, path, is_test);
+        let lines = (c.span().start().line, c.span().end().line);
+        self.enter(lines, path, String::new(), is_test);
         syn::visit::visit_expr_closure(self, c);
         self.leave();
     }
@@ -496,5 +526,18 @@ fn not_a_test() {}
     #[test]
     fn unparseable_source_is_an_error() {
         assert!(analyze("fn broken( {").is_err());
+    }
+
+    #[test]
+    fn cfg_all_test_and_not_something_else_is_still_test_code() {
+        let src = "#[cfg(all(test, not(windows)))]\nfn a() { if true {} }\n\
+                   #[cfg(not(test))]\nfn b() {}\n\
+                   #[cfg(any(test, feature = \"x\"))]\nfn c() {}\n";
+        let tests: Vec<_> = analyze(src)
+            .expect("parses")
+            .iter()
+            .map(|e| (e.line, e.is_test))
+            .collect();
+        assert_eq!(tests, vec![(2, true), (4, false), (6, true)]);
     }
 }
