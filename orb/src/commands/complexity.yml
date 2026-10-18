@@ -1,12 +1,8 @@
-description: Computes the cyclomatic complexity of the Rust functions a Cobertura report covers and writes it into each method, where OtterWise reads it for its Complexity and CRAP scores. `cargo llvm-cov` leaves every complexity at 0. Reads the source files the report names, relative to `--source-root`, and needs no other tool. Run it between `report --format cobertura` and `upload`.
+description: Computes the cyclomatic complexity of the Rust functions a Cobertura report covers and writes it into each method, where OtterWise reads it for its Complexity and CRAP scores. `cargo llvm-cov` leaves every complexity at 0. Reads the source files the report names, relative to `--source-root`, and needs no other tool. Run it after `report` has written a Cobertura report, and before `upload`.
 parameters:
-  format:
-    type: boolean
-    description: 'cobertura` and `upload`. Usage: jci-coverage complexity [OPTIONS]'
-    default: false
   file:
     type: string
-    description: Cobertura report to annotate. The file `report --format cobertura|both` writes.
+    description: Cobertura report to annotate. The Cobertura file `report` writes.
     default: coverage/cobertura.xml
   log_level:
     type: enum
@@ -62,12 +58,6 @@ parameters:
     description: Work out and print the summary without writing anything
     default: false
 steps:
-- when:
-    condition: << parameters.format >>
-    steps:
-    - run:
-        name: Set GCO_FORMAT flag
-        command: echo 'export GCO_FORMAT=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.no_rollup >>
     steps:

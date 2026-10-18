@@ -1,5 +1,4 @@
 set -- jci-coverage complexity
-[[ "${GCO_FORMAT:-false}" = "true" ]] && set -- "$@" --format
 [[ ! "${GCO_FILE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --file "${GCO_FILE}"
 case "${GCO_LOG_LEVEL:-default}" in
   quiet) set -- "$@" --quiet ;;

@@ -1,13 +1,9 @@
 description: Run complexity command in a dedicated job.
 executor: default
 parameters:
-  format:
-    type: boolean
-    description: 'cobertura` and `upload`. Usage: jci-coverage complexity [OPTIONS]'
-    default: false
   file:
     type: string
-    description: Cobertura report to annotate. The file `report --format cobertura|both` writes.
+    description: Cobertura report to annotate. The Cobertura file `report` writes.
     default: coverage/cobertura.xml
   log_level:
     type: enum
@@ -83,7 +79,6 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - complexity:
-    format: << parameters.format >>
     file: << parameters.file >>
     log_level: << parameters.log_level >>
     output: << parameters.output >>
