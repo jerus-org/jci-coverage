@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- deps: update rust:1-slim-trixie docker digest to 4df2ae8(pr [#48])
+
 ## [0.0.12] - 2026-10-18
 
 ### Added
@@ -161,6 +167,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#45]: https://github.com/jerus-org/jci-coverage/pull/45
 [#46]: https://github.com/jerus-org/jci-coverage/pull/46
 [#47]: https://github.com/jerus-org/jci-coverage/pull/47
+[#48]: https://github.com/jerus-org/jci-coverage/pull/48
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
