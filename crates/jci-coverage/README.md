@@ -125,10 +125,19 @@ workflows:
       - jci-coverage/report_and_upload
 ```
 
-To show Complexity and CRAP as well, use `jci-coverage/report_complexity_and_upload` in
-the same way. Its steps are fixed (`report --format both`, `complexity`, then `upload` of
-`coverage/cobertura.xml`), and it takes the same `package`, `runner`, `nextest_profile`,
-`no_all_features` and `log_level` parameters as `report_and_upload`.
+To show Complexity and CRAP as well, use `jci-coverage/report_complexity_and_upload`. It
+runs `report`, `complexity` and then `upload` of `coverage/cobertura.xml`, so the report
+path is fixed and there is no `file` parameter. It takes the same `package`, `runner`,
+`nextest_profile`, `no_all_features`, `log_level`, `attach_workspace` and `workspace_root`
+parameters as `report_and_upload`, and these more:
+
+| Parameter | Default | Use it to |
+|-----------|---------|-----------|
+| `format` | `cobertura` | write `both` formats from the one test run, when a later job wants `coverage/lcov.info` too (it is not uploaded) |
+| `unmatched` | `keep` | set `fail` so the job stops when a method cannot be matched to a source function, instead of leaving its complexity at 0 |
+| `exclude_tests` | `false` | count `#[cfg(test)]` code and `#[test]` functions as 0 |
+| `source_root` | `.` | read sources from another directory |
+| `rules` | `rca` | count the stricter `mccabe` decision points |
 
 Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
 project's settings. The `upload` job's `repo_token` parameter exists

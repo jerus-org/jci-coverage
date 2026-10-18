@@ -93,8 +93,12 @@ params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"
 # `report_and_upload` plus complexity: one instrumented test run writes both
 # formats, `complexity` annotates the Cobertura report, and `upload` sends that
 # report so OtterWise shows Complexity and CRAP. Rich mode (not simple) because
-# `report` and `upload` need their own values: `--format both` is fixed here,
-# and `upload`'s file is the Cobertura report, not the lcov default. Unlike
+# `report` and `upload` need their own values: the format defaults to the one
+# format this job needs (`cobertura`, with `both` available), and `upload`'s
+# file is the Cobertura report, not the lcov default. `complexity` exposes the
+# options that change what it reports (`unmatched`, `exclude_tests`,
+# `source_root`, `rules`); `duplicates` and `no_rollup` are left at their
+# defaults because they change what OtterWise sums. Unlike
 # `report_and_upload` this job is hand-maintained, not regenerated from `--help`:
 # keep its parameters in step with `report`'s. `report_and_upload` stays until
 # the dashboard numbers have been checked (jerus-org/jci-coverage#44).
@@ -115,7 +119,7 @@ description = "Test runner to drive coverage with"
 
 [[job_group.parameter]]
 name = "nextest_profile"
-description = "Nextest profile to use. Only meaningful with the nextest runner."
+description = "Nextest profile to use. Only meaningful with `--runner nextest`."
 default = ""
 
 [[job_group.parameter]]
@@ -123,6 +127,35 @@ name = "no_all_features"
 type = "boolean"
 default = "false"
 description = "Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured."
+
+[[job_group.parameter]]
+name = "format"
+enum = ["cobertura", "both"]
+default = "cobertura"
+description = "Report format(s) to write. `cobertura` (the default) writes only `coverage/cobertura.xml`, which is all this job needs; `both` also writes `coverage/lcov.info` from the same test run, for a later job that wants it. The lcov file is not uploaded."
+
+[[job_group.parameter]]
+name = "unmatched"
+enum = ["keep", "one", "fail"]
+default = "keep"
+description = "What to do with a method that has no matching function in the source. `fail` stops the job, so a run where complexity silently stays 0 is not reported as a success."
+
+[[job_group.parameter]]
+name = "exclude_tests"
+type = "boolean"
+default = "false"
+description = "Count `#[cfg(test)]` code and `#[test]` functions as complexity 0"
+
+[[job_group.parameter]]
+name = "source_root"
+default = "."
+description = "Directory the report's source file paths are relative to"
+
+[[job_group.parameter]]
+name = "rules"
+enum = ["rca", "mccabe"]
+default = "rca"
+description = "Which decision points count"
 
 [[job_group.parameter]]
 name = "log_level"
@@ -140,7 +173,7 @@ builtin = "attach_workspace"
 command = "report"
 
 [job_group.step.with]
-format = "both"
+format = "<< parameters.format >>"
 package = "<< parameters.package >>"
 runner = "<< parameters.runner >>"
 nextest_profile = "<< parameters.nextest_profile >>"
@@ -152,6 +185,10 @@ command = "complexity"
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
+source_root = "<< parameters.source_root >>"
+rules = "<< parameters.rules >>"
+unmatched = "<< parameters.unmatched >>"
+exclude_tests = "<< parameters.exclude_tests >>"
 log_level = "<< parameters.log_level >>"
 
 [[job_group.step]]
