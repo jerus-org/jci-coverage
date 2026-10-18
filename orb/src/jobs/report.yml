@@ -29,7 +29,7 @@ parameters:
     default: ''
   format:
     type: enum
-    description: Report format(s) to write. `both` runs the tests once and writes `coverage/lcov.info` and `coverage/cobertura.xml` from the same profile data; `cobertura` writes only `coverage/cobertura.xml`.
+    description: Report format(s) to write. `lcov` (the default) writes only `coverage/lcov.info`; `cobertura` writes only `coverage/cobertura.xml`; `both` runs the tests once and writes both files from the same profile data.
     default: lcov
     enum:
     - lcov
