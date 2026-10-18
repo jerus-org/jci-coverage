@@ -72,8 +72,8 @@ enum Commands {
             method, where OtterWise reads it for its Complexity and CRAP \
             scores. `cargo llvm-cov` leaves every complexity at 0. Reads the \
             source files the report names, relative to `--source-root`, and \
-            needs no other tool. Run it between `report --format cobertura` \
-            and `upload`.",
+            needs no other tool. Run it after `report` has written a \
+            Cobertura report, and before `upload`.",
         term_width = 70
     )]
     Complexity(complexity::ComplexityArgs),
@@ -264,5 +264,30 @@ mod tests {
     #[test]
     fn unknown_subcommand_is_error() {
         assert!(Cli::try_parse_from(["jci-coverage", "bogus"]).is_err());
+    }
+
+    /// The orb generator reads `--help`, and takes a wrapped line that begins
+    /// with `--` for a flag, so prose must not wrap onto one.
+    #[test]
+    fn help_prose_never_wraps_onto_a_line_that_looks_like_a_flag() {
+        use clap::CommandFactory;
+        let mut cmd = Cli::command();
+        for name in ["report", "complexity", "upload"] {
+            let sub = cmd.find_subcommand_mut(name).expect("subcommand");
+            let longs: Vec<String> = sub
+                .get_arguments()
+                .filter_map(|a| a.get_long().map(|l| format!("--{l}")))
+                .collect();
+            let help = sub.render_long_help().to_string();
+            for line in help.lines().map(str::trim_start) {
+                if line.starts_with("--") {
+                    let flag = line.split([' ', ',', '=']).next().unwrap_or("");
+                    assert!(
+                        longs.iter().any(|l| l == flag) || flag == "--help",
+                        "'{name}' help has a prose line starting with {flag}: {line}"
+                    );
+                }
+            }
+        }
     }
 }

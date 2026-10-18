@@ -4,8 +4,8 @@ Computes the cyclomatic complexity of the Rust functions a Cobertura
 report covers and writes it into each method, where OtterWise reads it
 for its Complexity and CRAP scores. `cargo llvm-cov` leaves every
 complexity at 0. Reads the source files the report names, relative to
-`--source-root`, and needs no other tool. Run it between `report
---format cobertura` and `upload`.
+`--source-root`, and needs no other tool. Run it after `report` has
+written a Cobertura report, and before `upload`.
 
 Usage: jci-coverage complexity [OPTIONS]
 
@@ -13,7 +13,7 @@ Options:
       --file <PATH>
           Cobertura report to annotate.
           
-          The file `report --format cobertura|both` writes.
+          The Cobertura file `report` writes.
           
           [default: coverage/cobertura.xml]
 

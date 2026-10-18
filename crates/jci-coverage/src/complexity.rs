@@ -41,7 +41,7 @@ pub use plan::{Duplicates, Unmatched};
 pub struct ComplexityArgs {
     /// Cobertura report to annotate.
     ///
-    /// The file `report --format cobertura|both` writes.
+    /// The Cobertura file `report` writes.
     #[arg(long, value_name = "PATH", default_value = "coverage/cobertura.xml")]
     pub file: PathBuf,
 
