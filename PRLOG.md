@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update rust:1-slim-trixie docker digest to 4df2ae8(pr [#48])
+- deps: update dependency jci-coverage to v0.0.12(pr [#49])
 
 ## [0.0.12] - 2026-10-18
 
@@ -168,6 +169,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#46]: https://github.com/jerus-org/jci-coverage/pull/46
 [#47]: https://github.com/jerus-org/jci-coverage/pull/47
 [#48]: https://github.com/jerus-org/jci-coverage/pull/48
+[#49]: https://github.com/jerus-org/jci-coverage/pull/49
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
