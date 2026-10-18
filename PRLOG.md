@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- add --format lcov|cobertura|both(pr [#45])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.11(pr [#41])
@@ -152,6 +156,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#37]: https://github.com/jerus-org/jci-coverage/pull/37
 [#39]: https://github.com/jerus-org/jci-coverage/pull/39
 [#41]: https://github.com/jerus-org/jci-coverage/pull/41
+[#45]: https://github.com/jerus-org/jci-coverage/pull/45
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...HEAD
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
