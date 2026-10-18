@@ -10,13 +10,17 @@ Source-based Rust code coverage with
 
 ## Why
 
-Two independent subcommands, not one:
+Three independent subcommands, not one:
 
 - **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
   write a coverage report and print a terminal summary. `--format` chooses the report:
   `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
   `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific;
   aims to be a drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
+- **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
+  report covers and writes it into the report. `cargo llvm-cov` leaves every complexity at
+  zero, so without this step OtterWise shows Complexity and CRAP as 0. It reads the source
+  files the report names and needs no other tool.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates.
@@ -59,8 +63,23 @@ jci-coverage report --format both            # writes both, from one test run
 jci-coverage upload --file coverage/lcov.info # uploads it to OtterWise
 ```
 
-See `jci-coverage report --help` / `jci-coverage upload --help` for the full flag
-reference.
+To report complexity and CRAP, annotate a Cobertura report and upload that instead:
+
+```bash
+jci-coverage report --format cobertura        # writes coverage/cobertura.xml
+jci-coverage complexity                       # adds complexity to it, in place
+jci-coverage upload --file coverage/cobertura.xml
+```
+
+`complexity` counts decisions the way [`rust-code-analysis`](https://github.com/mozilla/rust-code-analysis)
+does by default (`--rules rca`): one for each `if`, `for`, `while`, `loop`, match arm,
+match-arm guard, `?`, `&&` and `||`, and for the keywords `if`, `for`, `while` and `loop`
+inside macro arguments. `--rules mccabe` counts one less per `match` and ignores `?`.
+Generic functions appear once per instantiation in the report; they are merged into one
+entry by default (`--duplicates keep` leaves them), since OtterWise sums every entry.
+
+See `jci-coverage report --help`, `jci-coverage complexity --help` and
+`jci-coverage upload --help` for the full flag reference.
 
 ## CircleCI orb
 

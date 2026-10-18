@@ -1,0 +1,88 @@
+macro_rules! m {
+    ($($t:tt)*) => {};
+}
+
+fn m_none() {
+    m!(a);
+}
+
+fn m_and(a: bool, b: bool) {
+    m!(a && b);
+}
+
+fn m_or(a: bool, b: bool) {
+    m!(a || b);
+}
+
+fn m_try(x: i32) {
+    m!(x?);
+}
+
+fn m_if(a: bool) {
+    m!(if a { 1 } else { 2 });
+}
+
+fn m_else_if(a: bool, b: bool) {
+    m!(if a { 1 } else if b { 2 } else { 3 });
+}
+
+fn m_for(y: i32) {
+    m!(for x in y {});
+}
+
+fn m_while(a: bool) {
+    m!(while a {});
+}
+
+fn m_loop() {
+    m!(loop {});
+}
+
+fn m_match(a: i32) {
+    m!(match a { 0 => 1, _ => 2 });
+}
+
+fn m_guard(a: i32) {
+    m!(match a { x if x > 0 => 1, _ => 2 });
+}
+
+fn m_closure(a: bool) {
+    m!(|x| if x { 1 } else { 2 });
+}
+
+fn m_empty_closure() {
+    m!(|| 1);
+}
+
+fn m_nested(a: bool) {
+    m!(m!(if a { 1 } else { 2 }));
+}
+
+fn m_assert_and(a: bool, b: bool) {
+    assert!(a && b);
+}
+
+fn m_format_if(a: bool) -> String {
+    format!("{}", if a { 1 } else { 2 })
+}
+
+fn m_matches_guard(x: Option<i32>) -> bool {
+    matches!(x, Some(v) if v > 0)
+}
+
+fn m_matches_or(x: Option<i32>) -> bool {
+    matches!(x, Some(1) | Some(2))
+}
+
+fn m_dbg_try(s: &str) -> Result<i32, std::num::ParseIntError> {
+    let v = dbg!(s.parse::<i32>()?);
+    Ok(v)
+}
+
+fn m_stmt_macro(a: bool) {
+    m! { if a { 1 } else { 2 } }
+}
+
+fn m_item_position(a: bool) {
+    let _x = vec![if a { 1 } else { 2 }];
+}

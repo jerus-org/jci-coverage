@@ -1,4 +1,5 @@
 mod cli;
+mod complexity;
 mod preflight;
 mod report;
 mod upload;

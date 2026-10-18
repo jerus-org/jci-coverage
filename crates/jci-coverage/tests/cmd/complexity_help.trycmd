@@ -1,0 +1,91 @@
+```
+$ jci-coverage complexity --help
+Computes the cyclomatic complexity of the Rust functions a Cobertura
+report covers and writes it into each method, where OtterWise reads it
+for its Complexity and CRAP scores. `cargo llvm-cov` leaves every
+complexity at 0. Reads the source files the report names, relative to
+`--source-root`, and needs no other tool. Run it between `report
+--format cobertura` and `upload`.
+
+Usage: jci-coverage complexity [OPTIONS]
+
+Options:
+      --file <PATH>
+          Cobertura report to annotate.
+          
+          The file `report --format cobertura|both` writes.
+          
+          [default: coverage/cobertura.xml]
+
+  -v, --verbose...
+          Increase logging verbosity
+
+      --output <PATH>
+          Write the annotated report here instead of over `--file`.
+          
+          The default replaces the report in place; a failed run never
+          leaves a half-written file.
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+      --source-root <DIR>
+          Directory the report's source file paths are relative to
+          
+          [default: .]
+
+      --duplicates <DUPLICATES>
+          What to do with the several entries `cargo llvm-cov` writes
+          for one generic function
+
+          Possible values:
+          - merge: One entry per function: complexity is a property of
+            the source, so it should not depend on how many
+            instantiations the tests happen to make
+          - keep:  Leave every instantiation as `cargo llvm-cov` wrote
+            it. OtterWise sums every entry, so a generic function
+            counts once per instantiation
+          
+          [default: merge]
+
+      --rules <RULES>
+          Which decision points count
+
+          Possible values:
+          - rca:    Matches `rust-code-analysis`: every match arm and
+            every `?` counts
+          - mccabe: Textbook McCabe: a `match` adds one less than its
+            arms, and `?` is not a decision
+          
+          [default: rca]
+
+      --unmatched <UNMATCHED>
+          What to do with a method that has no matching function in
+          the source
+
+          Possible values:
+          - keep: Leave its complexity at `0`
+          - one:  Count it as `1`, the complexity of a function with
+            no decisions
+          - fail: Fail the run
+          
+          [default: keep]
+
+      --no-rollup
+          Leave the class, package and root complexity as they are.
+          
+          By default they are set to the sum of the methods below
+          them, so other Cobertura consumers see consistent data.
+          OtterWise ignores them.
+
+      --exclude-tests
+          Count `#[cfg(test)]` code and `#[test]` functions as
+          complexity 0
+
+      --dry-run
+          Work out and print the summary without writing anything
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```
