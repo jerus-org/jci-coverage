@@ -1,8 +1,11 @@
 ```
 $ jci-coverage report --help
-Writes `coverage/lcov.info` and prints a terminal summary. Requires
-`cargo-llvm-cov` and the `llvm-tools` rustup component on PATH (and
-`cargo-nextest` too, when `--runner nextest` is selected).
+Writes a coverage report and prints a terminal summary. `--format`
+chooses the report: `lcov` (the default) writes `coverage/lcov.info`,
+`cobertura` writes `coverage/cobertura.xml`, and `both` writes both
+from one test run. Requires `cargo-llvm-cov` and the `llvm-tools`
+rustup component on PATH (and `cargo-nextest` too, when `--runner
+nextest` is selected).
 
 Usage: jci-coverage report [OPTIONS]
 
@@ -30,6 +33,21 @@ Options:
           Nextest profile to use.
           
           Only meaningful with `--runner nextest`.
+
+      --format <FORMAT>
+          Report format(s) to write.
+          
+          `lcov` (the default) writes only `coverage/lcov.info`;
+          `cobertura` writes only `coverage/cobertura.xml`; `both`
+          runs the tests once and writes both files from the same
+          profile data.
+
+          Possible values:
+          - lcov:      `coverage/lcov.info` only
+          - cobertura: `coverage/cobertura.xml` only
+          - both:      Both files, from one test run
+          
+          [default: lcov]
 
       --no-all-features
           Disable `--all-features` (on by default).

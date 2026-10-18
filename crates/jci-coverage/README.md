@@ -13,8 +13,10 @@ Source-based Rust code coverage with
 Two independent subcommands, not one:
 
 - **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
-  write `coverage/lcov.info` and print a terminal summary. Rust-specific; aims to be a
-  drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
+  write a coverage report and print a terminal summary. `--format` chooses the report:
+  `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
+  `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific;
+  aims to be a drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates.
@@ -51,7 +53,9 @@ cargo install jci-coverage
 ## Usage
 
 ```bash
-jci-coverage report                          # writes coverage/lcov.info
+jci-coverage report                          # writes coverage/lcov.info (--format lcov)
+jci-coverage report --format cobertura       # writes coverage/cobertura.xml
+jci-coverage report --format both            # writes both, from one test run
 jci-coverage upload --file coverage/lcov.info # uploads it to OtterWise
 ```
 

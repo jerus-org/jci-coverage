@@ -2,10 +2,12 @@
 //!
 //! Orchestrates `cargo llvm-cov` (and, when the nextest runner is selected,
 //! `cargo llvm-cov nextest`) as a subprocess — functionally equivalent to
-//! `circleci-toolkit`'s `code_coverage` job. Writes `coverage/lcov.info`,
-//! then prints a terminal summary via a second `cargo llvm-cov report
-//! --summary-only` invocation (which reads the profile data the first
-//! invocation collected, rather than re-running anything).
+//! `circleci-toolkit`'s `code_coverage` job. Writes `coverage/lcov.info` and,
+//! with `--format cobertura|both`, `coverage/cobertura.xml` (see [`Format`]),
+//! then prints a terminal summary via a final `cargo llvm-cov report
+//! --summary-only` invocation. Every `report` invocation reads the profile data
+//! the single test run collected, rather than re-running anything, so an extra
+//! format costs no extra test run.
 
 use std::{
     path::Path,
@@ -19,6 +21,57 @@ use crate::preflight::{self, Tool};
 
 /// Where the lcov report is written, relative to the working directory.
 pub const OUTPUT_PATH: &str = "coverage/lcov.info";
+
+/// Where the Cobertura report is written, relative to the working directory.
+pub const COBERTURA_PATH: &str = "coverage/cobertura.xml";
+
+/// Report format(s) `report` writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Format {
+    /// `coverage/lcov.info` only.
+    Lcov,
+    /// `coverage/cobertura.xml` only.
+    Cobertura,
+    /// Both files, from one test run.
+    Both,
+}
+
+impl Format {
+    /// The report files this format writes.
+    fn reports(self) -> &'static [Report] {
+        match self {
+            Format::Lcov => &[Report::Lcov],
+            Format::Cobertura => &[Report::Cobertura],
+            Format::Both => &[Report::Lcov, Report::Cobertura],
+        }
+    }
+}
+
+/// A report file `report` can write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Report {
+    Lcov,
+    Cobertura,
+}
+
+impl Report {
+    fn path(self) -> &'static str {
+        match self {
+            Report::Lcov => OUTPUT_PATH,
+            Report::Cobertura => COBERTURA_PATH,
+        }
+    }
+
+    /// `cargo llvm-cov` flags that write this report, e.g.
+    /// `--lcov --output-path coverage/lcov.info`.
+    fn write_flags(self) -> [&'static str; 3] {
+        let flag = match self {
+            Report::Lcov => "--lcov",
+            Report::Cobertura => "--cobertura",
+        };
+        [flag, "--output-path", self.path()]
+    }
+}
 
 /// Test runner `report` drives through `cargo-llvm-cov`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -46,6 +99,14 @@ pub struct ReportArgs {
     #[arg(long, value_name = "NAME")]
     pub nextest_profile: Option<String>,
 
+    /// Report format(s) to write.
+    ///
+    /// `lcov` (the default) writes only `coverage/lcov.info`; `cobertura`
+    /// writes only `coverage/cobertura.xml`; `both` runs the tests once and
+    /// writes both files from the same profile data.
+    #[arg(long, value_enum, default_value_t = Format::Lcov)]
+    pub format: Format,
+
     /// Disable `--all-features` (on by default).
     ///
     /// Matches `toolkit/code_coverage`, so instrumented subprocess
@@ -62,8 +123,16 @@ pub struct ReportArgs {
     pub dry_run: bool,
 }
 
-/// Build the `cargo llvm-cov ...` argv that generates the lcov report.
-fn build_report_args(args: &ReportArgs) -> Vec<String> {
+/// One `cargo` invocation in the `report` sequence.
+#[derive(Debug, PartialEq, Eq)]
+struct Step {
+    argv: Vec<String>,
+    /// Report file this step writes, if any.
+    writes: Option<Report>,
+}
+
+/// The `cargo llvm-cov ...` argv that runs the tests, before any report flags.
+fn run_tests_args(args: &ReportArgs) -> Vec<String> {
     let mut argv = vec!["llvm-cov".to_string()];
 
     if args.runner == Runner::Nextest {
@@ -85,20 +154,51 @@ fn build_report_args(args: &ReportArgs) -> Vec<String> {
         argv.push("--all-features".to_string());
     }
 
-    argv.push("--lcov".to_string());
-    argv.push("--output-path".to_string());
-    argv.push(OUTPUT_PATH.to_string());
-
     argv
 }
 
-/// Build the `cargo llvm-cov report --summary-only` argv.
-fn build_summary_args() -> Vec<String> {
-    vec![
-        "llvm-cov".to_string(),
-        "report".to_string(),
-        "--summary-only".to_string(),
-    ]
+/// `cargo llvm-cov report [--package P] <tail>`: reads the profile data the
+/// test run collected. Scoped to the package so binaries an earlier run left in
+/// the target directory are not reported alongside it.
+fn report_args(args: &ReportArgs, tail: &[&str]) -> Vec<String> {
+    let mut argv = vec!["llvm-cov".to_string(), "report".to_string()];
+    if let Some(package) = &args.package {
+        argv.push("--package".to_string());
+        argv.push(package.clone());
+    }
+    argv.extend(tail.iter().map(|s| s.to_string()));
+    argv
+}
+
+/// The ordered `cargo` invocations for the selected format.
+fn build_steps(args: &ReportArgs) -> Vec<Step> {
+    let reports = args.format.reports();
+    let mut argv = run_tests_args(args);
+    let mut steps = Vec::new();
+
+    if let [only] = reports {
+        // One format: a single command runs the tests and writes the report.
+        argv.extend(only.write_flags().map(String::from));
+        steps.push(Step {
+            argv,
+            writes: Some(*only),
+        });
+    } else {
+        // Several formats: run the tests once, then write each report from the
+        // profile data that run collected.
+        argv.push("--no-report".to_string());
+        steps.push(Step { argv, writes: None });
+        steps.extend(reports.iter().map(|report| Step {
+            argv: report_args(args, &report.write_flags()),
+            writes: Some(*report),
+        }));
+    }
+
+    steps.push(Step {
+        argv: report_args(args, &["--summary-only"]),
+        writes: None,
+    });
+    steps
 }
 
 /// The tools `report` needs, given the selected runner.
@@ -207,17 +307,18 @@ fn report_with<R: CommandRunner>(runner: &R, cwd: &Path, args: &ReportArgs) -> R
 
     tracing::info!(?args, "report");
 
-    if !runner.run(&build_report_args(args), cwd)? {
-        bail!("cargo llvm-cov failed to generate {OUTPUT_PATH}");
-    }
-    if args.dry_run {
-        println!("(dry run) would write {}", cwd.join(OUTPUT_PATH).display());
-    } else {
-        println!("wrote {}", cwd.join(OUTPUT_PATH).display());
-    }
-
-    if !runner.run(&build_summary_args(), cwd)? {
-        bail!("cargo llvm-cov report --summary-only failed");
+    for step in build_steps(args) {
+        if !runner.run(&step.argv, cwd)? {
+            bail!("`cargo {}` failed", step.argv.join(" "));
+        }
+        if let Some(report) = step.writes {
+            let path = cwd.join(report.path());
+            if args.dry_run {
+                println!("(dry run) would write {}", path.display());
+            } else {
+                println!("wrote {}", path.display());
+            }
+        }
     }
 
     Ok(())
@@ -242,15 +343,42 @@ mod tests {
             runner,
             nextest_profile: nextest_profile.map(String::from),
             no_all_features,
+            format: Format::Lcov,
             dry_run: false,
         }
+    }
+
+    fn with_format(mut a: ReportArgs, format: Format) -> ReportArgs {
+        a.format = format;
+        a
+    }
+
+    fn argvs(a: &ReportArgs) -> Vec<Vec<String>> {
+        build_steps(a).into_iter().map(|s| s.argv).collect()
+    }
+
+    fn first_argv(a: &ReportArgs) -> Vec<String> {
+        argvs(a).remove(0)
+    }
+
+    fn strs(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn summary(package: Option<&str>) -> Vec<String> {
+        let mut v = strs(&["llvm-cov", "report"]);
+        if let Some(p) = package {
+            v.extend(strs(&["--package", p]));
+        }
+        v.push("--summary-only".to_string());
+        v
     }
 
     #[test]
     fn report_args_defaults() {
         let a = args(None, Runner::Test, None, false);
         assert_eq!(
-            build_report_args(&a),
+            first_argv(&a),
             vec![
                 "llvm-cov",
                 "--all-features",
@@ -265,7 +393,7 @@ mod tests {
     fn report_args_nextest_runner_inserts_nextest() {
         let a = args(None, Runner::Nextest, None, false);
         assert_eq!(
-            build_report_args(&a),
+            first_argv(&a),
             vec![
                 "llvm-cov",
                 "nextest",
@@ -281,7 +409,7 @@ mod tests {
     fn report_args_nextest_profile_only_applies_with_nextest_runner() {
         let a = args(None, Runner::Nextest, Some("ci"), false);
         assert_eq!(
-            build_report_args(&a),
+            first_argv(&a),
             vec![
                 "llvm-cov",
                 "nextest",
@@ -296,7 +424,7 @@ mod tests {
 
         let ignored = args(None, Runner::Test, Some("ci"), false);
         assert_eq!(
-            build_report_args(&ignored),
+            first_argv(&ignored),
             vec![
                 "llvm-cov",
                 "--all-features",
@@ -311,7 +439,7 @@ mod tests {
     fn report_args_package_filter() {
         let a = args(Some("jci-coverage"), Runner::Test, None, false);
         assert_eq!(
-            build_report_args(&a),
+            first_argv(&a),
             vec![
                 "llvm-cov",
                 "--package",
@@ -328,17 +456,30 @@ mod tests {
     fn report_args_no_all_features_omits_the_flag() {
         let a = args(None, Runner::Test, None, true);
         assert_eq!(
-            build_report_args(&a),
+            first_argv(&a),
             vec!["llvm-cov", "--lcov", "--output-path", OUTPUT_PATH]
         );
     }
 
     #[test]
-    fn summary_args_are_fixed() {
-        assert_eq!(
-            build_summary_args(),
-            vec!["llvm-cov", "report", "--summary-only"]
-        );
+    fn summary_step_reads_the_profile_without_a_package_by_default() {
+        let a = args(None, Runner::Test, None, false);
+        assert_eq!(argvs(&a).last(), Some(&summary(None)));
+    }
+
+    #[test]
+    fn summary_step_is_scoped_to_the_package() {
+        for format in [Format::Lcov, Format::Cobertura, Format::Both] {
+            let a = with_format(
+                args(Some("jci-coverage"), Runner::Test, None, false),
+                format,
+            );
+            assert_eq!(
+                argvs(&a).last(),
+                Some(&summary(Some("jci-coverage"))),
+                "{format:?}"
+            );
+        }
     }
 
     #[test]
@@ -401,8 +542,8 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0], build_report_args(&a));
-        assert_eq!(calls[1], build_summary_args());
+        assert_eq!(calls[0], first_argv(&a));
+        assert_eq!(calls[1], summary(None));
     }
 
     #[test]
@@ -413,7 +554,10 @@ mod tests {
 
         let err = report_with(&runner, dir.path(), &a).unwrap_err();
 
-        assert!(err.to_string().contains("cargo llvm-cov failed"));
+        assert_eq!(
+            err.to_string(),
+            format!("`cargo llvm-cov --all-features --lcov --output-path {OUTPUT_PATH}` failed")
+        );
         // The summary step depends on the first step's profile data — never
         // run it after a failed report generation.
         assert_eq!(runner.calls.borrow().len(), 1);
@@ -427,7 +571,10 @@ mod tests {
 
         let err = report_with(&runner, dir.path(), &a).unwrap_err();
 
-        assert!(err.to_string().contains("summary-only failed"));
+        assert_eq!(
+            err.to_string(),
+            "`cargo llvm-cov report --summary-only` failed"
+        );
     }
 
     #[test]
@@ -495,5 +642,213 @@ mod tests {
             !dir.path().join("coverage").exists(),
             "dry run must not create coverage/"
         );
+    }
+
+    // ---- `--format` ----------------------------------------------------
+
+    #[derive(clap::Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        args: ReportArgs,
+    }
+
+    #[test]
+    fn format_defaults_to_lcov() {
+        use clap::Parser;
+        let w = Wrapper::try_parse_from(["x"]).expect("parses");
+        assert_eq!(w.args.format, Format::Lcov);
+    }
+
+    #[test]
+    fn format_accepts_each_value() {
+        use clap::Parser;
+        for (flag, want) in [
+            ("lcov", Format::Lcov),
+            ("cobertura", Format::Cobertura),
+            ("both", Format::Both),
+        ] {
+            let w = Wrapper::try_parse_from(["x", "--format", flag]).expect("parses");
+            assert_eq!(w.args.format, want, "{flag}");
+        }
+    }
+
+    #[test]
+    fn cobertura_format_is_a_single_shot_like_lcov() {
+        let a = with_format(args(None, Runner::Test, None, false), Format::Cobertura);
+        assert_eq!(
+            argvs(&a),
+            vec![
+                strs(&[
+                    "llvm-cov",
+                    "--all-features",
+                    "--cobertura",
+                    "--output-path",
+                    COBERTURA_PATH
+                ]),
+                summary(None),
+            ]
+        );
+    }
+
+    #[test]
+    fn both_runs_the_tests_once_then_writes_each_format_from_the_same_profile() {
+        let a = with_format(args(None, Runner::Test, None, false), Format::Both);
+        assert_eq!(
+            argvs(&a),
+            vec![
+                strs(&["llvm-cov", "--all-features", "--no-report"]),
+                strs(&["llvm-cov", "report", "--lcov", "--output-path", OUTPUT_PATH]),
+                strs(&[
+                    "llvm-cov",
+                    "report",
+                    "--cobertura",
+                    "--output-path",
+                    COBERTURA_PATH
+                ]),
+                summary(None),
+            ]
+        );
+    }
+
+    #[test]
+    fn both_scopes_every_report_step_to_the_package() {
+        let a = with_format(args(Some("p"), Runner::Test, None, false), Format::Both);
+        assert_eq!(
+            argvs(&a),
+            vec![
+                strs(&[
+                    "llvm-cov",
+                    "--package",
+                    "p",
+                    "--all-features",
+                    "--no-report"
+                ]),
+                strs(&[
+                    "llvm-cov",
+                    "report",
+                    "--package",
+                    "p",
+                    "--lcov",
+                    "--output-path",
+                    OUTPUT_PATH
+                ]),
+                strs(&[
+                    "llvm-cov",
+                    "report",
+                    "--package",
+                    "p",
+                    "--cobertura",
+                    "--output-path",
+                    COBERTURA_PATH
+                ]),
+                summary(Some("p")),
+            ]
+        );
+    }
+
+    #[test]
+    fn both_keeps_runner_profile_and_features_on_the_test_run_only() {
+        let a = with_format(
+            args(Some("jci-coverage"), Runner::Nextest, Some("ci"), false),
+            Format::Both,
+        );
+        let steps = argvs(&a);
+        assert_eq!(
+            steps[0],
+            strs(&[
+                "llvm-cov",
+                "nextest",
+                "--profile",
+                "ci",
+                "--package",
+                "jci-coverage",
+                "--all-features",
+                "--no-report"
+            ])
+        );
+        // The report steps read the profile data the run collected: they take
+        // no runner, profile or feature flags, but are scoped to the package so
+        // binaries left in the target directory by an earlier run are ignored.
+        for step in &steps[1..] {
+            assert_eq!(step[1], "report", "{step:?}");
+            assert!(step.windows(2).any(|w| w == ["--package", "jci-coverage"]));
+            assert!(
+                !step
+                    .iter()
+                    .any(|a| a == "nextest" || a == "--profile" || a == "--all-features")
+            );
+        }
+    }
+
+    #[test]
+    fn both_with_no_all_features_omits_the_flag_from_the_test_run() {
+        let a = with_format(args(None, Runner::Test, None, true), Format::Both);
+        assert_eq!(argvs(&a)[0], strs(&["llvm-cov", "--no-report"]));
+    }
+
+    #[test]
+    fn only_one_step_runs_tests_whatever_the_format() {
+        for format in [Format::Lcov, Format::Cobertura, Format::Both] {
+            let a = with_format(args(None, Runner::Test, None, false), format);
+            let runs_tests = argvs(&a)
+                .iter()
+                .filter(|s| s.get(1).map(String::as_str) != Some("report"))
+                .count();
+            assert_eq!(runs_tests, 1, "{format:?}");
+        }
+    }
+
+    #[test]
+    fn report_with_both_runs_four_commands_in_order_and_creates_coverage_dir() {
+        let dir = tempdir().expect("tempdir");
+        let runner = MockRunner::new(vec![true, true, true, true]);
+        let a = with_format(args(None, Runner::Test, None, false), Format::Both);
+
+        report_with(&runner, dir.path(), &a).expect("succeeds");
+
+        assert_eq!(*runner.calls.borrow(), argvs(&a));
+        assert!(dir.path().join("coverage").is_dir());
+    }
+
+    #[test]
+    fn report_with_both_stops_at_the_first_failing_step() {
+        let dir = tempdir().expect("tempdir");
+        // The test run succeeds, writing the LCOV report fails.
+        let runner = MockRunner::new(vec![true, false]);
+        let a = with_format(args(None, Runner::Test, None, false), Format::Both);
+
+        let err = report_with(&runner, dir.path(), &a).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("`cargo llvm-cov report --lcov --output-path {OUTPUT_PATH}` failed")
+        );
+        assert_eq!(runner.calls.borrow().len(), 2);
+    }
+
+    #[test]
+    fn report_with_both_names_the_cobertura_step_when_it_fails() {
+        let dir = tempdir().expect("tempdir");
+        let runner = MockRunner::new(vec![true, true, false]);
+        let a = with_format(args(None, Runner::Test, None, false), Format::Both);
+
+        let err = report_with(&runner, dir.path(), &a).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("`cargo llvm-cov report --cobertura --output-path {COBERTURA_PATH}` failed")
+        );
+        assert_eq!(runner.calls.borrow().len(), 3);
+    }
+
+    #[test]
+    fn report_with_both_dry_run_does_not_touch_the_filesystem() {
+        let dir = tempdir().expect("tempdir");
+        let mut a = with_format(args(None, Runner::Test, None, false), Format::Both);
+        a.dry_run = true;
+
+        report_with(&DryRunRunner, dir.path(), &a).expect("succeeds");
+
+        assert!(!dir.path().join("coverage").exists());
     }
 }
