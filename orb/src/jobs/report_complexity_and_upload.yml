@@ -1,0 +1,100 @@
+description: Generate Rust coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
+executor: default
+parameters:
+  package:
+    type: string
+    description: Limit coverage to one workspace package
+    default: ''
+  runner:
+    type: enum
+    description: Test runner to drive coverage with
+    default: test
+    enum:
+    - test
+    - nextest
+  nextest_profile:
+    type: string
+    description: Nextest profile to use. Only meaningful with `--runner nextest`.
+    default: ''
+  no_all_features:
+    type: boolean
+    description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
+    default: false
+  format:
+    type: enum
+    description: Report format(s) to write. `cobertura` (the default) writes only `coverage/cobertura.xml`, which is all this job needs; `both` also writes `coverage/lcov.info` from the same test run, for a later job that wants it. The lcov file is not uploaded.
+    default: cobertura
+    enum:
+    - cobertura
+    - both
+  unmatched:
+    type: enum
+    description: What to do with a method that has no matching function in the source. `fail` stops the job, so a run where complexity silently stays 0 is not reported as a success.
+    default: keep
+    enum:
+    - keep
+    - one
+    - fail
+  exclude_tests:
+    type: boolean
+    description: Count `#[cfg(test)]` code and `#[test]` functions as complexity 0
+    default: false
+  source_root:
+    type: string
+    description: Directory the report's source file paths are relative to
+    default: .
+  rules:
+    type: enum
+    description: Which decision points count
+    default: rca
+    enum:
+    - rca
+    - mccabe
+  log_level:
+    type: enum
+    description: Logging verbosity, from `quiet` to `vvvv` (most verbose).
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
+  attach_workspace:
+    type: boolean
+    description: Attach a workspace before running the command (use when the binary was built in a prior job).
+    default: false
+  workspace_root:
+    type: string
+    description: Path at which to attach the workspace; also prepended to PATH (only used when attach_workspace is true).
+    default: /tmp/workspace
+steps:
+- checkout
+- when:
+    condition: << parameters.attach_workspace >>
+    steps:
+    - attach_workspace:
+        at: << parameters.workspace_root >>
+    - run:
+        name: Add workspace binaries to PATH
+        command: <<include(scripts/add-workspace-to-path.sh)>>
+        environment:
+          WORKSPACE_ROOT: << parameters.workspace_root >>
+- report:
+    format: << parameters.format >>
+    log_level: << parameters.log_level >>
+    nextest_profile: << parameters.nextest_profile >>
+    no_all_features: << parameters.no_all_features >>
+    package: << parameters.package >>
+    runner: << parameters.runner >>
+- complexity:
+    exclude_tests: << parameters.exclude_tests >>
+    file: coverage/cobertura.xml
+    log_level: << parameters.log_level >>
+    rules: << parameters.rules >>
+    source_root: << parameters.source_root >>
+    unmatched: << parameters.unmatched >>
+- upload:
+    file: coverage/cobertura.xml
+    log_level: << parameters.log_level >>

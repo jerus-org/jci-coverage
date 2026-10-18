@@ -110,7 +110,9 @@ first use in CI.
 | Job | Use it for |
 |-----|------------|
 | `report_and_upload` | Rust projects: generate `coverage/lcov.info` and upload it in one job. The replacement for `circleci-toolkit`'s `code_coverage` job. |
+| `report_complexity_and_upload` | Rust projects: as `report_and_upload`, but also adds cyclomatic complexity to the Cobertura report and uploads that, so OtterWise shows Complexity and CRAP. It writes only the Cobertura report unless you set `format: both`. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
+| `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
 
 ```yaml
@@ -122,6 +124,20 @@ workflows:
     jobs:
       - jci-coverage/report_and_upload
 ```
+
+To show Complexity and CRAP as well, use `jci-coverage/report_complexity_and_upload`. It
+runs `report`, `complexity` and then `upload` of `coverage/cobertura.xml`, so the report
+path is fixed and there is no `file` parameter. It takes the same `package`, `runner`,
+`nextest_profile`, `no_all_features`, `log_level`, `attach_workspace` and `workspace_root`
+parameters as `report_and_upload`, and these more:
+
+| Parameter | Default | Use it to |
+|-----------|---------|-----------|
+| `format` | `cobertura` | write `both` formats from the one test run, when a later job wants `coverage/lcov.info` too (it is not uploaded) |
+| `unmatched` | `keep` | set `fail` so the job stops when a method cannot be matched to a source function, instead of leaving its complexity at 0 |
+| `exclude_tests` | `false` | count `#[cfg(test)]` code and `#[test]` functions as 0 |
+| `source_root` | `.` | read sources from another directory |
+| `rules` | `rca` | count the stricter `mccabe` decision points |
 
 Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
 project's settings. The `upload` job's `repo_token` parameter exists
