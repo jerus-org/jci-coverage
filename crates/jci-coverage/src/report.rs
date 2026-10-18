@@ -101,9 +101,9 @@ pub struct ReportArgs {
 
     /// Report format(s) to write.
     ///
-    /// `both` runs the tests once and writes `coverage/lcov.info` and
-    /// `coverage/cobertura.xml` from the same profile data; `cobertura`
-    /// writes only `coverage/cobertura.xml`.
+    /// `lcov` (the default) writes only `coverage/lcov.info`; `cobertura`
+    /// writes only `coverage/cobertura.xml`; `both` runs the tests once and
+    /// writes both files from the same profile data.
     #[arg(long, value_enum, default_value_t = Format::Lcov)]
     pub format: Format,
 
