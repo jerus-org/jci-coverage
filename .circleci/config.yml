@@ -128,11 +128,13 @@ workflows:
       # Dogfooding (P4, #16): coverage via this crate's own orb, replacing
       # toolkit/code_coverage. Needs OTTERWISE_TOKEN set as a project
       # environment variable, so forked-PR builds (/pull/N, no secrets) are
-      # skipped.
-      - jci-coverage/report_and_upload:
-          # Temporary: full verbosity while OtterWise shows no coverage (#16).
-          # Logs every upload field (token withheld) and how the report's paths
-          # relate to base_dir. Remove once uploads are confirmed.
+      # skipped. Uses the composed job so OtterWise gets a Cobertura report
+      # with complexity (Complexity and CRAP, #44), not the lcov-only
+      # report_and_upload.
+      - jci-coverage/report_complexity_and_upload:
+          # Temporary: full verbosity while the complexity numbers are checked
+          # on the dashboard (#44). Logs the complexity summary and every upload
+          # field (token withheld). Remove once confirmed.
           log_level: vvvv
           filters:
             branches:
