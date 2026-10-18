@@ -1,0 +1,131 @@
+fn plain() -> i32 {
+    1
+}
+
+fn branches(x: i32) -> i32 {
+    if x > 0 {
+        1
+    } else if x < 0 {
+        -1
+    } else {
+        0
+    }
+}
+
+fn iflet(o: Option<i32>) -> i32 {
+    if let Some(v) = o { v } else { 0 }
+}
+
+fn loops(n: i32) -> i32 {
+    let mut t = 0;
+    let mut i = 0;
+    while i < n {
+        t += i;
+        i += 1;
+    }
+    for j in 0..n {
+        t += j;
+    }
+    loop {
+        if t > 100 {
+            break;
+        }
+        t += 1;
+    }
+    t
+}
+
+fn whilelet(mut v: Vec<i32>) -> i32 {
+    let mut t = 0;
+    while let Some(x) = v.pop() {
+        t += x;
+    }
+    t
+}
+
+fn matcher(x: Option<i32>) -> i32 {
+    match x {
+        Some(v) if v > 0 => v,
+        Some(_) => 0,
+        None => -1,
+    }
+}
+
+fn boolean(a: bool, b: bool, c: bool) -> bool {
+    a && b || c
+}
+
+fn tries(s: &str) -> Result<i32, std::num::ParseIntError> {
+    let a: i32 = s.parse()?;
+    let b: i32 = s.parse()?;
+    Ok(a + b)
+}
+
+fn with_closure(v: &[i32]) -> i32 {
+    v.iter().map(|x| if *x > 0 { *x } else { 0 }).sum()
+}
+
+fn nested_closure(v: &[i32]) -> i32 {
+    v.iter()
+        .map(|x| {
+            let f = |y: i32| if y > 1 { y } else { 0 };
+            f(*x)
+        })
+        .sum()
+}
+
+fn same_line_closures(v: &[i32]) -> i32 {
+    v.iter().map(|x| (|y: i32| if y > 0 { y } else { 0 })(*x)).sum()
+}
+
+fn two_closures(a: bool, b: bool) -> i32 {
+    let f = |x: bool| if x { 1 } else { 0 };
+    let g = |x: bool| x && true;
+    f(a) + g(b) as i32
+}
+
+fn letelse(o: Option<i32>) -> i32 {
+    let Some(v) = o else {
+        return 0;
+    };
+    v
+}
+
+fn macros(a: bool, b: bool) -> bool {
+    assert!(a && b);
+    matches!(Some(1), Some(v) if v > 0)
+}
+
+fn nested_fn() -> i32 {
+    fn inner(x: i32) -> i32 {
+        if x > 0 { 1 } else { 0 }
+    }
+    inner(1)
+}
+
+struct S;
+
+impl S {
+    fn method(&self, x: i32) -> i32 {
+        match x {
+            0 => 1,
+            _ => 2,
+        }
+    }
+}
+
+trait T {
+    fn default_method(&self, x: bool) -> i32 {
+        if x { 1 } else { 0 }
+    }
+    fn required(&self);
+}
+
+async fn asyncfn(x: bool) -> i32 {
+    if x { 1 } else { 0 }
+}
+
+fn empty_closure() -> i32 {
+    let f = || 1;
+    f()
+}

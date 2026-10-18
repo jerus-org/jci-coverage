@@ -1,0 +1,41 @@
+```
+$ jci-coverage complexity -h
+Add cyclomatic complexity to a Cobertura report
+
+Usage: jci-coverage complexity [OPTIONS]
+
+Options:
+      --file <PATH>
+          Cobertura report to annotate [default:
+          coverage/cobertura.xml]
+  -v, --verbose...
+          Increase logging verbosity
+      --output <PATH>
+          Write the annotated report here instead of over `--file`
+  -q, --quiet...
+          Decrease logging verbosity
+      --source-root <DIR>
+          Directory the report's source file paths are relative to
+          [default: .]
+      --duplicates <DUPLICATES>
+          What to do with the several entries `cargo llvm-cov` writes
+          for one generic function [default: merge] [possible values:
+          merge, keep]
+      --rules <RULES>
+          Which decision points count [default: rca] [possible values:
+          rca, mccabe]
+      --unmatched <UNMATCHED>
+          What to do with a method that has no matching function in
+          the source [default: keep] [possible values: keep, one,
+          fail]
+      --no-rollup
+          Leave the class, package and root complexity as they are
+      --exclude-tests
+          Count `#[cfg(test)]` code and `#[test]` functions as
+          complexity 0
+      --dry-run
+          Work out and print the summary without writing anything
+  -h, --help
+          Print help (see more with '--help')
+
+```

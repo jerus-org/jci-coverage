@@ -29,6 +29,12 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-log = "0.2.0"
 
+# complexity: parse Rust sources (spans need proc-macro2's `span-locations`) and
+# rewrite the Cobertura report without disturbing the rest of the file.
+syn = { version = "3.0.9", features = ["full", "visit"] }
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+quick-xml = "0.42.0"
+
 # Git metadata for the OtterWise upload payload. No network git ops (only
 # local reads of the already-checked-out repo), so the default features
 # (which drop TLS/SSH backends as of git2 0.21) are fine as-is.

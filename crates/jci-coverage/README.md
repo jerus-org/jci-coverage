@@ -10,13 +10,17 @@ Source-based Rust code coverage with
 
 ## Why
 
-Two independent subcommands, not one:
+Three independent subcommands, not one:
 
 - **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
   write a coverage report and print a terminal summary. `--format` chooses the report:
   `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
   `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific;
   aims to be a drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
+- **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
+  report covers and writes it into the report. `cargo llvm-cov` leaves every complexity at
+  zero, so without this step OtterWise shows Complexity and CRAP as 0. It reads the source
+  files the report names and needs no other tool.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates.
@@ -59,8 +63,40 @@ jci-coverage report --format both            # writes both, from one test run
 jci-coverage upload --file coverage/lcov.info # uploads it to OtterWise
 ```
 
-See `jci-coverage report --help` / `jci-coverage upload --help` for the full flag
-reference.
+To report complexity and CRAP, annotate a Cobertura report and upload that instead:
+
+```bash
+jci-coverage report --format cobertura        # writes coverage/cobertura.xml
+jci-coverage complexity                       # adds complexity to it, in place
+jci-coverage upload --file coverage/cobertura.xml
+```
+
+`complexity` is Rust-only. It computes complexity from Rust source and matches it to the
+functions `cargo llvm-cov` names in its Cobertura report, so it refuses (before reading any
+source or writing anything) a report that lists a file that is not `.rs`, or that lacks
+`cargo llvm-cov`'s per-function entries. A Cobertura report from another language or tool
+can still be uploaded as it is with `upload`.
+
+`complexity` counts decisions the way [`rust-code-analysis`](https://github.com/mozilla/rust-code-analysis)
+does by default (`--rules rca`): one for each `if`, `for`, `while`, `loop`, match arm,
+match-arm guard, `?`, `&&` and `||`, and for the keywords `if`, `for`, `while` and `loop`
+inside macro arguments. `--rules mccabe` counts one less per `match` and ignores `?`.
+Generic functions appear once per instantiation in the report; they are merged into one
+entry by default (`--duplicates keep` leaves them), since OtterWise sums every entry.
+
+Limitations of reading source rather than compiled code:
+
+- A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is reported by
+  `cargo llvm-cov` but cannot be seen by the parser. It is left unmatched (`--unmatched
+  keep|one|fail` chooses its value) and its decisions count towards the enclosing function.
+- Sources are read relative to `--source-root` (default `.`), not the report's `<sources>`.
+  Run from the directory the report was built in, or pass `--source-root`; if nothing
+  matches, a warning says so.
+- The report is replaced by a new regular file, so a symlink is not followed and the file's
+  mode is not kept. Use `--output` to write the annotated report elsewhere.
+
+See `jci-coverage report --help`, `jci-coverage complexity --help` and
+`jci-coverage upload --help` for the full flag reference.
 
 ## CircleCI orb
 

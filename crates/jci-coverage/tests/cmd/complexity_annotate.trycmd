@@ -1,0 +1,15 @@
+The report is annotated in place and the summary is printed.
+
+```
+$ jci-coverage complexity
+[..]INFO jci_coverage::complexity: complexity [..]
+[..]WARN jci_coverage::complexity: no matching function in the source [..]
+complexity: 4 methods in the report, 3 after merging 1 duplicate instantiation(s)
+  2 matched, 1 not matched to a source function
+  total 5, mean 1.67, max 4
+  most complex:
+       4  demo::pick::<u8>
+       1  demo::plain
+wrote coverage/cobertura.xml
+
+```

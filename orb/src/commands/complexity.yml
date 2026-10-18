@@ -1,0 +1,89 @@
+description: 'Computes the cyclomatic complexity of the Rust functions a Cobertura report covers and writes it into each method, where OtterWise reads it for its Complexity and CRAP scores. `cargo llvm-cov` leaves every complexity at 0. Reads the source files the report names, relative to `--source-root`, and needs no other tool. Rust only: it refuses a report that is not a `cargo llvm-cov` Cobertura report of `.rs` files. Run it after `report` has written one, and before `upload`.'
+parameters:
+  file:
+    type: string
+    description: Cobertura report to annotate. The Cobertura file `report` writes.
+    default: coverage/cobertura.xml
+  log_level:
+    type: enum
+    description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
+  output:
+    type: string
+    description: Write the annotated report here instead of over `--file`. The default replaces the report in place; a failed run never leaves a half-written file.
+    default: ''
+  source_root:
+    type: string
+    description: Directory the report's source file paths are relative to
+    default: .
+  duplicates:
+    type: enum
+    description: What to do with the several entries `cargo llvm-cov` writes for one generic function
+    default: merge
+    enum:
+    - merge
+    - keep
+  rules:
+    type: enum
+    description: Which decision points count
+    default: rca
+    enum:
+    - rca
+    - mccabe
+  unmatched:
+    type: enum
+    description: What to do with a method that has no matching function in the source
+    default: keep
+    enum:
+    - keep
+    - one
+    - fail
+  no_rollup:
+    type: boolean
+    description: Leave the class, package and root complexity as they are. By default they are set to the sum of the methods below them, so other Cobertura consumers see consistent data. OtterWise ignores them.
+    default: false
+  exclude_tests:
+    type: boolean
+    description: Count `#[cfg(test)]` code and `#[test]` functions as complexity 0
+    default: false
+  dry_run:
+    type: boolean
+    description: Work out and print the summary without writing anything
+    default: false
+steps:
+- when:
+    condition: << parameters.no_rollup >>
+    steps:
+    - run:
+        name: Set GCO_NO_ROLLUP flag
+        command: echo 'export GCO_NO_ROLLUP=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.exclude_tests >>
+    steps:
+    - run:
+        name: Set GCO_EXCLUDE_TESTS flag
+        command: echo 'export GCO_EXCLUDE_TESTS=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.dry_run >>
+    steps:
+    - run:
+        name: Set GCO_DRY_RUN flag
+        command: echo 'export GCO_DRY_RUN=true' >> "$BASH_ENV"
+- run:
+    name: Add complexity to coverage report
+    command: <<include(scripts/complexity.sh)>>
+    environment:
+      GCO_FILE: << parameters.file >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_OUTPUT: << parameters.output >>
+      GCO_SOURCE_ROOT: << parameters.source_root >>
+      GCO_DUPLICATES: << parameters.duplicates >>
+      GCO_RULES: << parameters.rules >>
+      GCO_UNMATCHED: << parameters.unmatched >>

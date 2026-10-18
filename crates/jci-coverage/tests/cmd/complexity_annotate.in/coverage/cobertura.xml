@@ -1,0 +1,43 @@
+<?xml version="1.0" ?>
+<!DOCTYPE coverage SYSTEM "https://cobertura.sourceforge.net/xml/coverage-04.dtd">
+<coverage branch-rate="0" branches-covered="0" branches-valid="0" complexity="0" line-rate="0.75" lines-covered="3" lines-valid="4" timestamp="1" version="2.0.3">
+    <sources>
+        <source>/work</source>
+    </sources>
+    <packages>
+        <package line-rate="0.75" branch-rate="0" name="demo.src" complexity="0">
+            <classes>
+                <class branch-rate="0" complexity="0" filename="src/lib.rs" line-rate="0.75" name="demo.src.lib.rs">
+                    <methods>
+                        <method name="demo::plain" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="1" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="demo::pick::&lt;u8&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="2" number="3" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="demo::pick::&lt;u16&gt;" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="3" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="demo::generated" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="99" branch="false"/>
+                            </lines>
+                        </method>
+                    </methods>
+                    <lines>
+                        <line hits="1" number="1" branch="false"/>
+                        <line hits="2" number="3" branch="false"/>
+                        <line hits="2" number="4" branch="false"/>
+                        <line hits="0" number="99" branch="false"/>
+                    </lines>
+                </class>
+            </classes>
+        </package>
+    </packages>
+</coverage>

@@ -1,0 +1,11 @@
+A missing report fails before anything is parsed or written.
+
+```
+$ jci-coverage complexity --file /no/such/report.xml
+? 1
+Error: failed to read /no/such/report.xml
+
+Caused by:
+    No such file or directory (os error 2)
+
+```

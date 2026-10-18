@@ -94,6 +94,9 @@ params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"
 [subcommand.report]
 label = "Generate coverage report"
 
+[subcommand.complexity]
+label = "Add complexity to coverage report"
+
 [subcommand.upload]
 label = "Upload coverage to OtterWise"
 
