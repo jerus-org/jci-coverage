@@ -72,8 +72,9 @@ enum Commands {
             method, where OtterWise reads it for its Complexity and CRAP \
             scores. `cargo llvm-cov` leaves every complexity at 0. Reads the \
             source files the report names, relative to `--source-root`, and \
-            needs no other tool. Run it after `report` has written a \
-            Cobertura report, and before `upload`.",
+            needs no other tool. Rust only: it refuses a report that is \
+            not a `cargo llvm-cov` Cobertura report of `.rs` files. Run it \
+            after `report` has written one, and before `upload`.",
         term_width = 70
     )]
     Complexity(complexity::ComplexityArgs),

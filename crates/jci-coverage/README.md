@@ -71,6 +71,12 @@ jci-coverage complexity                       # adds complexity to it, in place
 jci-coverage upload --file coverage/cobertura.xml
 ```
 
+`complexity` is Rust-only. It computes complexity from Rust source and matches it to the
+functions `cargo llvm-cov` names in its Cobertura report, so it refuses (before reading any
+source or writing anything) a report that lists a file that is not `.rs`, or that lacks
+`cargo llvm-cov`'s per-function entries. A Cobertura report from another language or tool
+can still be uploaded as it is with `upload`.
+
 `complexity` counts decisions the way [`rust-code-analysis`](https://github.com/mozilla/rust-code-analysis)
 does by default (`--rules rca`): one for each `if`, `for`, `while`, `loop`, match arm,
 match-arm guard, `?`, `&&` and `||`, and for the keywords `if`, `for`, `while` and `loop`

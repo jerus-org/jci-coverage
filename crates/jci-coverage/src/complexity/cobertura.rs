@@ -42,6 +42,36 @@ pub(crate) struct Report {
     pub(crate) methods: Vec<Method>,
 }
 
+impl Report {
+    /// Fail unless this is a Rust report written by `cargo llvm-cov`.
+    ///
+    /// Complexity is computed from Rust source and joined to the report's
+    /// functions by the names and start lines `cargo llvm-cov` gives them, so a
+    /// report from another language or tool cannot be annotated: it would at
+    /// best match nothing, and at worst match the wrong functions.
+    pub(crate) fn require_rust_llvm_cov(&self) -> Result<()> {
+        if self.classes.is_empty() {
+            bail!("the report names no source files; `complexity` needs a Rust report");
+        }
+        if let Some(other) = self.classes.iter().find(|c| !c.filename.ends_with(".rs")) {
+            bail!(
+                "{} is not a Rust source file: `complexity` only supports Rust, \
+                 with a Cobertura report written by `cargo llvm-cov`",
+                other.filename
+            );
+        }
+        // `cargo llvm-cov` names every function by its demangled Rust path.
+        if self.methods.is_empty() || self.methods.iter().any(|m| !m.name.contains("::")) {
+            bail!(
+                "the report does not have the per-function entries `cargo llvm-cov` \
+                 writes; `complexity` only supports a Cobertura report from \
+                 `cargo llvm-cov report --cobertura`"
+            );
+        }
+        Ok(())
+    }
+}
+
 /// What to do with one `<method>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MethodEdit {
@@ -577,5 +607,63 @@ mod tests {
         };
         let out = rewrite(xml, &edit).expect("rewrites");
         assert!(out.contains(r#"<line hits="1" number="1"/>"#), "{out}");
+    }
+
+    fn report_of(files: &[&str], methods: &[&str]) -> Report {
+        Report {
+            package_count: 1,
+            classes: files
+                .iter()
+                .map(|f| Class {
+                    filename: (*f).to_string(),
+                    package: 0,
+                })
+                .collect(),
+            methods: methods
+                .iter()
+                .map(|n| Method {
+                    class: 0,
+                    name: (*n).to_string(),
+                    line: 1,
+                    hits: 1,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_rust_llvm_cov_report_is_accepted() {
+        let r = report_of(&["src/lib.rs"], &["x::f", "<x::S as x::T>::g"]);
+        assert!(r.require_rust_llvm_cov().is_ok());
+    }
+
+    #[test]
+    fn a_report_for_another_language_is_rejected() {
+        let r = report_of(&["src/app.py"], &["pkg.mod.func"]);
+        let err = r.require_rust_llvm_cov().unwrap_err().to_string();
+        assert!(err.contains("app.py") && err.contains("Rust"), "{err}");
+    }
+
+    #[test]
+    fn one_non_rust_file_among_rust_files_rejects_the_report() {
+        let r = report_of(&["src/lib.rs", "web/app.js"], &["x::f"]);
+        let err = r.require_rust_llvm_cov().unwrap_err().to_string();
+        assert!(err.contains("web/app.js"), "{err}");
+    }
+
+    #[test]
+    fn a_report_without_rust_function_names_is_rejected() {
+        // Rust files, but no per-function data: not what `cargo llvm-cov` writes.
+        let none = report_of(&["src/lib.rs"], &[]);
+        let err = none.require_rust_llvm_cov().unwrap_err().to_string();
+        assert!(err.contains("cargo llvm-cov"), "{err}");
+        let plain = report_of(&["src/lib.rs"], &["doThing"]);
+        assert!(plain.require_rust_llvm_cov().is_err());
+    }
+
+    #[test]
+    fn a_report_with_no_classes_is_rejected() {
+        let err = report_of(&[], &[]).require_rust_llvm_cov().unwrap_err();
+        assert!(err.to_string().contains("no source files"), "{err}");
     }
 }

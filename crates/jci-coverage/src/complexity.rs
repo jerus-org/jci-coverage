@@ -5,6 +5,11 @@
 //! from the source and writes it into each `<method>`, which is where OtterWise
 //! reads it for its Complexity and CRAP scores.
 //!
+//! Rust only: the report must be a Cobertura report that `cargo llvm-cov`
+//! wrote for Rust source. A class that is not a `.rs` file, or a report without
+//! `cargo llvm-cov`'s per-function entries, is refused before anything is
+//! read or written.
+//!
 //! Limitations, from reading source rather than compiled code:
 //!
 //! - A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is
@@ -132,6 +137,12 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Summary> {
         .with_context(|| format!("failed to read {}", args.file.display()))?;
     let report = cobertura::parse(&xml)
         .with_context(|| format!("{} is not a Cobertura report", args.file.display()))?;
+    report.require_rust_llvm_cov().with_context(|| {
+        format!(
+            "{} is not a Rust report from cargo-llvm-cov",
+            args.file.display()
+        )
+    })?;
     let analyses = analyse_sources(&report, &args.source_root);
 
     tracing::info!(?args, methods = report.methods.len(), "complexity");
@@ -466,5 +477,18 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert!(nothing_matched(&summary).is_some_and(|h| h.contains("--source-root")));
         let (_dir, args) = setup();
         assert_eq!(nothing_matched(&execute(&args).expect("runs")), None);
+    }
+
+    #[test]
+    fn a_report_for_another_language_fails_without_writing() {
+        let (dir, args) = setup();
+        let python = report("/work")
+            .replace("src/lib.rs", "src/app.py")
+            .replace("x::", "pkg.");
+        fs::write(&args.file, &python).expect("write report");
+        let err = execute(&args).unwrap_err();
+        assert!(format!("{err:#}").contains("Rust"), "{err:#}");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), python);
+        drop(dir);
     }
 }
