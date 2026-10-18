@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - add --format lcov|cobertura|both(pr [#45])
+- add complexity subcommand(pr [#46])
 
 ### Fixed
 
@@ -157,6 +158,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#39]: https://github.com/jerus-org/jci-coverage/pull/39
 [#41]: https://github.com/jerus-org/jci-coverage/pull/41
 [#45]: https://github.com/jerus-org/jci-coverage/pull/45
+[#46]: https://github.com/jerus-org/jci-coverage/pull/46
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...HEAD
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
