@@ -1,0 +1,21 @@
+description: >
+  Rust project: generate coverage with cargo-llvm-cov, add cyclomatic
+  complexity to its Cobertura report and upload it to OtterWise in one job, so
+  OtterWise shows Complexity and CRAP as well as coverage.
+
+  report_complexity_and_upload runs the tests once, writes lcov and Cobertura
+  reports, annotates coverage/cobertura.xml with per-function complexity and
+  uploads it. Rust only: complexity is computed from Rust source and matched
+  to the functions cargo-llvm-cov names in its report. Set the OtterWise token
+  as the OTTERWISE_TOKEN environment variable in each project's settings.
+  Never pass a token as a parameter: it would be stored in your config and
+  appear on the command line.
+usage:
+  version: 2.1
+  orbs:
+    jci-coverage: jerus-org/jci-coverage@0.0
+  workflows:
+    validation:
+      jobs:
+        - jci-coverage/report_complexity_and_upload
+        # Optional parameters: runner: nextest, package: my-crate, ...

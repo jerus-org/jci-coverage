@@ -25,6 +25,7 @@ base_image = "rust:1-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f31200578
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
     "src/examples/rust_report_and_upload.yml",
+    "src/examples/rust_report_complexity_and_upload.yml",
     "src/examples/upload_only.yml",
 ]
 
@@ -88,6 +89,77 @@ name = "report_and_upload"
 description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Set OTTERWISE_TOKEN as a project environment variable."
 steps = ["report", "upload"]
 params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"]
+
+# `report_and_upload` plus complexity: one instrumented test run writes both
+# formats, `complexity` annotates the Cobertura report, and `upload` sends that
+# report so OtterWise shows Complexity and CRAP. Rich mode (not simple) because
+# `report` and `upload` need their own values: `--format both` is fixed here,
+# and `upload`'s file is the Cobertura report, not the lcov default. Unlike
+# `report_and_upload` this job is hand-maintained, not regenerated from `--help`:
+# keep its parameters in step with `report`'s. `report_and_upload` stays until
+# the dashboard numbers have been checked (jerus-org/jci-coverage#44).
+[[job_group]]
+name = "report_complexity_and_upload"
+description = "Generate Rust coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
+
+[[job_group.parameter]]
+name = "package"
+description = "Limit coverage to one workspace package"
+default = ""
+
+[[job_group.parameter]]
+name = "runner"
+enum = ["test", "nextest"]
+default = "test"
+description = "Test runner to drive coverage with"
+
+[[job_group.parameter]]
+name = "nextest_profile"
+description = "Nextest profile to use. Only meaningful with the nextest runner."
+default = ""
+
+[[job_group.parameter]]
+name = "no_all_features"
+type = "boolean"
+default = "false"
+description = "Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured."
+
+[[job_group.parameter]]
+name = "log_level"
+enum = ["quiet", "default", "v", "vv", "vvv", "vvvv"]
+default = "default"
+description = "Logging verbosity, from `quiet` to `vvvv` (most verbose)."
+
+[[job_group.step]]
+builtin = "checkout"
+
+[[job_group.step]]
+builtin = "attach_workspace"
+
+[[job_group.step]]
+command = "report"
+
+[job_group.step.with]
+format = "both"
+package = "<< parameters.package >>"
+runner = "<< parameters.runner >>"
+nextest_profile = "<< parameters.nextest_profile >>"
+no_all_features = "<< parameters.no_all_features >>"
+log_level = "<< parameters.log_level >>"
+
+[[job_group.step]]
+command = "complexity"
+
+[job_group.step.with]
+file = "coverage/cobertura.xml"
+log_level = "<< parameters.log_level >>"
+
+[[job_group.step]]
+command = "upload"
+
+[job_group.step.with]
+file = "coverage/cobertura.xml"
+log_level = "<< parameters.log_level >>"
 
 # Curated step names: without a label the generator uses the first paragraph of
 # each subcommand's `--help`, which for these is the whole long description.

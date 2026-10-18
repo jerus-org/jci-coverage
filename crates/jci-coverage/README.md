@@ -110,7 +110,9 @@ first use in CI.
 | Job | Use it for |
 |-----|------------|
 | `report_and_upload` | Rust projects: generate `coverage/lcov.info` and upload it in one job. The replacement for `circleci-toolkit`'s `code_coverage` job. |
+| `report_complexity_and_upload` | Rust projects: as `report_and_upload`, but also adds cyclomatic complexity to the Cobertura report and uploads that, so OtterWise shows Complexity and CRAP. One test run writes both lcov and Cobertura reports. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
+| `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
 
 ```yaml
@@ -122,6 +124,11 @@ workflows:
     jobs:
       - jci-coverage/report_and_upload
 ```
+
+To show Complexity and CRAP as well, use `jci-coverage/report_complexity_and_upload` in
+the same way. Its steps are fixed (`report --format both`, `complexity`, then `upload` of
+`coverage/cobertura.xml`), and it takes the same `package`, `runner`, `nextest_profile`,
+`no_all_features` and `log_level` parameters as `report_and_upload`.
 
 Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
 project's settings. The `upload` job's `repo_token` parameter exists
