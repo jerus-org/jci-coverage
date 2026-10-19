@@ -105,7 +105,7 @@ params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"
 # that want the lcov report only (jerus-org/jci-coverage#44).
 [[job_group]]
 name = "report_complexity_and_upload"
-description = "Generate Rust coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
+description = "The default job for a Rust project. Generate coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
 
 [[job_group.parameter]]
 name = "package"
