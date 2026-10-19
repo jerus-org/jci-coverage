@@ -15,8 +15,7 @@ Three independent subcommands, not one:
 - **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
   write a coverage report and print a terminal summary. `--format` chooses the report:
   `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
-  `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific;
-  aims to be a drop-in replacement for `circleci-toolkit`'s `code_coverage` job.
+  `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific.
 - **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
   report covers and writes it into the report. `cargo llvm-cov` leaves every complexity at
   zero, so without this step OtterWise shows Complexity and CRAP as 0. It reads the source
@@ -110,7 +109,7 @@ first use in CI.
 | Job | Use it for |
 |-----|------------|
 | `report_complexity_and_upload` | **The default for Rust projects.** Generate coverage, add cyclomatic complexity to the Cobertura report and upload that, so OtterWise shows Complexity and CRAP as well as coverage. It writes only `coverage/cobertura.xml`, so a later job that needs `coverage/lcov.info` must set `format: both`. |
-| `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. The drop-in replacement for `circleci-toolkit`'s `code_coverage` job. No Complexity or CRAP. |
+| `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. No Complexity or CRAP. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
 | `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |

@@ -1,8 +1,7 @@
 //! Coverage generation via `cargo-llvm-cov`.
 //!
 //! Orchestrates `cargo llvm-cov` (and, when the nextest runner is selected,
-//! `cargo llvm-cov nextest`) as a subprocess — functionally equivalent to
-//! `circleci-toolkit`'s `code_coverage` job. Writes `coverage/lcov.info` and,
+//! `cargo llvm-cov nextest`) as a subprocess. Writes `coverage/lcov.info` and,
 //! with `--format cobertura|both`, `coverage/cobertura.xml` (see [`Format`]),
 //! then prints a terminal summary via a final `cargo llvm-cov report
 //! --summary-only` invocation. Every `report` invocation reads the profile data
@@ -109,8 +108,7 @@ pub struct ReportArgs {
 
     /// Disable `--all-features` (on by default).
     ///
-    /// Matches `toolkit/code_coverage`, so instrumented subprocess
-    /// coverage is captured.
+    /// Leaving it on means instrumented subprocess coverage is captured.
     #[arg(long)]
     pub no_all_features: bool,
 

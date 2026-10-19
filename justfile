@@ -22,8 +22,8 @@ clippy *clippy-args:
 check:
     cargo check --all
 
-# Run cargo doc on all crates. --document-private-items matches the toolkit's
-# test_doc_build job so private-intra-doc-link errors surface locally.
+# Run cargo doc on all crates. --document-private-items matches the CI
+# doc build job so private-intra-doc-link errors surface locally.
 doc $RUSTDOCFLAGS="-D warnings":
     cargo doc --all --no-deps --document-private-items
 

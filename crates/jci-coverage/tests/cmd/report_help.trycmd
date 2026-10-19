@@ -52,8 +52,8 @@ Options:
       --no-all-features
           Disable `--all-features` (on by default).
           
-          Matches `toolkit/code_coverage`, so instrumented subprocess
-          coverage is captured.
+          Leaving it on means instrumented subprocess coverage is
+          captured.
 
       --dry-run
           Preview the cargo-llvm-cov invocation without running it.

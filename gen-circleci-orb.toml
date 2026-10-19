@@ -76,8 +76,7 @@ branch_patterns = ["renovate/*"]
 workflow = "update_prlog"
 file = "update_prlog.yml"
 
-# The drop-in replacement for circleci-toolkit's code_coverage job: generate and
-# upload in one job. `report` writes coverage/lcov.info into its own job's
+# Generate and upload in one job. `report` writes coverage/lcov.info into its own job's
 # working directory, so a separate `upload` job would need a workspace hand-off;
 # composing both here avoids that. Simple mode (steps + params), not rich mode:
 # the exposed job parameters are derived from the commands themselves, so
@@ -127,7 +126,7 @@ default = ""
 name = "no_all_features"
 type = "boolean"
 default = "false"
-description = "Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured."
+description = "Disable `--all-features` (on by default). Leaving it on means instrumented subprocess coverage is captured."
 
 [[job_group.parameter]]
 name = "format"

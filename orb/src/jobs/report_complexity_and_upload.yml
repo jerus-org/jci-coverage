@@ -18,7 +18,7 @@ parameters:
     default: ''
   no_all_features:
     type: boolean
-    description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
+    description: Disable `--all-features` (on by default). Leaving it on means instrumented subprocess coverage is captured.
     default: false
   format:
     type: enum
