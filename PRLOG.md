@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- make report_complexity_and_upload the default(pr [#51])
+
 ### Changed
 
 - ci-dogfood report_complexity_and_upload(pr [#50])
@@ -175,6 +179,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#48]: https://github.com/jerus-org/jci-coverage/pull/48
 [#49]: https://github.com/jerus-org/jci-coverage/pull/49
 [#50]: https://github.com/jerus-org/jci-coverage/pull/50
+[#51]: https://github.com/jerus-org/jci-coverage/pull/51
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
