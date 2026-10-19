@@ -86,23 +86,23 @@ file = "update_prlog.yml"
 # per-project environment variable.
 [[job_group]]
 name = "report_and_upload"
-description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Set OTTERWISE_TOKEN as a project environment variable."
+description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Writes lcov only: use report_complexity_and_upload to also report Complexity and CRAP. Set OTTERWISE_TOKEN as a project environment variable."
 steps = ["report", "upload"]
 params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"]
 
-# `report_and_upload` plus complexity: one instrumented test run writes the
-# Cobertura report (only that format, unless `format: both` asks for lcov too),
-# `complexity` annotates it, and `upload` sends it so OtterWise shows Complexity
-# and CRAP. Rich mode (not simple) because
-# `report` and `upload` need their own values: the format defaults to the one
-# format this job needs (`cobertura`, with `both` available), and `upload`'s
-# file is the Cobertura report, not the lcov default. `complexity` exposes the
-# options that change what it reports (`unmatched`, `exclude_tests`,
+# The default job for a Rust project: `report_and_upload` plus complexity. One
+# instrumented test run writes the Cobertura report (only that format, unless
+# `format: both` asks for lcov too), `complexity` annotates it, and `upload`
+# sends it so OtterWise shows Complexity and CRAP. Rich mode (not simple)
+# because `report` and `upload` need their own values: the format defaults to
+# the one format this job needs (`cobertura`, with `both` available), and
+# `upload`'s file is the Cobertura report, not the lcov default. `complexity`
+# exposes the options that change what it reports (`unmatched`, `exclude_tests`,
 # `source_root`, `rules`); `duplicates` and `no_rollup` are left at their
-# defaults because they change what OtterWise sums. Unlike
-# `report_and_upload` this job is hand-maintained, not regenerated from `--help`:
-# keep its parameters in step with `report`'s. `report_and_upload` stays until
-# the dashboard numbers have been checked (jerus-org/jci-coverage#44).
+# defaults because they change what OtterWise sums. Unlike `report_and_upload`
+# this job is hand-maintained, not regenerated from `--help`: keep its
+# parameters in step with `report`'s. `report_and_upload` remains, for projects
+# that want the lcov report only (jerus-org/jci-coverage#44).
 [[job_group]]
 name = "report_complexity_and_upload"
 description = "Generate Rust coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable."

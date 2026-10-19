@@ -109,8 +109,8 @@ first use in CI.
 
 | Job | Use it for |
 |-----|------------|
-| `report_and_upload` | Rust projects: generate `coverage/lcov.info` and upload it in one job. The replacement for `circleci-toolkit`'s `code_coverage` job. |
-| `report_complexity_and_upload` | Rust projects: as `report_and_upload`, but also adds cyclomatic complexity to the Cobertura report and uploads that, so OtterWise shows Complexity and CRAP. It writes only the Cobertura report unless you set `format: both`. |
+| `report_complexity_and_upload` | **The default for Rust projects.** Generate coverage, add cyclomatic complexity to the Cobertura report and upload that, so OtterWise shows Complexity and CRAP as well as coverage. Replaces `circleci-toolkit`'s `code_coverage` job. |
+| `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. No Complexity or CRAP. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
 | `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
@@ -122,14 +122,14 @@ orbs:
 workflows:
   validation:
     jobs:
-      - jci-coverage/report_and_upload
+      - jci-coverage/report_complexity_and_upload
 ```
 
-To show Complexity and CRAP as well, use `jci-coverage/report_complexity_and_upload`. It
-runs `report`, `complexity` and then `upload` of `coverage/cobertura.xml`, so the report
-path is fixed and there is no `file` parameter. It takes the same `package`, `runner`,
-`nextest_profile`, `no_all_features`, `log_level`, `attach_workspace` and `workspace_root`
-parameters as `report_and_upload`, and these more:
+`report_complexity_and_upload` runs `report`, `complexity` and then `upload` of
+`coverage/cobertura.xml`, so the report path is fixed and there is no `file` parameter. It
+writes only the Cobertura report, which is all it needs. It takes the same `package`,
+`runner`, `nextest_profile`, `no_all_features`, `log_level`, `attach_workspace` and
+`workspace_root` parameters as `report_and_upload`, and these more:
 
 | Parameter | Default | Use it to |
 |-----------|---------|-----------|
@@ -138,6 +138,9 @@ parameters as `report_and_upload`, and these more:
 | `exclude_tests` | `false` | count `#[cfg(test)]` code and `#[test]` functions as 0 |
 | `source_root` | `.` | read sources from another directory |
 | `rules` | `rca` | count the stricter `mccabe` decision points |
+
+It is Rust-only. For a project in another language, or one that wants the lcov report only,
+use `report_and_upload` or `upload`.
 
 Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
 project's settings. The `upload` job's `repo_token` parameter exists
