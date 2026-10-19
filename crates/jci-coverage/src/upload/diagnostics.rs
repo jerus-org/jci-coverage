@@ -137,36 +137,85 @@ pub fn file_not_found_message(path: &Path, cwd: &Path) -> String {
 /// against `base_dir`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ReportSummary {
-    /// `SF:` records in the report.
+    /// `SF:` records (lcov) or `<class filename>` attributes (Cobertura) in the
+    /// report.
     pub source_files: usize,
     /// Of those, how many are absolute paths.
     pub absolute: usize,
     /// Of those, how many sit under `base_dir`.
     pub under_base_dir: usize,
-    /// The first few `SF:` paths, verbatim.
+    /// The first few source paths, verbatim.
     pub samples: Vec<String>,
+}
+
+const MAX_SAMPLES: usize = 3;
+
+impl ReportSummary {
+    fn empty() -> Self {
+        Self {
+            source_files: 0,
+            absolute: 0,
+            under_base_dir: 0,
+            samples: Vec::new(),
+        }
+    }
+
+    fn add(&mut self, path: &str, base_dir: &str) {
+        self.source_files += 1;
+        if std::path::Path::new(path).is_absolute() {
+            self.absolute += 1;
+        }
+        if std::path::Path::new(path).starts_with(base_dir) {
+            self.under_base_dir += 1;
+        }
+        if self.samples.len() < MAX_SAMPLES {
+            self.samples.push(path.to_string());
+        }
+    }
+}
+
+/// Summarise the source paths of a coverage report, whether it is a Cobertura
+/// XML report or an lcov one (told apart by the XML's opening `<`).
+pub fn summarize_report(content: &str, base_dir: &str) -> ReportSummary {
+    if content.trim_start().starts_with('<') {
+        summarize_cobertura(content, base_dir)
+    } else {
+        summarize_lcov(content, base_dir)
+    }
+}
+
+/// Count the `<class filename>` attributes of a Cobertura report and how many
+/// are under `base_dir`. Reads what it can: a malformed report ends the scan
+/// early, it does not fail the upload.
+fn summarize_cobertura(content: &str, base_dir: &str) -> ReportSummary {
+    use quick_xml::{Reader, XmlVersion, events::Event};
+
+    let mut summary = ReportSummary::empty();
+    let mut reader = Reader::from_str(content);
+    while let Ok(event) = reader.read_event() {
+        match event {
+            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == "class" => {
+                let filename = e
+                    .attributes()
+                    .flatten()
+                    .find(|a| a.key.as_ref() == "filename")
+                    .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok());
+                if let Some(path) = filename {
+                    summary.add(&path, base_dir);
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    summary
 }
 
 /// Count the `SF:` records of an lcov report and how many are under `base_dir`.
 pub fn summarize_lcov(content: &str, base_dir: &str) -> ReportSummary {
-    const MAX_SAMPLES: usize = 3;
-    let mut summary = ReportSummary {
-        source_files: 0,
-        absolute: 0,
-        under_base_dir: 0,
-        samples: Vec::new(),
-    };
+    let mut summary = ReportSummary::empty();
     for path in content.lines().filter_map(|l| l.strip_prefix("SF:")) {
-        summary.source_files += 1;
-        if std::path::Path::new(path).is_absolute() {
-            summary.absolute += 1;
-        }
-        if std::path::Path::new(path).starts_with(base_dir) {
-            summary.under_base_dir += 1;
-        }
-        if summary.samples.len() < MAX_SAMPLES {
-            summary.samples.push(path.to_string());
-        }
+        summary.add(path, base_dir);
     }
     summary
 }
@@ -338,5 +387,54 @@ mod tests {
             .map(|i| format!("SF:/p/{i}.rs\nend_of_record\n"))
             .collect();
         assert_eq!(summarize_lcov(&lcov, "/p").samples.len(), 3);
+    }
+
+    const COBERTURA: &str = r#"<?xml version="1.0" ?>
+<coverage><sources><source>/work/proj</source></sources><packages><package><classes>
+<class filename="crates/x/src/a.rs" name="a"><methods/></class>
+<class filename="crates/x/src/b.rs" name="b"/>
+<class filename="/work/proj/crates/x/src/c.rs" name="c"/>
+<class filename="/elsewhere/d.rs" name="d"/>
+<class filename="crates/x/src/e.rs" name="e"/>
+</classes></package></packages></coverage>"#;
+
+    #[test]
+    fn summarize_report_reads_the_class_files_of_a_cobertura_report() {
+        let s = summarize_report(COBERTURA, "/work/proj");
+        assert_eq!(s.source_files, 5);
+        assert_eq!(s.absolute, 2);
+        assert_eq!(
+            s.under_base_dir, 1,
+            "only c.rs is absolute and under base_dir"
+        );
+        assert_eq!(
+            s.samples,
+            vec![
+                "crates/x/src/a.rs",
+                "crates/x/src/b.rs",
+                "/work/proj/crates/x/src/c.rs"
+            ]
+        );
+    }
+
+    #[test]
+    fn summarize_report_still_reads_lcov() {
+        let lcov = "SF:/work/proj/src/a.rs\nend_of_record\n";
+        assert_eq!(
+            summarize_report(lcov, "/work/proj"),
+            summarize_lcov(lcov, "/work/proj")
+        );
+    }
+
+    #[test]
+    fn summarize_report_decodes_entities_and_survives_malformed_xml() {
+        let xml = r#"<coverage><class filename="a&amp;b.rs"/><class filename="c.rs"#;
+        let s = summarize_report(xml, "/work");
+        assert_eq!(
+            s.samples,
+            vec!["a&b.rs"],
+            "reads what it can before the break"
+        );
+        assert_eq!(summarize_report("<coverage/>", "/work").source_files, 0);
     }
 }

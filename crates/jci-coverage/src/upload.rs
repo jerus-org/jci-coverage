@@ -169,7 +169,7 @@ fn log_request_details(file: &Path, base_dir: &str, fields: &[(String, String)])
     // Lossy, so a report with stray non-UTF-8 bytes is still summarised.
     match std::fs::read(file).map(|b| String::from_utf8_lossy(&b).into_owned()) {
         Ok(content) => {
-            let summary = diagnostics::summarize_lcov(&content, base_dir);
+            let summary = diagnostics::summarize_report(&content, base_dir);
             tracing::debug!(
                 file = %file.display(),
                 bytes = content.len(),
