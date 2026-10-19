@@ -140,12 +140,16 @@ pub struct ReportSummary {
     /// `SF:` records (lcov) or `<class filename>` attributes (Cobertura) in the
     /// report.
     pub source_files: usize,
-    /// Of those, how many are absolute paths.
+    /// Of those, how many are absolute paths, as the report gives them.
     pub absolute: usize,
-    /// Of those, how many sit under `base_dir`.
+    /// Of those, how many sit under `base_dir`. A relative Cobertura path counts
+    /// as under `base_dir` when the report's `<source>` root joined to it is.
     pub under_base_dir: usize,
     /// The first few source paths, verbatim.
     pub samples: Vec<String>,
+    /// Why the scan of a Cobertura report stopped early, if it did: the counts
+    /// above then cover only what was read.
+    pub scan_error: Option<String>,
 }
 
 const MAX_SAMPLES: usize = 3;
@@ -157,15 +161,25 @@ impl ReportSummary {
             absolute: 0,
             under_base_dir: 0,
             samples: Vec::new(),
+            scan_error: None,
         }
     }
 
-    fn add(&mut self, path: &str, base_dir: &str) {
+    /// Record one source path. `root` is the directory a relative path is
+    /// relative to, when the report names one.
+    fn add(&mut self, path: &str, root: Option<&str>, base_dir: &str) {
+        use std::path::Path;
+
         self.source_files += 1;
-        if std::path::Path::new(path).is_absolute() {
+        let p = Path::new(path);
+        if p.is_absolute() {
             self.absolute += 1;
         }
-        if std::path::Path::new(path).starts_with(base_dir) {
+        let resolved = match root {
+            Some(root) if !p.is_absolute() => Path::new(root).join(p),
+            _ => p.to_path_buf(),
+        };
+        if resolved.starts_with(base_dir) {
             self.under_base_dir += 1;
         }
         if self.samples.len() < MAX_SAMPLES {
@@ -174,9 +188,18 @@ impl ReportSummary {
     }
 }
 
+/// Whether the report's absolute source paths all miss `base_dir`, which
+/// suggests OtterWise cannot map them to repository files. Relative paths are
+/// resolvable as they are, so a report with none is never a miss.
+pub fn paths_miss_base_dir(summary: &ReportSummary) -> bool {
+    summary.absolute > 0 && summary.under_base_dir == 0
+}
+
 /// Summarise the source paths of a coverage report, whether it is a Cobertura
-/// XML report or an lcov one (told apart by the XML's opening `<`).
+/// XML report or an lcov one (told apart by the XML's opening `<`, after any
+/// byte order mark).
 pub fn summarize_report(content: &str, base_dir: &str) -> ReportSummary {
+    let content = content.trim_start_matches('\u{feff}');
     if content.trim_start().starts_with('<') {
         summarize_cobertura(content, base_dir)
     } else {
@@ -184,28 +207,59 @@ pub fn summarize_report(content: &str, base_dir: &str) -> ReportSummary {
     }
 }
 
+/// The `filename` attribute of a `<class>`, or why its attributes are bad.
+fn class_filename(e: &quick_xml::events::BytesStart<'_>) -> Result<Option<String>, String> {
+    use quick_xml::XmlVersion;
+
+    for attribute in e.attributes() {
+        let attribute = attribute.map_err(|err| err.to_string())?;
+        if attribute.key.as_ref() == "filename" {
+            return attribute
+                .normalized_value(XmlVersion::Implicit1_0)
+                .map(|v| Some(v.into_owned()))
+                .map_err(|err| err.to_string());
+        }
+    }
+    Ok(None)
+}
+
 /// Count the `<class filename>` attributes of a Cobertura report and how many
-/// are under `base_dir`. Reads what it can: a malformed report ends the scan
-/// early, it does not fail the upload.
+/// are under `base_dir`, resolving relative ones against the report's first
+/// `<source>`. A malformed report ends the scan early and says why in
+/// `scan_error`; it does not fail the upload.
 fn summarize_cobertura(content: &str, base_dir: &str) -> ReportSummary {
-    use quick_xml::{Reader, XmlVersion, events::Event};
+    use quick_xml::{Reader, events::Event};
 
     let mut summary = ReportSummary::empty();
     let mut reader = Reader::from_str(content);
-    while let Ok(event) = reader.read_event() {
-        match event {
-            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == "class" => {
-                let filename = e
-                    .attributes()
-                    .flatten()
-                    .find(|a| a.key.as_ref() == "filename")
-                    .and_then(|a| a.normalized_value(XmlVersion::Implicit1_0).ok());
-                if let Some(path) = filename {
-                    summary.add(&path, base_dir);
+    let mut root: Option<String> = None;
+    let mut in_source = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name().as_ref() == "source" => in_source = true,
+            Ok(Event::End(e)) if e.name().as_ref() == "source" => in_source = false,
+            Ok(Event::Text(t)) if in_source && root.is_none() => {
+                let text = t.as_ref().trim().to_string();
+                if !text.is_empty() {
+                    root = Some(text);
                 }
             }
-            Event::Eof => break,
-            _ => {}
+            Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == "class" => {
+                match class_filename(&e) {
+                    Ok(Some(path)) => summary.add(&path, root.as_deref(), base_dir),
+                    Ok(None) => {}
+                    Err(err) => {
+                        summary.scan_error = Some(err);
+                        break;
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(err) => {
+                summary.scan_error = Some(err.to_string());
+                break;
+            }
         }
     }
     summary
@@ -215,7 +269,7 @@ fn summarize_cobertura(content: &str, base_dir: &str) -> ReportSummary {
 pub fn summarize_lcov(content: &str, base_dir: &str) -> ReportSummary {
     let mut summary = ReportSummary::empty();
     for path in content.lines().filter_map(|l| l.strip_prefix("SF:")) {
-        summary.add(path, base_dir);
+        summary.add(path, None, base_dir);
     }
     summary
 }
@@ -404,9 +458,10 @@ mod tests {
         assert_eq!(s.source_files, 5);
         assert_eq!(s.absolute, 2);
         assert_eq!(
-            s.under_base_dir, 1,
-            "only c.rs is absolute and under base_dir"
+            s.under_base_dir, 4,
+            "relative classes resolve against <source>, so only d.rs is outside base_dir"
         );
+        assert_eq!(s.scan_error, None);
         assert_eq!(
             s.samples,
             vec![
@@ -436,5 +491,63 @@ mod tests {
             "reads what it can before the break"
         );
         assert_eq!(summarize_report("<coverage/>", "/work").source_files, 0);
+    }
+
+    #[test]
+    fn cobertura_class_paths_resolve_against_the_report_source_root() {
+        let xml = r#"<coverage><sources><source>/elsewhere</source></sources>
+<class filename="src/a.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work/proj");
+        assert_eq!((s.source_files, s.absolute, s.under_base_dir), (1, 0, 0));
+        assert_eq!(s.samples, vec!["src/a.rs"], "samples stay verbatim");
+        let no_source = summarize_report(
+            r#"<coverage><class filename="src/a.rs"/></coverage>"#,
+            "/work",
+        );
+        assert_eq!(
+            no_source.under_base_dir, 0,
+            "no <source>: nothing to resolve against"
+        );
+    }
+
+    #[test]
+    fn a_malformed_cobertura_report_records_why_the_scan_stopped() {
+        let xml = r#"<coverage><class filename="a.rs"/><class filename="b.rs" bad="#;
+        let s = summarize_report(xml, "/work");
+        assert_eq!(s.source_files, 1);
+        assert!(
+            s.scan_error.as_deref().is_some_and(|e| !e.is_empty()),
+            "{s:?}"
+        );
+        let bad_attr = summarize_report(
+            r#"<coverage><class bad filename="a.rs"/></coverage>"#,
+            "/work",
+        );
+        assert!(
+            bad_attr.scan_error.is_some(),
+            "a malformed attribute is reported, not skipped"
+        );
+    }
+
+    #[test]
+    fn a_byte_order_mark_does_not_hide_a_cobertura_report() {
+        let xml = format!("\u{feff}{COBERTURA}");
+        assert_eq!(summarize_report(&xml, "/work/proj").source_files, 5);
+    }
+
+    #[test]
+    fn the_base_dir_warning_needs_absolute_paths_that_all_miss_it() {
+        // Mixed relative and absolute Cobertura paths with a source root under
+        // base_dir: nothing to warn about.
+        assert!(!paths_miss_base_dir(&summarize_report(
+            COBERTURA,
+            "/work/proj"
+        )));
+        // lcov with only absolute paths outside base_dir: warn.
+        let lcov = "SF:/elsewhere/a.rs\nend_of_record\n";
+        assert!(paths_miss_base_dir(&summarize_report(lcov, "/work/proj")));
+        // Relative paths only: resolvable as they are.
+        let rel = "SF:src/a.rs\nend_of_record\n";
+        assert!(!paths_miss_base_dir(&summarize_report(rel, "/work/proj")));
     }
 }

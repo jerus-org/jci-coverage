@@ -180,9 +180,15 @@ fn log_request_details(file: &Path, base_dir: &str, fields: &[(String, String)])
                 samples = ?summary.samples,
                 "coverage report"
             );
-            // Relative paths are resolvable as they are; only absolute paths that
-            // all miss `base_dir` suggest OtterWise cannot map the report.
-            if summary.absolute > 0 && summary.under_base_dir == 0 {
+            if let Some(error) = &summary.scan_error {
+                tracing::warn!(
+                    %error,
+                    source_files = summary.source_files,
+                    "could not read the whole coverage report; the path summary covers only \
+                     what was read"
+                );
+            }
+            if diagnostics::paths_miss_base_dir(&summary) {
                 tracing::warn!(
                     base_dir,
                     samples = ?summary.samples,
