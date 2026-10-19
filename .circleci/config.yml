@@ -132,10 +132,6 @@ workflows:
       # with complexity (Complexity and CRAP, #44), not the lcov-only
       # report_and_upload.
       - jci-coverage/report_complexity_and_upload:
-          # Temporary: full verbosity while the complexity numbers are checked
-          # on the dashboard (#44). Logs the complexity summary and every upload
-          # field (token withheld). Remove once confirmed.
-          log_level: vvvv
           filters:
             branches:
               ignore:
