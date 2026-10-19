@@ -42,7 +42,7 @@ generated from them.
 
 - **Wire `jci-audit check`/`sync --check` into CI once its orb is consumable.**
   `jci-audit` is available as a workstation tool (`just audit`, `just` uses it locally)
-  but is deliberately **not** installed ad-hoc into a shared toolkit executor in CI
+  but is deliberately **not** installed ad-hoc into a shared CI executor
   (tried this, reverted it — `cargo binstall`/`cargo install`-ing it per job is exactly
   the kind of workaround the project is avoiding elsewhere; `jci-audit` is meant to be
   consumed via its own generated orb, whose self-contained executor image already
@@ -79,10 +79,9 @@ generated from them.
 
 - **Stabilise the CLI surface.** Settle `report`/`upload`'s flags so that `0.x → 1.0`
   is a stability milestone with documented migration guidance for existing consumers.
-- **Consumer migration.** Offer the orb as a replacement for
-  `circleci-toolkit`'s `code_coverage` job across the org's Rust repos, once the MVP
-  parity gap (if any remains — see the crate README's status note) is closed or
-  explicitly accepted.
+- **Consumer migration.** Offer the orb as the coverage job across the org's Rust repos,
+  once the MVP parity gap (if any remains — see the crate README's status note) is
+  closed or explicitly accepted.
 
 ## Longer term (beyond 1.0)
 

@@ -1,4 +1,4 @@
-description: Generate Rust coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
+description: The default job for a Rust project. Generate coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
 executor: default
 parameters:
   package:
@@ -18,7 +18,7 @@ parameters:
     default: ''
   no_all_features:
     type: boolean
-    description: Disable `--all-features` (on by default). Matches `toolkit/code_coverage`, so instrumented subprocess coverage is captured.
+    description: Disable `--all-features` (on by default). Leaving it on means instrumented subprocess coverage is captured.
     default: false
   format:
     type: enum

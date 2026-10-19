@@ -16,8 +16,7 @@ prerequisites.
 ## Why
 
 - `report` orchestrates `cargo-llvm-cov` to generate a coverage report
-  (`coverage/lcov.info`), aiming to be a drop-in replacement for
-  `circleci-toolkit`'s `code_coverage` job.
+  (`coverage/lcov.info`).
 - `complexity` computes cyclomatic complexity for the Rust functions in a Cobertura report
   and writes it into the report, so OtterWise can show Complexity and CRAP scores.
 - `upload` is a standalone, language-agnostic subcommand: it posts a coverage file to
