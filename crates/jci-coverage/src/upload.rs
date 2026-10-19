@@ -218,6 +218,25 @@ mod tests {
     use super::*;
     use http::RawResponse;
 
+    /// The path summary is a debugging aid: whatever the report looks like, it
+    /// logs and moves on, so it can never fail or stop an upload.
+    #[test]
+    fn log_request_details_survives_any_report() {
+        let dir = tempdir().expect("tempdir");
+        let malformed = dir.path().join("malformed.xml");
+        std::fs::write(
+            &malformed,
+            r#"<coverage><class filename="a.rs"/><class bad"#,
+        )
+        .expect("write");
+        let lcov = dir.path().join("lcov.info");
+        std::fs::write(&lcov, "SF:/elsewhere/a.rs\nend_of_record\n").expect("write");
+        let fields = [("git_branch".to_string(), "main".to_string())];
+        log_request_details(&malformed, "/work", &fields);
+        log_request_details(&lcov, "/work", &fields);
+        log_request_details(&dir.path().join("missing"), "/work", &fields);
+    }
+
     #[test]
     fn resolve_token_prefers_the_cli_flag_over_env() {
         assert_eq!(

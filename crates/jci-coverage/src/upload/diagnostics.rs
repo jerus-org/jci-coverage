@@ -550,4 +550,20 @@ mod tests {
         let rel = "SF:src/a.rs\nend_of_record\n";
         assert!(!paths_miss_base_dir(&summarize_report(rel, "/work/proj")));
     }
+
+    #[test]
+    fn an_undecodable_class_filename_is_recorded_as_a_scan_error() {
+        let xml = r#"<coverage><class filename="a&bogus;b.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work");
+        assert_eq!(s.source_files, 0);
+        assert!(s.scan_error.is_some(), "{s:?}");
+    }
+
+    #[test]
+    fn a_class_without_a_filename_is_skipped_without_an_error() {
+        let xml = r#"<coverage><class name="x"/><class filename="a.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work");
+        assert_eq!(s.source_files, 1);
+        assert_eq!(s.scan_error, None);
+    }
 }
