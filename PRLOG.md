@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - ci-dogfood report_complexity_and_upload(pr [#50])
+- ci-address every option in the composed job(pr [#56])
 
 ### Fixed
 
@@ -184,6 +185,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#51]: https://github.com/jerus-org/jci-coverage/pull/51
 [#55]: https://github.com/jerus-org/jci-coverage/pull/55
 [#53]: https://github.com/jerus-org/jci-coverage/pull/53
+[#56]: https://github.com/jerus-org/jci-coverage/pull/56
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
