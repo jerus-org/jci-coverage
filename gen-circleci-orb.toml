@@ -33,7 +33,6 @@ custom_files = [
 build_workflow = "validation"
 release_workflow = "release"
 requires_job = "toolkit/common_tests"
-release_after_job = "release-jci-coverage"
 crate_tag_prefix = "jci-coverage-v"
 # Release gate (gen-circleci-orb#462): release.yml's release workflow checks,
 # packs and reviews the orb about to be released before approve-release can
@@ -171,6 +170,8 @@ builtin = "attach_workspace"
 
 [[job_group.step]]
 command = "report"
+# Left at the command's default on purpose: `--dry-run` is for a local preview.
+defaults = ["dry_run"]
 
 [job_group.step.with]
 format = "<< parameters.format >>"
@@ -182,6 +183,10 @@ log_level = "<< parameters.log_level >>"
 
 [[job_group.step]]
 command = "complexity"
+# Left at the command's default on purpose: the report is annotated in place,
+# duplicate instantiations are merged and roll-ups are written because those
+# change what OtterWise sums, and `--dry-run` is for a local preview.
+defaults = ["output", "duplicates", "no_rollup", "dry_run"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -193,6 +198,10 @@ log_level = "<< parameters.log_level >>"
 
 [[job_group.step]]
 command = "upload"
+# Deliberately not exposed: the token comes from OTTERWISE_TOKEN (a token passed
+# as a parameter is stored in the consumer's config and shown on the command
+# line), and the endpoint override is for testing the CLI.
+defaults = ["repo_token", "endpoint"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
