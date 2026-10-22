@@ -12,7 +12,7 @@ orbs:
   # Dogfood: this repo's own coverage runs through its published orb.
   jci-coverage: jerus-org/jci-coverage@0.0.12
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.5
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.6
   # <<< gen-circleci-orb
 jobs:
   # toolkit/test_doc_build hardcodes `cargo doc --lib`, which fails on
