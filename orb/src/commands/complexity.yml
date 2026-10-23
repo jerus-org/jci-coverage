@@ -61,9 +61,17 @@ parameters:
     type: string
     description: Warn about each function whose CRAP score is at least this. CRAP is complexity squared times the uncovered share cubed, plus complexity, from the covered share of the function's own lines. 0 turns the check off.
     default: '30'
+  max_complexity:
+    type: string
+    description: Fail if any function's cyclomatic complexity is at least this. The report is written first (not with `--dry-run`, which still fails). 0 turns the check off.
+    default: '0'
+  max_crap:
+    type: string
+    description: Fail if any function's CRAP score is at least this. A function with no executable lines has no CRAP score and never fails this. 0 turns the check off.
+    default: '0'
   gate_tests:
     type: boolean
-    description: Judge test code against the warning thresholds too
+    description: Judge test code against the warning and maximum thresholds too
     default: false
   dry_run:
     type: boolean
@@ -107,3 +115,5 @@ steps:
       GCO_UNMATCHED: << parameters.unmatched >>
       GCO_WARN_COMPLEXITY: << parameters.warn_complexity >>
       GCO_WARN_CRAP: << parameters.warn_crap >>
+      GCO_MAX_COMPLEXITY: << parameters.max_complexity >>
+      GCO_MAX_CRAP: << parameters.max_crap >>
