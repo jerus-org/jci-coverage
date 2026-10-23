@@ -12,7 +12,10 @@
 //! or closure containing it, so a closure's lines count for the closure and not
 //! for the function around it, as complexity is already split.
 
-use std::{cmp::Reverse, collections::BTreeMap};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashSet},
+};
 
 use crate::complexity::{
     cobertura::Report,
@@ -99,13 +102,24 @@ pub(crate) fn risky<'a>(functions: &'a [FunctionMetrics], t: &Thresholds) -> Vec
 }
 
 /// The index of the innermost entry containing `line`: the smallest span, then
-/// the more deeply nested closure, then the later one.
+/// the more deeply nested closure (the shallower on a single line), then the
+/// later one.
 fn innermost(entries: &[Entry], line: usize) -> Option<usize> {
     entries
         .iter()
         .enumerate()
         .filter(|(_, e)| e.line <= line && line <= e.end_line)
-        .min_by_key(|(i, e)| (e.end_line - e.line, Reverse(e.path.len()), Reverse(*i)))
+        .min_by_key(|(i, e)| {
+            let span = e.end_line - e.line;
+            // On a one-line function the closure cannot be told from it, so the
+            // function keeps the line; otherwise the deeper closure owns it.
+            let depth = if span == 0 {
+                e.path.len() as isize
+            } else {
+                -(e.path.len() as isize)
+            };
+            (span, depth, Reverse(*i))
+        })
         .map(|(i, _)| i)
 }
 
@@ -118,10 +132,14 @@ pub(crate) fn function_metrics(
     rules: Rules,
 ) -> Vec<FunctionMetrics> {
     let mut out = Vec::new();
+    let mut seen = HashSet::new();
     for class in &report.classes {
         let Some(entries) = analyses.get(&class.filename) else {
             continue;
         };
+        if !seen.insert(class.filename.as_str()) {
+            continue;
+        }
         // Each line once, with its most hits, in case a report repeats one.
         let mut hits: BTreeMap<u32, u64> = BTreeMap::new();
         for &(number, h) in &class.lines {
@@ -184,6 +202,24 @@ mod tests {
         m.iter()
             .find(|f| f.name == name)
             .unwrap_or_else(|| panic!("no function {name}: {m:?}"))
+    }
+
+    #[test]
+    fn a_one_line_function_keeps_its_line_from_its_closure() {
+        let src = "fn f(v: &[i32]) -> Vec<i32> { v.iter().map(|x| x + 1).collect() }\n";
+        let (report, analyses) = setup(src, &[(1, 3)]);
+        let m = function_metrics(&report, &analyses, Rules::Rca);
+        let f = by_name(&m, "f");
+        assert_eq!((f.lines, f.covered), (1, 1), "{m:?}");
+        assert!(f.crap.is_some());
+    }
+
+    #[test]
+    fn a_class_listed_twice_for_one_file_is_counted_once() {
+        let (mut report, analyses) = setup(BRANCHY, &[(2, 1)]);
+        report.classes.push(report.classes[0].clone());
+        let m = function_metrics(&report, &analyses, Rules::Rca);
+        assert_eq!(m.len(), 1, "{m:?}");
     }
 
     const BRANCHY: &str = "fn f(x: i32) -> i32 {\n    if x > 0 { 1 } else { 2 }\n}\n";

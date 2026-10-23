@@ -99,7 +99,7 @@ pub struct ComplexityArgs {
     /// CRAP is complexity squared times the uncovered share cubed, plus
     /// complexity, from the covered share of the function's own lines. 0 turns
     /// the check off.
-    #[arg(long, value_name = "N", default_value_t = 30.0)]
+    #[arg(long, value_name = "N", default_value_t = 30.0, value_parser = threshold)]
     pub warn_crap: f64,
 
     /// Judge test code against the warning thresholds too.
@@ -109,6 +109,16 @@ pub struct ComplexityArgs {
     /// Work out and print the summary without writing anything.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// A CRAP threshold: a finite number, not below 0.
+fn threshold(text: &str) -> Result<f64, String> {
+    let n: f64 = text.parse().map_err(|e| format!("{e}"))?;
+    if n.is_finite() && n >= 0.0 {
+        Ok(n)
+    } else {
+        Err("must be a number of 0 or more".to_string())
+    }
 }
 
 /// Parse every source file the report mentions. A file that cannot be read or
@@ -206,7 +216,11 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
     if !args.dry_run {
         write_atomic(args.output.as_deref().unwrap_or(&args.file), &annotated)?;
     }
-    let functions = metrics::function_metrics(&report, &analyses, args.rules);
+    let functions = if args.warn_complexity > 0 || args.warn_crap > 0.0 {
+        metrics::function_metrics(&report, &analyses, args.rules)
+    } else {
+        Vec::new()
+    };
     Ok(Outcome { summary, functions })
 }
 
@@ -260,6 +274,26 @@ fn nothing_matched(s: &Summary) -> Option<&'static str> {
     )
 }
 
+/// How many risky functions are logged one by one; the rest are counted.
+const MAX_RISK_WARNINGS: usize = 10;
+
+/// The summary line for the risky functions, naming only the checks that ran.
+fn format_risks(risks: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
+    let mut parts = Vec::new();
+    if args.warn_complexity > 0 {
+        let n = risks.iter().filter(|r| r.complexity).count();
+        parts.push(format!(
+            "{n} function(s) at or over complexity {}",
+            args.warn_complexity
+        ));
+    }
+    if args.warn_crap > 0.0 {
+        let n = risks.iter().filter(|r| r.crap).count();
+        parts.push(format!("{n} at or over CRAP {}", args.warn_crap));
+    }
+    (!parts.is_empty()).then(|| format!("  {}", parts.join(", ")))
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
     let Outcome { summary, functions } = execute(args)?;
@@ -270,7 +304,7 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
         tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
     }
     let risks = metrics::risky(&functions, &args.thresholds());
-    for r in &risks {
+    for r in risks.iter().take(MAX_RISK_WARNINGS) {
         let f = r.function;
         match f.crap {
             Some(crap) => tracing::warn!(
@@ -284,15 +318,15 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
             ),
         }
     }
-    print!("{}", format_summary(&summary));
-    if args.warn_complexity > 0 || args.warn_crap > 0.0 {
-        println!(
-            "  {} function(s) at or over complexity {}, {} at or over CRAP {}",
-            risks.iter().filter(|r| r.complexity).count(),
-            args.warn_complexity,
-            risks.iter().filter(|r| r.crap).count(),
-            args.warn_crap
+    if risks.len() > MAX_RISK_WARNINGS {
+        tracing::warn!(
+            "{} more risky function(s) not listed",
+            risks.len() - MAX_RISK_WARNINGS
         );
+    }
+    print!("{}", format_summary(&summary));
+    if let Some(line) = format_risks(&risks, args) {
+        println!("{line}");
     }
     let target = args.output.as_deref().unwrap_or(&args.file);
     if args.dry_run {
@@ -425,6 +459,33 @@ fn pick(x: Option<i32>) -> Option<i32> {
             .map(|r| r.function.name.clone())
             .collect();
         assert_eq!(flagged, vec!["pick"], "{:?}", outcome.functions);
+    }
+
+    #[test]
+    fn the_risk_summary_names_only_the_checks_that_ran() {
+        let (_dir, mut args) = setup();
+        let fns = [];
+        assert_eq!(
+            format_risks(&fns, &args).as_deref(),
+            Some("  0 function(s) at or over complexity 10, 0 at or over CRAP 30")
+        );
+        args.warn_complexity = 0;
+        assert_eq!(
+            format_risks(&fns, &args).as_deref(),
+            Some("  0 at or over CRAP 30")
+        );
+        args.warn_crap = 0.0;
+        assert_eq!(format_risks(&fns, &args), None);
+        assert!(execute(&args).expect("runs").functions.is_empty());
+    }
+
+    #[test]
+    fn a_threshold_must_be_a_finite_number_of_zero_or_more() {
+        assert_eq!(threshold("30"), Ok(30.0));
+        assert_eq!(threshold("0"), Ok(0.0));
+        for bad in ["-5", "NaN", "inf", "abc"] {
+            assert!(threshold(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
