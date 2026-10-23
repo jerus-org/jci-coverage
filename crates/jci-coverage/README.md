@@ -114,8 +114,7 @@ It is written atomically, and the same entries always give the same bytes, so it
 up in a diff when something changed. A file that is damaged, truncated, from a newer format
 or scored with the other `--rules` is refused rather than trusted. The summary says how many
 entries are no longer needed once a function is fixed or removed; regenerate the file to drop
-them. A gate step in
-the orb job is planned (jerus-org/jci-coverage#52).
+them. A gate step in the orb job is planned (jerus-org/jci-coverage#52).
 
 Limitations of reading source rather than compiled code:
 

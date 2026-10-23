@@ -408,6 +408,18 @@ fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
             "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
         );
     }
+    for path in [&args.baseline, &args.write_baseline].into_iter().flatten() {
+        let report = args.output.as_deref().unwrap_or(&args.file);
+        if path == &args.file || path == report {
+            bail!(
+                "the baseline {} is the same file as the report; give it its own path",
+                path.display()
+            );
+        }
+    }
+    if args.baseline.is_some() && args.max_complexity == 0 && args.max_crap == 0.0 {
+        tracing::warn!("--baseline has no effect without --max-complexity or --max-crap");
+    }
     args.baseline
         .as_deref()
         .map(|path| {
@@ -440,12 +452,20 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     }
     let risks = metrics::risky(&functions, &args.thresholds());
     let over = metrics::risky(&functions, &args.max_thresholds());
-    let failing: Vec<_> = over
-        .iter()
-        .filter(|r| baseline.as_ref().is_none_or(|b| !b.allows(r.function)))
-        .copied()
-        .collect();
-    let warned = warnings_only(&risks, &failing);
+    // Recording a baseline accepts what is over a maximum; otherwise it is the
+    // functions the baseline does not allow that fail.
+    let failing: Vec<_> = if args.write_baseline.is_some() {
+        Vec::new()
+    } else {
+        over.iter()
+            .filter(|r| baseline.as_ref().is_none_or(|b| !b.allows(r.function)))
+            .copied()
+            .collect()
+    };
+    // Everything over a warn threshold or a maximum is warned about, unless it
+    // is failing, so accepted and recorded functions stay visible.
+    let flagged = metrics::risky(&functions, &args.thresholds().either(args.max_thresholds()));
+    let warned = warnings_only(&flagged, &failing);
     for r in warned.iter().take(MAX_RISK_WARNINGS) {
         let f = r.function;
         match f.crap {
@@ -866,6 +886,64 @@ fn pick(x: Option<i32>) -> Option<i32> {
             log.contains("risky function") && log.contains("pick"),
             "still warned about: {log}"
         );
+    }
+
+    #[test]
+    fn a_baselined_function_is_still_warned_about_with_the_warn_thresholds_off() {
+        let (dir, mut args) = setup();
+        args.warn_complexity = 0;
+        args.warn_crap = 0.0;
+        args.max_complexity = 4;
+        let path = baseline_path(&dir);
+        write_baseline_file(&path, "pick", 4, Rules::Rca);
+        args.baseline = Some(path);
+        let (result, log) = logged(&args);
+        result.expect("allowed by the baseline");
+        assert!(
+            log.contains("risky function") && log.contains("pick"),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn writing_a_baseline_names_the_functions_it_records() {
+        let (dir, mut args) = setup();
+        args.warn_complexity = 0;
+        args.warn_crap = 0.0;
+        args.max_complexity = 4;
+        args.write_baseline = Some(baseline_path(&dir));
+        let (result, log) = logged(&args);
+        result.expect("writes");
+        assert!(
+            log.contains("risky function") && log.contains("pick"),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn the_baseline_may_not_be_the_report_or_its_output() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.write_baseline = Some(args.file.clone());
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        args.write_baseline = None;
+        args.output = Some(dir.path().join("annotated.xml"));
+        args.baseline = args.output.clone();
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+    }
+
+    #[test]
+    fn a_baseline_without_a_maximum_is_flagged_as_having_no_effect() {
+        let (dir, mut args) = setup();
+        let path = baseline_path(&dir);
+        write_baseline_file(&path, "pick", 4, Rules::Rca);
+        args.baseline = Some(path);
+        let (result, log) = logged(&args);
+        result.expect("runs");
+        assert!(log.contains("--baseline has no effect"), "{log}");
     }
 
     #[test]

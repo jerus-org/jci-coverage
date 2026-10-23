@@ -60,6 +60,23 @@ pub(crate) struct Thresholds {
     pub(crate) include_tests: bool,
 }
 
+impl Thresholds {
+    /// The thresholds that flag a function when either would: the lower of each
+    /// pair that is on.
+    pub(crate) fn either(self, other: Self) -> Self {
+        let lower = |a: f64, b: f64| match (a > 0.0, b > 0.0) {
+            (true, true) => a.min(b),
+            (true, false) => a,
+            (false, _) => b,
+        };
+        Self {
+            complexity: lower(f64::from(self.complexity), f64::from(other.complexity)) as u32,
+            crap: lower(self.crap, other.crap),
+            include_tests: self.include_tests || other.include_tests,
+        }
+    }
+}
+
 /// A function at or over a threshold, and which one.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Risk<'a> {
@@ -376,6 +393,29 @@ fn f(v: &[i32]) -> usize {
         let fns = [metric("both", 20, Some(420.0), false)];
         let risks = risky(&fns, &thresholds(10, 30.0));
         assert_eq!((risks[0].complexity, risks[0].crap), (true, true));
+    }
+
+    #[test]
+    fn either_threshold_flags_with_the_lower_one_that_is_on() {
+        let t = |complexity, crap| Thresholds {
+            complexity,
+            crap,
+            include_tests: false,
+        };
+        let both = t(10, 30.0).either(t(15, 20.0));
+        assert_eq!((both.complexity, both.crap), (10, 20.0));
+        let one_off = t(0, 30.0).either(t(15, 0.0));
+        assert_eq!((one_off.complexity, one_off.crap), (15, 30.0));
+        let all_off = t(0, 0.0).either(t(0, 0.0));
+        assert_eq!((all_off.complexity, all_off.crap), (0, 0.0));
+        assert!(
+            t(1, 1.0)
+                .either(Thresholds {
+                    include_tests: true,
+                    ..t(1, 1.0)
+                })
+                .include_tests
+        );
     }
 
     #[test]

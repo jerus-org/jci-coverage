@@ -47,8 +47,8 @@ const CLOSURE: &str = "<closure>";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Allowance {
     complexity: u32,
-    /// CRAP in tenths, rounded up. `None` when its coverage was unknown, which
-    /// allows any CRAP.
+    /// CRAP in tenths, rounded up. `None` when its coverage was unknown, so no
+    /// CRAP was accepted.
     crap: Option<u64>,
 }
 
@@ -58,9 +58,10 @@ pub(crate) struct Baseline {
     entries: BTreeMap<(String, String), Allowance>,
 }
 
+/// A function's identity: its file with `/` separators, and its name.
 fn key(f: &FunctionMetrics) -> (String, String) {
     let name = if f.name.is_empty() { CLOSURE } else { &f.name };
-    (f.file.clone(), name.to_string())
+    (f.file.replace('\\', "/"), name.to_string())
 }
 
 /// CRAP in whole tenths, rounded up, so a function is never failed for digits
@@ -286,7 +287,10 @@ impl Baseline {
         f.complexity <= a.complexity
             && match (f.crap, a.crap) {
                 (Some(now), Some(then)) => tenths(now) <= then,
-                _ => true,
+                // CRAP was never accepted for it, so a known one is new.
+                (Some(_), None) => false,
+                // Coverage data is missing now; complexity alone is judged.
+                (None, _) => true,
             }
     }
 
@@ -536,10 +540,29 @@ mod tests {
     }
 
     #[test]
-    fn an_entry_without_a_known_crap_allows_any_crap() {
+    fn an_entry_recorded_without_a_known_crap_does_not_allow_one_that_is_known_now() {
         let b = baseline(&[func("src/a.rs", "f", 15, None)]);
-        assert!(b.allows(&func("src/a.rs", "f", 15, Some(500.0))));
-        assert!(!b.allows(&func("src/a.rs", "f", 16, Some(1.0))));
+        assert!(
+            !b.allows(&func("src/a.rs", "f", 15, Some(500.0))),
+            "new CRAP"
+        );
+        assert!(b.allows(&func("src/a.rs", "f", 15, None)), "still unknown");
+        assert!(!b.allows(&func("src/a.rs", "f", 16, None)), "more complex");
+    }
+
+    #[test]
+    fn a_function_whose_coverage_is_unknown_now_is_judged_on_complexity_alone() {
+        let b = baseline(&[func("src/a.rs", "f", 15, Some(30.0))]);
+        assert!(b.allows(&func("src/a.rs", "f", 15, None)));
+        assert!(!b.allows(&func("src/a.rs", "f", 16, None)));
+    }
+
+    #[test]
+    fn path_separators_do_not_matter() {
+        let b = baseline(&[func("crates\\x\\src\\a.rs", "f", 15, Some(30.0))]);
+        assert!(b.allows(&func("crates/x/src/a.rs", "f", 15, Some(30.0))));
+        let recorded = baseline(&[func("crates/x/src/a.rs", "f", 15, Some(30.0))]);
+        assert_eq!(b.encode(), recorded.encode());
     }
 
     #[test]
