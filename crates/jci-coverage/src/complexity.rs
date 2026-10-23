@@ -626,6 +626,81 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert_eq!(names, ["mild"]);
     }
 
+    /// Run the subcommand and return what it logged.
+    fn logged(args: &ComplexityArgs) -> (Result<()>, String) {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().expect("lock").extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .finish();
+        let result = tracing::subscriber::with_default(subscriber, || run(args));
+        let text = String::from_utf8(buf.0.lock().expect("lock").clone()).expect("utf8");
+        (result, text)
+    }
+
+    #[test]
+    fn a_risky_function_is_warned_about_when_the_maximum_is_off() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 4;
+        assert_eq!(args.max_complexity, 0, "the maximum is off");
+        let (result, log) = logged(&args);
+        result.expect("warnings never fail the run");
+        assert!(
+            log.contains("risky function") && log.contains("pick"),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn a_function_over_a_maximum_fails_without_a_warning() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 4;
+        args.max_complexity = 4;
+        let (result, log) = logged(&args);
+        assert!(result.is_err());
+        assert!(
+            !log.contains("risky function"),
+            "reported once, as the failure: {log}"
+        );
+    }
+
+    #[test]
+    fn nothing_is_warned_about_when_both_checks_are_off() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 0;
+        args.warn_crap = 0.0;
+        let (result, log) = logged(&args);
+        result.expect("runs");
+        assert!(!log.contains("risky function"), "{log}");
+    }
+
+    #[test]
+    fn with_the_maximum_off_every_risk_is_only_a_warning() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 4;
+        let outcome = execute(&args).expect("runs");
+        let risks = metrics::risky(&outcome.functions, &args.thresholds());
+        let over = metrics::risky(&outcome.functions, &args.max_thresholds());
+        assert!(over.is_empty());
+        assert_eq!(warnings_only(&risks, &over).len(), risks.len());
+        assert!(!risks.is_empty());
+    }
+
     #[test]
     fn the_failure_lists_the_worst_functions_and_counts_the_rest() {
         let f = |name: &str, complexity| metrics::FunctionMetrics {
