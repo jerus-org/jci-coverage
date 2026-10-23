@@ -33,6 +33,14 @@ Options:
       --exclude-tests
           Count `#[cfg(test)]` code and `#[test]` functions as
           complexity 0
+      --warn-complexity <N>
+          Warn about each function whose cyclomatic complexity is at
+          least this [default: 10]
+      --warn-crap <N>
+          Warn about each function whose CRAP score is at least this
+          [default: 30]
+      --gate-tests
+          Judge test code against the warning thresholds too
       --dry-run
           Work out and print the summary without writing anything
   -h, --help

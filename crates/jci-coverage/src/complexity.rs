@@ -26,6 +26,7 @@
 
 mod cobertura;
 mod counter;
+mod metrics;
 mod plan;
 
 use std::{
@@ -38,6 +39,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 
 pub use counter::Rules;
+use metrics::{FunctionMetrics, Thresholds};
 use plan::{Analyses, Options, Plan, Summary};
 pub use plan::{Duplicates, Unmatched};
 
@@ -85,9 +87,38 @@ pub struct ComplexityArgs {
     #[arg(long)]
     pub exclude_tests: bool,
 
+    /// Warn about each function whose cyclomatic complexity is at least this.
+    ///
+    /// A per-line average can hide a few very risky functions among many simple
+    /// ones. 0 turns the check off.
+    #[arg(long, value_name = "N", default_value_t = 10)]
+    pub warn_complexity: u32,
+
+    /// Warn about each function whose CRAP score is at least this.
+    ///
+    /// CRAP is complexity squared times the uncovered share cubed, plus
+    /// complexity, from the covered share of the function's own lines. 0 turns
+    /// the check off.
+    #[arg(long, value_name = "N", default_value_t = 30.0, value_parser = threshold)]
+    pub warn_crap: f64,
+
+    /// Judge test code against the warning thresholds too.
+    #[arg(long)]
+    pub gate_tests: bool,
+
     /// Work out and print the summary without writing anything.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// A CRAP threshold: a finite number, not below 0.
+fn threshold(text: &str) -> Result<f64, String> {
+    let n: f64 = text.parse().map_err(|e| format!("{e}"))?;
+    if n.is_finite() && n >= 0.0 {
+        Ok(n)
+    } else {
+        Err("must be a number of 0 or more".to_string())
+    }
 }
 
 /// Parse every source file the report mentions. A file that cannot be read or
@@ -131,8 +162,15 @@ fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     })
 }
 
+/// What [`execute`] did, and the per-function scores it measured.
+#[derive(Debug)]
+pub(crate) struct Outcome {
+    pub(crate) summary: Summary,
+    pub(crate) functions: Vec<FunctionMetrics>,
+}
+
 /// Annotate the report, and return what was done.
-pub(crate) fn execute(args: &ComplexityArgs) -> Result<Summary> {
+pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
     let xml = fs::read_to_string(&args.file)
         .with_context(|| format!("failed to read {}", args.file.display()))?;
     let report = cobertura::parse(&xml)
@@ -178,7 +216,22 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Summary> {
     if !args.dry_run {
         write_atomic(args.output.as_deref().unwrap_or(&args.file), &annotated)?;
     }
-    Ok(summary)
+    let functions = if args.warn_complexity > 0 || args.warn_crap > 0.0 {
+        metrics::function_metrics(&report, &analyses, args.rules)
+    } else {
+        Vec::new()
+    };
+    Ok(Outcome { summary, functions })
+}
+
+impl ComplexityArgs {
+    fn thresholds(&self) -> Thresholds {
+        Thresholds {
+            complexity: self.warn_complexity,
+            crap: self.warn_crap,
+            include_tests: self.gate_tests,
+        }
+    }
 }
 
 /// A short report of what [`execute`] did.
@@ -221,16 +274,60 @@ fn nothing_matched(s: &Summary) -> Option<&'static str> {
     )
 }
 
+/// How many risky functions are logged one by one; the rest are counted.
+const MAX_RISK_WARNINGS: usize = 10;
+
+/// The summary line for the risky functions, naming only the checks that ran.
+fn format_risks(risks: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
+    let mut parts = Vec::new();
+    if args.warn_complexity > 0 {
+        let n = risks.iter().filter(|r| r.complexity).count();
+        parts.push(format!(
+            "{n} function(s) at or over complexity {}",
+            args.warn_complexity
+        ));
+    }
+    if args.warn_crap > 0.0 {
+        let n = risks.iter().filter(|r| r.crap).count();
+        parts.push(format!("{n} at or over CRAP {}", args.warn_crap));
+    }
+    (!parts.is_empty()).then(|| format!("  {}", parts.join(", ")))
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
-    let summary = execute(args)?;
+    let Outcome { summary, functions } = execute(args)?;
     if let Some(hint) = nothing_matched(&summary) {
         tracing::warn!("{hint}");
     }
     for m in summary.unmatched.iter().take(10) {
         tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
     }
+    let risks = metrics::risky(&functions, &args.thresholds());
+    for r in risks.iter().take(MAX_RISK_WARNINGS) {
+        let f = r.function;
+        match f.crap {
+            Some(crap) => tracing::warn!(
+                file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
+                crap = format!("{crap:.1}"), covered = f.covered, lines = f.lines,
+                "risky function"
+            ),
+            None => tracing::warn!(
+                file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
+                "risky function (no executable lines to measure coverage)"
+            ),
+        }
+    }
+    if risks.len() > MAX_RISK_WARNINGS {
+        tracing::warn!(
+            "{} more risky function(s) not listed",
+            risks.len() - MAX_RISK_WARNINGS
+        );
+    }
     print!("{}", format_summary(&summary));
+    if let Some(line) = format_risks(&risks, args) {
+        println!("{line}");
+    }
     let target = args.output.as_deref().unwrap_or(&args.file);
     if args.dry_run {
         println!("(dry run) would write {}", target.display());
@@ -320,6 +417,9 @@ fn pick(x: Option<i32>) -> Option<i32> {
             unmatched: Unmatched::Keep,
             no_rollup: false,
             exclude_tests: false,
+            warn_complexity: 10,
+            warn_crap: 30.0,
+            gate_tests: false,
             dry_run: false,
         };
         (dir, args)
@@ -345,9 +445,53 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     #[test]
+    fn the_thresholds_come_from_the_arguments() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 4;
+        args.warn_crap = 0.0;
+        args.gate_tests = true;
+        let t = args.thresholds();
+        assert_eq!((t.complexity, t.crap, t.include_tests), (4, 0.0, true));
+
+        let outcome = execute(&args).expect("runs");
+        let flagged: Vec<_> = metrics::risky(&outcome.functions, &t)
+            .iter()
+            .map(|r| r.function.name.clone())
+            .collect();
+        assert_eq!(flagged, vec!["pick"], "{:?}", outcome.functions);
+    }
+
+    #[test]
+    fn the_risk_summary_names_only_the_checks_that_ran() {
+        let (_dir, mut args) = setup();
+        let fns = [];
+        assert_eq!(
+            format_risks(&fns, &args).as_deref(),
+            Some("  0 function(s) at or over complexity 10, 0 at or over CRAP 30")
+        );
+        args.warn_complexity = 0;
+        assert_eq!(
+            format_risks(&fns, &args).as_deref(),
+            Some("  0 at or over CRAP 30")
+        );
+        args.warn_crap = 0.0;
+        assert_eq!(format_risks(&fns, &args), None);
+        assert!(execute(&args).expect("runs").functions.is_empty());
+    }
+
+    #[test]
+    fn a_threshold_must_be_a_finite_number_of_zero_or_more() {
+        assert_eq!(threshold("30"), Ok(30.0));
+        assert_eq!(threshold("0"), Ok(0.0));
+        for bad in ["-5", "NaN", "inf", "abc"] {
+            assert!(threshold(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn the_report_is_annotated_in_place_by_default() {
         let (_dir, args) = setup();
-        let summary = execute(&args).expect("runs");
+        let summary = execute(&args).expect("runs").summary;
 
         let xml = fs::read_to_string(&args.file).expect("read");
         assert_eq!(
@@ -394,7 +538,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let original = fs::read_to_string(&args.file).expect("read");
         args.dry_run = true;
         args.output = Some(dir.path().join("never.xml"));
-        let summary = execute(&args).expect("runs");
+        let summary = execute(&args).expect("runs").summary;
         assert_eq!(fs::read_to_string(&args.file).expect("read"), original);
         assert!(!dir.path().join("never.xml").exists());
         assert_eq!(summary.total, 5);
@@ -442,7 +586,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn a_source_file_that_cannot_be_read_leaves_its_methods_unmatched() {
         let (dir, args) = setup();
         fs::remove_file(dir.path().join("src/lib.rs")).expect("remove");
-        let summary = execute(&args).expect("runs");
+        let summary = execute(&args).expect("runs").summary;
         assert_eq!(summary.matched, 0);
         assert_eq!(summary.unmatched.len(), 3);
     }
@@ -454,13 +598,13 @@ fn pick(x: Option<i32>) -> Option<i32> {
         fs::create_dir_all(elsewhere.join("src")).expect("mkdir");
         fs::rename(dir.path().join("src/lib.rs"), elsewhere.join("src/lib.rs")).expect("move");
         args.source_root = elsewhere;
-        assert_eq!(execute(&args).expect("runs").matched, 2);
+        assert_eq!(execute(&args).expect("runs").summary.matched, 2);
     }
 
     #[test]
     fn the_summary_reads_as_a_short_report() {
         let (_dir, args) = setup();
-        let text = format_summary(&execute(&args).expect("runs"));
+        let text = format_summary(&execute(&args).expect("runs").summary);
         assert!(text.contains("4 methods"), "{text}");
         assert!(text.contains("1 duplicate"), "{text}");
         assert!(text.contains("total 5"), "{text}");
@@ -473,10 +617,13 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn a_report_where_nothing_matched_gets_a_hint() {
         let (dir, mut args) = setup();
         args.source_root = dir.path().join("coverage");
-        let summary = execute(&args).expect("runs");
+        let summary = execute(&args).expect("runs").summary;
         assert!(nothing_matched(&summary).is_some_and(|h| h.contains("--source-root")));
         let (_dir, args) = setup();
-        assert_eq!(nothing_matched(&execute(&args).expect("runs")), None);
+        assert_eq!(
+            nothing_matched(&execute(&args).expect("runs").summary),
+            None
+        );
     }
 
     #[test]

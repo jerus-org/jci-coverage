@@ -330,10 +330,12 @@ mod tests {
                 Class {
                     filename: "src/lib.rs".to_string(),
                     package: 0,
+                    lines: Vec::new(),
                 },
                 Class {
                     filename: "src/gone.rs".to_string(),
                     package: 1,
+                    lines: Vec::new(),
                 },
             ],
             methods,
