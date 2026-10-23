@@ -64,7 +64,7 @@ parameters:
     default: '30'
   max_complexity:
     type: string
-    description: Fail if any function's cyclomatic complexity is at least this. The report is written first. 0 turns the check off.
+    description: Fail if any function's cyclomatic complexity is at least this. The report is written first (not with `--dry-run`, which still fails). 0 turns the check off.
     default: '0'
   max_crap:
     type: string

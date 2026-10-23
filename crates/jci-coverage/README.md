@@ -95,8 +95,9 @@ threshold off. Test code is left out unless `--gate-tests` is set. A function wi
 executable lines is judged on complexity alone. Warnings never change the exit code.
 
 To fail the build instead, set `--max-complexity` or `--max-crap` (both off by default). The
-report is written first, then `complexity` exits non-zero and names the worst offenders
-(up to five, with a count of the rest). A function with no executable lines has no CRAP
+report is written first (not with `--dry-run`, which still fails), then `complexity` exits
+non-zero and names the worst offenders (up to five, with a count of the rest) and the limit
+each is over. A function over a maximum is reported only as a failure, not also as a warning. A function with no executable lines has no CRAP
 score, so it can only fail `--max-complexity`. Baselines, so that existing functions do not
 block new work, and a gate step in the orb job are planned (jerus-org/jci-coverage#52).
 
