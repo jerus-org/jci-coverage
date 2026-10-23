@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency jci-coverage to v0.0.12(pr [#49])
 - deps: lock file maintenance(pr [#55])
 - deps: update rust:1-slim-trixie docker digest to aab4239(pr [#53])
+- deps: update dependency gen-circleci-orb to v0.2.6(pr [#54])
 
 ## [0.0.12] - 2026-10-18
 
@@ -186,6 +187,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#55]: https://github.com/jerus-org/jci-coverage/pull/55
 [#53]: https://github.com/jerus-org/jci-coverage/pull/53
 [#56]: https://github.com/jerus-org/jci-coverage/pull/56
+[#54]: https://github.com/jerus-org/jci-coverage/pull/54
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
