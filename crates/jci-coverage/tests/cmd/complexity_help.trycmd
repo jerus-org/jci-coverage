@@ -118,6 +118,20 @@ Options:
           
           [default: 0]
 
+      --baseline <PATH>
+          Let the functions listed in this file stay over a maximum.
+          
+          A function in the baseline fails only if it has got worse
+          than it was recorded. It is still warned about. Make the
+          file with `--write-baseline`.
+
+      --write-baseline <PATH>
+          Record the functions now over a maximum in this file, and do
+          not fail.
+          
+          Needs `--max-complexity` or `--max-crap`. Nothing is written
+          with `--dry-run`.
+
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too

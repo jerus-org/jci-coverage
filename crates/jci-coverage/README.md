@@ -98,8 +98,17 @@ To fail the build instead, set `--max-complexity` or `--max-crap` (both off by d
 report is written first (not with `--dry-run`, which still fails), then `complexity` exits
 non-zero and names the worst offenders (up to five, with a count of the rest) and the limit
 each is over. A function over a maximum is reported only as a failure, not also as a warning. A function with no executable lines has no CRAP
-score, so it can only fail `--max-complexity`. Baselines, so that existing functions do not
-block new work, and a gate step in the orb job are planned (jerus-org/jci-coverage#52).
+score, so it can only fail `--max-complexity`.
+
+A project adopting a maximum usually has functions that are already over it. Record them
+with `--write-baseline <PATH>` (which needs a maximum, writes nothing with `--dry-run`, and
+does not fail), commit the file, and pass it back with `--baseline <PATH>`. A baselined
+function then fails only if it gets worse, with higher complexity or CRAP than recorded, and
+is still warned about; a new function over the maximum fails. A function is identified by its
+file and name, not its line, so functions of one name in one file (and closures) share an
+entry holding their highest scores. The summary says how many baseline entries are no longer
+needed once a function is fixed or removed; regenerate the file to drop them. A gate step in
+the orb job is planned (jerus-org/jci-coverage#52).
 
 Limitations of reading source rather than compiled code:
 

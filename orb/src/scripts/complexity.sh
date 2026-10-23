@@ -18,6 +18,8 @@ esac
 [[ ! "${GCO_WARN_CRAP:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --warn-crap "${GCO_WARN_CRAP}"
 [[ ! "${GCO_MAX_COMPLEXITY:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --max-complexity "${GCO_MAX_COMPLEXITY}"
 [[ ! "${GCO_MAX_CRAP:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --max-crap "${GCO_MAX_CRAP}"
+[[ ! "${GCO_BASELINE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --baseline "${GCO_BASELINE}"
+[[ ! "${GCO_WRITE_BASELINE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --write-baseline "${GCO_WRITE_BASELINE}"
 [[ "${GCO_GATE_TESTS:-false}" = "true" ]] && set -- "$@" --gate-tests
 [[ "${GCO_DRY_RUN:-false}" = "true" ]] && set -- "$@" --dry-run
 "$@"

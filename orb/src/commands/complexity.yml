@@ -69,6 +69,14 @@ parameters:
     type: string
     description: Fail if any function's CRAP score is at least this. A function with no executable lines has no CRAP score and never fails this. 0 turns the check off.
     default: '0'
+  baseline:
+    type: string
+    description: Let the functions listed in this file stay over a maximum. A function in the baseline fails only if it has got worse than it was recorded. It is still warned about. Make the file with `--write-baseline`.
+    default: ''
+  write_baseline:
+    type: string
+    description: Record the functions now over a maximum in this file, and do not fail. Needs `--max-complexity` or `--max-crap`. Nothing is written with `--dry-run`.
+    default: ''
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -117,3 +125,5 @@ steps:
       GCO_WARN_CRAP: << parameters.warn_crap >>
       GCO_MAX_COMPLEXITY: << parameters.max_complexity >>
       GCO_MAX_CRAP: << parameters.max_crap >>
+      GCO_BASELINE: << parameters.baseline >>
+      GCO_WRITE_BASELINE: << parameters.write_baseline >>

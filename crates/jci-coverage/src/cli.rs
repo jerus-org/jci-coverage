@@ -201,6 +201,7 @@ mod tests {
                 assert!(!args.gate_tests);
                 assert_eq!(args.max_complexity, 0, "no maximum by default");
                 assert_eq!(args.max_crap, 0.0);
+                assert_eq!((args.baseline, args.write_baseline), (None, None));
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),
@@ -248,6 +249,36 @@ mod tests {
         let err = Cli::try_parse_from(["jci-coverage", "complexity", "--rules", "cognitive"])
             .unwrap_err();
         assert!(err.to_string().contains("rules"), "{err}");
+    }
+
+    #[test]
+    fn complexity_reads_or_writes_a_baseline_but_not_both() {
+        let cli = Cli::try_parse_from([
+            "jci-coverage",
+            "complexity",
+            "--max-complexity",
+            "15",
+            "--baseline",
+            "b.tsv",
+        ])
+        .expect("parses");
+        match cli.command {
+            Commands::Complexity(args) => {
+                assert_eq!(args.baseline, Some(PathBuf::from("b.tsv")));
+                assert_eq!(args.write_baseline, None);
+            }
+            other => panic!("expected Complexity, got {other:?}"),
+        }
+        let err = Cli::try_parse_from([
+            "jci-coverage",
+            "complexity",
+            "--baseline",
+            "a",
+            "--write-baseline",
+            "b",
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot be used with"), "{err}");
     }
 
     #[test]

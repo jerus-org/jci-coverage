@@ -24,6 +24,7 @@
 //!   is not followed and the original's mode is not kept. Use `--output` to
 //!   write elsewhere.
 
+mod baseline;
 mod cobertura;
 mod counter;
 mod metrics;
@@ -38,6 +39,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
+use baseline::Baseline;
 pub use counter::Rules;
 use metrics::{FunctionMetrics, Thresholds};
 use plan::{Analyses, Options, Plan, Summary};
@@ -115,6 +117,20 @@ pub struct ComplexityArgs {
     /// this. 0 turns the check off.
     #[arg(long, value_name = "N", default_value_t = 0.0, value_parser = threshold)]
     pub max_crap: f64,
+
+    /// Let the functions listed in this file stay over a maximum.
+    ///
+    /// A function in the baseline fails only if it has got worse than it was
+    /// recorded. It is still warned about. Make the file with `--write-baseline`.
+    #[arg(long, value_name = "PATH", conflicts_with = "write_baseline")]
+    pub baseline: Option<PathBuf>,
+
+    /// Record the functions now over a maximum in this file, and do not fail.
+    ///
+    /// Needs `--max-complexity` or `--max-crap`. Nothing is written with
+    /// `--dry-run`.
+    #[arg(long, value_name = "PATH")]
+    pub write_baseline: Option<PathBuf>,
 
     /// Judge test code against the warning and maximum thresholds too.
     #[arg(long)]
@@ -366,8 +382,41 @@ fn format_risks(risks: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<St
     (!parts.is_empty()).then(|| format!("  {}", parts.join(", ")))
 }
 
+/// The summary line for a baseline: what it let through and what it no longer
+/// needs.
+fn baseline_summary(accepted: usize, unused: usize) -> Option<String> {
+    match (accepted, unused) {
+        (0, 0) => None,
+        (n, 0) => Some(format!(
+            "  {n} function(s) over a maximum are in the baseline"
+        )),
+        (n, u) => Some(format!(
+            "  {n} function(s) over a maximum are in the baseline; {u} baseline entr(ies) no longer needed, regenerate with --write-baseline"
+        )),
+    }
+}
+
+/// Check the baseline options before anything is read or written, and load the
+/// baseline to compare against.
+fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
+    if args.write_baseline.is_some() && args.max_complexity == 0 && args.max_crap == 0.0 {
+        bail!(
+            "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
+        );
+    }
+    args.baseline
+        .as_deref()
+        .map(|path| {
+            let text = fs::read_to_string(path)
+                .with_context(|| format!("failed to read {}", path.display()))?;
+            Baseline::parse(&text).with_context(|| format!("{} is not a baseline", path.display()))
+        })
+        .transpose()
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
+    let baseline = load_baseline(args)?;
     let Outcome { summary, functions } = execute(args)?;
     if let Some(hint) = nothing_matched(&summary) {
         tracing::warn!("{hint}");
@@ -377,7 +426,12 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     }
     let risks = metrics::risky(&functions, &args.thresholds());
     let over = metrics::risky(&functions, &args.max_thresholds());
-    let warned = warnings_only(&risks, &over);
+    let failing: Vec<_> = over
+        .iter()
+        .filter(|r| baseline.as_ref().is_none_or(|b| !b.allows(r.function)))
+        .copied()
+        .collect();
+    let warned = warnings_only(&risks, &failing);
     for r in warned.iter().take(MAX_RISK_WARNINGS) {
         let f = r.function;
         match f.crap {
@@ -408,7 +462,31 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     } else {
         println!("wrote {}", target.display());
     }
-    match gate_failure(&over, args) {
+    if let Some(b) = &baseline {
+        let still_over = over.iter().map(|r| r.function);
+        if let Some(line) = baseline_summary(over.len() - failing.len(), b.unused(still_over)) {
+            println!("{line}");
+        }
+    }
+    if let Some(path) = &args.write_baseline {
+        let recorded = Baseline::from_functions(over.iter().map(|r| r.function));
+        if args.dry_run {
+            println!(
+                "(dry run) would write {} baseline entr(ies) to {}",
+                recorded.len(),
+                path.display()
+            );
+        } else {
+            write_atomic(path, &recorded.render())?;
+            println!(
+                "wrote {} baseline entr(ies) to {}",
+                recorded.len(),
+                path.display()
+            );
+        }
+        return Ok(());
+    }
+    match gate_failure(&failing, args) {
         Some(message) => bail!("{message}"),
         None => Ok(()),
     }
@@ -499,6 +577,8 @@ fn pick(x: Option<i32>) -> Option<i32> {
             gate_tests: false,
             max_complexity: 0,
             max_crap: 0.0,
+            baseline: None,
+            write_baseline: None,
             dry_run: false,
         };
         (dir, args)
@@ -725,6 +805,102 @@ fn pick(x: Option<i32>) -> Option<i32> {
             "worst first, capped: {msg}"
         );
         assert!(msg.contains("and 3 more"), "{msg}");
+    }
+
+    fn baseline_path(dir: &tempfile::TempDir) -> PathBuf {
+        dir.path().join("baseline.tsv")
+    }
+
+    #[test]
+    fn a_written_baseline_lets_the_functions_in_it_stay_over_the_maximum() {
+        let (dir, mut args) = setup();
+        args.warn_complexity = 4;
+        args.max_complexity = 4;
+        let path = baseline_path(&dir);
+
+        args.write_baseline = Some(path.clone());
+        let (result, _) = logged(&args);
+        result.expect("writing the baseline accepts the current state");
+        let text = fs::read_to_string(&path).expect("written");
+        assert!(text.contains("src/lib.rs\tpick\t4\t-"), "{text}");
+
+        args.write_baseline = None;
+        args.baseline = Some(path);
+        let (result, log) = logged(&args);
+        result.expect("pick is baselined");
+        assert!(
+            log.contains("risky function") && log.contains("pick"),
+            "still warned about: {log}"
+        );
+    }
+
+    #[test]
+    fn a_function_worse_than_its_baseline_or_missing_from_it_fails() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let path = baseline_path(&dir);
+        args.baseline = Some(path.clone());
+
+        fs::write(&path, "src/lib.rs\tpick\t3\t-\n").expect("write");
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("pick"), "worse than recorded: {err}");
+
+        fs::write(&path, "src/lib.rs\tother\t9\t-\n").expect("write");
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("pick"), "not in the baseline: {err}");
+
+        fs::write(&path, "src/lib.rs\tpick\t4\t-\n").expect("write");
+        run(&args).expect("as recorded");
+    }
+
+    #[test]
+    fn a_baseline_that_cannot_be_read_stops_the_run_before_the_report_changes() {
+        let (dir, mut args) = setup();
+        let before = fs::read_to_string(&args.file).expect("read");
+        args.baseline = Some(dir.path().join("missing.tsv"));
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(err.contains("missing.tsv"), "{err}");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+
+        let bad = baseline_path(&dir);
+        fs::write(&bad, "not a baseline\n").expect("write");
+        args.baseline = Some(bad);
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(err.contains("baseline line 1"), "{err}");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn a_baseline_is_written_only_for_a_maximum_that_is_set_and_not_on_a_dry_run() {
+        let (dir, mut args) = setup();
+        let path = baseline_path(&dir);
+        args.write_baseline = Some(path.clone());
+        let err = run(&args).unwrap_err().to_string();
+        assert!(
+            err.contains("--max-complexity") && err.contains("--max-crap"),
+            "{err}"
+        );
+        assert!(!path.exists());
+
+        args.max_complexity = 4;
+        args.dry_run = true;
+        run(&args).expect("dry run");
+        assert!(!path.exists(), "a dry run writes nothing");
+    }
+
+    #[test]
+    fn the_baseline_summary_counts_what_it_allowed_and_what_it_no_longer_needs() {
+        assert_eq!(baseline_summary(0, 0), None);
+        assert_eq!(
+            baseline_summary(2, 0).as_deref(),
+            Some("  2 function(s) over a maximum are in the baseline")
+        );
+        assert_eq!(
+            baseline_summary(1, 3).as_deref(),
+            Some(
+                "  1 function(s) over a maximum are in the baseline; 3 baseline entr(ies) no longer needed, regenerate with --write-baseline"
+            )
+        );
     }
 
     #[test]
