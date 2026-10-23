@@ -16,6 +16,8 @@ esac
 [[ "${GCO_EXCLUDE_TESTS:-false}" = "true" ]] && set -- "$@" --exclude-tests
 [[ ! "${GCO_WARN_COMPLEXITY:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --warn-complexity "${GCO_WARN_COMPLEXITY}"
 [[ ! "${GCO_WARN_CRAP:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --warn-crap "${GCO_WARN_CRAP}"
+[[ ! "${GCO_MAX_COMPLEXITY:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --max-complexity "${GCO_MAX_COMPLEXITY}"
+[[ ! "${GCO_MAX_CRAP:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --max-crap "${GCO_MAX_CRAP}"
 [[ "${GCO_GATE_TESTS:-false}" = "true" ]] && set -- "$@" --gate-tests
 [[ "${GCO_DRY_RUN:-false}" = "true" ]] && set -- "$@" --dry-run
 "$@"

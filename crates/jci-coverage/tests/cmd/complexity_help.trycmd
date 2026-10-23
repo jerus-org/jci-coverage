@@ -101,8 +101,25 @@ Options:
           
           [default: 30]
 
+      --max-complexity <N>
+          Fail if any function's cyclomatic complexity is at least
+          this.
+          
+          The report is written first. 0 turns the check off.
+          
+          [default: 0]
+
+      --max-crap <N>
+          Fail if any function's CRAP score is at least this.
+          
+          A function with no executable lines has no CRAP score and
+          never fails this. 0 turns the check off.
+          
+          [default: 0]
+
       --gate-tests
-          Judge test code against the warning thresholds too
+          Judge test code against the warning and maximum thresholds
+          too
 
       --dry-run
           Work out and print the summary without writing anything

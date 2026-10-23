@@ -199,6 +199,8 @@ mod tests {
                 assert_eq!(args.warn_complexity, 10);
                 assert_eq!(args.warn_crap, 30.0);
                 assert!(!args.gate_tests);
+                assert_eq!(args.max_complexity, 0, "no maximum by default");
+                assert_eq!(args.max_crap, 0.0);
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),

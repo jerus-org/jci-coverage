@@ -92,8 +92,13 @@ that function's own lines (a line belongs to the innermost function or closure c
 it). It logs a warning for each function at or over `--warn-complexity` (default 10) or
 `--warn-crap` (default 30), worst first, and ends its summary with the counts. `0` turns a
 threshold off. Test code is left out unless `--gate-tests` is set. A function with no
-executable lines is judged on complexity alone. Warnings never change the exit code; failing
-the build on them is planned (jerus-org/jci-coverage#52).
+executable lines is judged on complexity alone. Warnings never change the exit code.
+
+To fail the build instead, set `--max-complexity` or `--max-crap` (both off by default). The
+report is written first, then `complexity` exits non-zero and names the worst offenders
+(up to five, with a count of the rest). A function with no executable lines has no CRAP
+score, so it can only fail `--max-complexity`. Baselines, so that existing functions do not
+block new work, and a gate step in the orb job are planned (jerus-org/jci-coverage#52).
 
 Limitations of reading source rather than compiled code:
 

@@ -102,7 +102,20 @@ pub struct ComplexityArgs {
     #[arg(long, value_name = "N", default_value_t = 30.0, value_parser = threshold)]
     pub warn_crap: f64,
 
-    /// Judge test code against the warning thresholds too.
+    /// Fail if any function's cyclomatic complexity is at least this.
+    ///
+    /// The report is written first. 0 turns the check off.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub max_complexity: u32,
+
+    /// Fail if any function's CRAP score is at least this.
+    ///
+    /// A function with no executable lines has no CRAP score and never fails
+    /// this. 0 turns the check off.
+    #[arg(long, value_name = "N", default_value_t = 0.0, value_parser = threshold)]
+    pub max_crap: f64,
+
+    /// Judge test code against the warning and maximum thresholds too.
     #[arg(long)]
     pub gate_tests: bool,
 
@@ -216,7 +229,11 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
     if !args.dry_run {
         write_atomic(args.output.as_deref().unwrap_or(&args.file), &annotated)?;
     }
-    let functions = if args.warn_complexity > 0 || args.warn_crap > 0.0 {
+    let scored = args.warn_complexity > 0
+        || args.warn_crap > 0.0
+        || args.max_complexity > 0
+        || args.max_crap > 0.0;
+    let functions = if scored {
         metrics::function_metrics(&report, &analyses, args.rules)
     } else {
         Vec::new()
@@ -232,6 +249,48 @@ impl ComplexityArgs {
             include_tests: self.gate_tests,
         }
     }
+}
+
+impl ComplexityArgs {
+    fn max_thresholds(&self) -> Thresholds {
+        Thresholds {
+            complexity: self.max_complexity,
+            crap: self.max_crap,
+            include_tests: self.gate_tests,
+        }
+    }
+}
+
+/// How many functions over a maximum the failure message names.
+const MAX_LISTED_FAILURES: usize = 5;
+
+/// The failure message for the functions over a maximum, or `None` if there are
+/// none.
+fn gate_failure(over: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
+    if over.is_empty() {
+        return None;
+    }
+    let mut out = format!(
+        "{} function(s) over a maximum (--max-complexity {}, --max-crap {}):",
+        over.len(),
+        args.max_complexity,
+        args.max_crap
+    );
+    for r in over.iter().take(MAX_LISTED_FAILURES) {
+        let f = r.function;
+        out += &format!(
+            "\n  {}:{} {} (complexity {}",
+            f.file, f.line, f.name, f.complexity
+        );
+        if let Some(crap) = f.crap {
+            out += &format!(", CRAP {crap:.1}");
+        }
+        out.push(')');
+    }
+    if over.len() > MAX_LISTED_FAILURES {
+        out += &format!("\n  ... and {} more", over.len() - MAX_LISTED_FAILURES);
+    }
+    Some(out)
 }
 
 /// A short report of what [`execute`] did.
@@ -334,7 +393,11 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     } else {
         println!("wrote {}", target.display());
     }
-    Ok(())
+    let over = metrics::risky(&functions, &args.max_thresholds());
+    match gate_failure(&over, args) {
+        Some(message) => bail!(message),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -420,6 +483,8 @@ fn pick(x: Option<i32>) -> Option<i32> {
             warn_complexity: 10,
             warn_crap: 30.0,
             gate_tests: false,
+            max_complexity: 0,
+            max_crap: 0.0,
             dry_run: false,
         };
         (dir, args)
@@ -477,6 +542,66 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.warn_crap = 0.0;
         assert_eq!(format_risks(&fns, &args), None);
         assert!(execute(&args).expect("runs").functions.is_empty());
+    }
+
+    #[test]
+    fn a_function_over_a_maximum_fails_the_run_after_the_report_is_written() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 4;
+        let err = run(&args).unwrap_err().to_string();
+        assert!(
+            err.contains("pick") && err.contains("complexity 4"),
+            "{err}"
+        );
+        let xml = fs::read_to_string(&args.file).expect("read");
+        assert!(
+            xml.contains(r#"complexity="4""#),
+            "report still written: {xml}"
+        );
+
+        args.max_complexity = 5;
+        run(&args).expect("nothing is over 5");
+        args.max_complexity = 0;
+        run(&args).expect("0 turns the maximum off");
+    }
+
+    #[test]
+    fn a_crap_maximum_fails_on_the_score_and_names_it() {
+        let (_dir, mut args) = setup();
+        args.max_crap = 4.0;
+        args.warn_crap = 0.0;
+        args.warn_complexity = 0;
+        // pick has no executable lines here, so only complexity could judge it.
+        run(&args).expect("a function with unknown CRAP never fails the CRAP maximum");
+
+        let risks: Vec<metrics::Risk<'_>> = Vec::new();
+        assert_eq!(gate_failure(&risks, &args), None);
+    }
+
+    #[test]
+    fn the_failure_lists_the_worst_functions_and_counts_the_rest() {
+        let f = |name: &str, complexity| metrics::FunctionMetrics {
+            file: "src/a.rs".into(),
+            name: name.into(),
+            line: 1,
+            complexity,
+            lines: 2,
+            covered: 0,
+            crap: Some(f64::from(complexity * complexity + complexity)),
+            is_test: false,
+        };
+        let functions: Vec<_> = (1..=8).map(|n| f(&format!("f{n}"), 10 + n)).collect();
+        let (_dir, mut args) = setup();
+        args.max_complexity = 10;
+        args.max_crap = 100.0;
+        let risks = metrics::risky(&functions, &args.max_thresholds());
+        let msg = gate_failure(&risks, &args).expect("fails");
+        assert!(msg.starts_with("8 function(s) over a maximum"), "{msg}");
+        assert!(
+            msg.contains("f8") && !msg.contains("f1 "),
+            "worst first, capped: {msg}"
+        );
+        assert!(msg.contains("and 3 more"), "{msg}");
     }
 
     #[test]
