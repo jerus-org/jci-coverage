@@ -196,6 +196,9 @@ mod tests {
                 assert_eq!(args.unmatched, complexity::Unmatched::Keep);
                 assert!(!args.no_rollup, "roll-ups are on by default");
                 assert!(!args.exclude_tests);
+                assert_eq!(args.warn_complexity, 10);
+                assert_eq!(args.warn_crap, 30.0);
+                assert!(!args.gate_tests);
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),

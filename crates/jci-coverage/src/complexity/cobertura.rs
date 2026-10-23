@@ -20,6 +20,9 @@ pub(crate) struct Class {
     pub(crate) filename: String,
     /// Index of the `<package>` it sits in.
     pub(crate) package: usize,
+    /// The file's own `<line>`s as (line number, hits), in document order: every
+    /// executable line `cargo llvm-cov` counted, not just where a method starts.
+    pub(crate) lines: Vec<(u32, u64)>,
 }
 
 /// A `<method>`: one function, closure or instantiation of a generic.
@@ -169,6 +172,7 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
                     report.classes.push(Class {
                         filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
                         package: report.package_count - 1,
+                        lines: Vec::new(),
                     });
                 } else if is(e, "method") {
                     if report.classes.is_empty() {
@@ -183,13 +187,16 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
                         },
                         false,
                     ));
-                } else if is(e, "line")
-                    && let Some((m, read)) = method.as_mut()
-                    && !*read
-                {
-                    m.line = number(e, "number")?;
-                    m.hits = number(e, "hits")?;
-                    *read = true;
+                } else if is(e, "line") {
+                    if let Some((m, read)) = method.as_mut() {
+                        if !*read {
+                            m.line = number(e, "number")?;
+                            m.hits = number(e, "hits")?;
+                            *read = true;
+                        }
+                    } else if let Some(class) = report.classes.last_mut() {
+                        class.lines.push((number(e, "number")?, number(e, "hits")?));
+                    }
                 }
                 if matches!(event, Event::Empty(_)) && is(e, "method") {
                     report.methods.extend(method.take().map(|(m, _)| m));
@@ -617,6 +624,7 @@ mod tests {
                 .map(|f| Class {
                     filename: (*f).to_string(),
                     package: 0,
+                    lines: Vec::new(),
                 })
                 .collect(),
             methods: methods
@@ -665,5 +673,23 @@ mod tests {
     fn a_report_with_no_classes_is_rejected() {
         let err = report_of(&[], &[]).require_rust_llvm_cov().unwrap_err();
         assert!(err.to_string().contains("no source files"), "{err}");
+    }
+
+    #[test]
+    fn parse_reads_the_class_level_lines_but_not_a_methods_own_line() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="src/a.rs"><methods>
+<method name="x::f"><lines><line number="3" hits="9"/></lines></method>
+</methods><lines>
+<line number="3" hits="9" branch="false"/>
+<line number="4" hits="0" branch="false"/>
+<line number="5" hits="2" branch="false"/>
+</lines></class>
+<class filename="src/b.rs"><methods/><lines><line number="1" hits="1"/></lines></class>
+</classes></package></packages></coverage>"#;
+        let r = parse(xml).expect("parses");
+        assert_eq!(r.classes[0].lines, vec![(3, 9), (4, 0), (5, 2)]);
+        assert_eq!(r.classes[1].lines, vec![(1, 1)]);
+        assert_eq!((r.methods[0].line, r.methods[0].hits), (3, 9));
     }
 }

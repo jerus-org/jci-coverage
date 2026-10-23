@@ -10,6 +10,7 @@ complexity: 4 methods in the report, 3 after merging 1 duplicate instantiation(s
   most complex:
        4  demo::pick::<u8>
        1  demo::plain
+  0 function(s) at or over complexity 10, 0 at or over CRAP 30
 wrote coverage/cobertura.xml
 
 ```

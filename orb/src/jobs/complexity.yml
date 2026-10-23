@@ -54,6 +54,18 @@ parameters:
     type: boolean
     description: Count `#[cfg(test)]` code and `#[test]` functions as complexity 0
     default: false
+  warn_complexity:
+    type: string
+    description: Warn about each function whose cyclomatic complexity is at least this. A per-line average can hide a few very risky functions among many simple ones. 0 turns the check off.
+    default: '10'
+  warn_crap:
+    type: string
+    description: Warn about each function whose CRAP score is at least this. CRAP is complexity squared times the uncovered share cubed, plus complexity, from the covered share of the function's own lines. 0 turns the check off.
+    default: '30'
+  gate_tests:
+    type: boolean
+    description: Judge test code against the warning thresholds too
+    default: false
   dry_run:
     type: boolean
     description: Work out and print the summary without writing anything
@@ -88,4 +100,7 @@ steps:
     unmatched: << parameters.unmatched >>
     no_rollup: << parameters.no_rollup >>
     exclude_tests: << parameters.exclude_tests >>
+    warn_complexity: << parameters.warn_complexity >>
+    warn_crap: << parameters.warn_crap >>
+    gate_tests: << parameters.gate_tests >>
     dry_run: << parameters.dry_run >>

@@ -50,6 +50,14 @@ parameters:
     enum:
     - rca
     - mccabe
+  warn_complexity:
+    type: string
+    description: Warn about each function whose cyclomatic complexity is at least this. 0 turns the check off
+    default: '10'
+  warn_crap:
+    type: string
+    description: Warn about each function whose CRAP score is at least this. 0 turns the check off
+    default: '30'
   log_level:
     type: enum
     description: Logging verbosity, from `quiet` to `vvvv` (most verbose).
@@ -95,6 +103,8 @@ steps:
     rules: << parameters.rules >>
     source_root: << parameters.source_root >>
     unmatched: << parameters.unmatched >>
+    warn_complexity: << parameters.warn_complexity >>
+    warn_crap: << parameters.warn_crap >>
 - upload:
     file: coverage/cobertura.xml
     log_level: << parameters.log_level >>

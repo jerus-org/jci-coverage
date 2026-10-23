@@ -83,6 +83,18 @@ inside macro arguments. `--rules mccabe` counts one less per `match` and ignores
 Generic functions appear once per instantiation in the report; they are merged into one
 entry by default (`--duplicates keep` leaves them), since OtterWise sums every entry.
 
+### Risky functions
+
+A per-line average can hide a few very risky functions among many simple ones, so
+`complexity` also scores each function on its own: its cyclomatic complexity, and its CRAP
+score, `complexity² × (1 − coverage)³ + complexity`, where coverage is the covered share of
+that function's own lines (a line belongs to the innermost function or closure containing
+it). It logs a warning for each function at or over `--warn-complexity` (default 10) or
+`--warn-crap` (default 30), worst first, and ends its summary with the counts. `0` turns a
+threshold off. Test code is left out unless `--gate-tests` is set. A function with no
+executable lines is judged on complexity alone. Warnings never change the exit code; failing
+the build on them is planned (jerus-org/jci-coverage#52).
+
 Limitations of reading source rather than compiled code:
 
 - A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is reported by
@@ -137,6 +149,8 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `exclude_tests` | `false` | count `#[cfg(test)]` code and `#[test]` functions as 0 |
 | `source_root` | `.` | read sources from another directory |
 | `rules` | `rca` | count the stricter `mccabe` decision points |
+| `warn_complexity` | `10` | warn about each function at or over this complexity (`0` is off) |
+| `warn_crap` | `30` | warn about each function at or over this CRAP score (`0` is off) |
 
 It is Rust-only. For a project in another language, or one that wants the lcov report only,
 use `report_and_upload` or `upload`.

@@ -157,6 +157,16 @@ default = "rca"
 description = "Which decision points count"
 
 [[job_group.parameter]]
+name = "warn_complexity"
+default = "10"
+description = "Warn about each function whose cyclomatic complexity is at least this. 0 turns the check off"
+
+[[job_group.parameter]]
+name = "warn_crap"
+default = "30"
+description = "Warn about each function whose CRAP score is at least this. 0 turns the check off"
+
+[[job_group.parameter]]
 name = "log_level"
 enum = ["quiet", "default", "v", "vv", "vvv", "vvvv"]
 default = "default"
@@ -186,7 +196,7 @@ command = "complexity"
 # Left at the command's default on purpose: the report is annotated in place,
 # duplicate instantiations are merged and roll-ups are written because those
 # change what OtterWise sums, and `--dry-run` is for a local preview.
-defaults = ["output", "duplicates", "no_rollup", "dry_run"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "gate_tests"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -194,6 +204,8 @@ source_root = "<< parameters.source_root >>"
 rules = "<< parameters.rules >>"
 unmatched = "<< parameters.unmatched >>"
 exclude_tests = "<< parameters.exclude_tests >>"
+warn_complexity = "<< parameters.warn_complexity >>"
+warn_crap = "<< parameters.warn_crap >>"
 log_level = "<< parameters.log_level >>"
 
 [[job_group.step]]
