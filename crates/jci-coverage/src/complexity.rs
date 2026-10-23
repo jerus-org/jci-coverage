@@ -121,7 +121,8 @@ pub struct ComplexityArgs {
     /// Let the functions listed in this file stay over a maximum.
     ///
     /// A function in the baseline fails only if it has got worse than it was
-    /// recorded. It is still warned about. Make the file with `--write-baseline`.
+    /// recorded. It is still warned about. Make the file with `--write-baseline`;
+    /// it is a binary file for this tool, not meant to be edited.
     #[arg(long, value_name = "PATH", conflicts_with = "write_baseline")]
     pub baseline: Option<PathBuf>,
 
@@ -178,7 +179,7 @@ fn analyse_sources(report: &cobertura::Report, root: &Path) -> Analyses {
 
 /// Replace `path` with `contents`, or leave it as it was: write beside it, then
 /// rename over it.
-fn write_atomic(path: &Path, contents: &str) -> Result<()> {
+fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).with_context(|| format!("failed to create {}", dir.display()))?;
     }
@@ -244,7 +245,10 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
 
     let annotated = cobertura::rewrite(&xml, &edit)?;
     if !args.dry_run {
-        write_atomic(args.output.as_deref().unwrap_or(&args.file), &annotated)?;
+        write_atomic(
+            args.output.as_deref().unwrap_or(&args.file),
+            annotated.as_bytes(),
+        )?;
     }
     let scored = args.warn_complexity > 0
         || args.warn_crap > 0.0
@@ -407,9 +411,19 @@ fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
     args.baseline
         .as_deref()
         .map(|path| {
-            let text = fs::read_to_string(path)
-                .with_context(|| format!("failed to read {}", path.display()))?;
-            Baseline::parse(&text).with_context(|| format!("{} is not a baseline", path.display()))
+            let bytes =
+                fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+            let baseline = Baseline::decode(&bytes)
+                .with_context(|| format!("{} cannot be used as a baseline", path.display()))?;
+            if baseline.rules() != args.rules {
+                bail!(
+                    "{} was written with --rules {:?}, not {:?}; scores differ between rule sets, so regenerate it with --write-baseline",
+                    path.display(),
+                    baseline.rules(),
+                    args.rules
+                );
+            }
+            Ok(baseline)
         })
         .transpose()
 }
@@ -469,7 +483,7 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
         }
     }
     if let Some(path) = &args.write_baseline {
-        let recorded = Baseline::from_functions(over.iter().map(|r| r.function));
+        let recorded = Baseline::from_functions(over.iter().map(|r| r.function), args.rules);
         if args.dry_run {
             println!(
                 "(dry run) would write {} baseline entr(ies) to {}",
@@ -477,7 +491,7 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
                 path.display()
             );
         } else {
-            write_atomic(path, &recorded.render())?;
+            write_atomic(path, &recorded.encode())?;
             println!(
                 "wrote {} baseline entr(ies) to {}",
                 recorded.len(),
@@ -808,7 +822,22 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     fn baseline_path(dir: &tempfile::TempDir) -> PathBuf {
-        dir.path().join("baseline.tsv")
+        dir.path().join("baseline.bin")
+    }
+
+    /// Write a baseline allowing `name` in `src/lib.rs` up to `complexity`.
+    fn write_baseline_file(path: &Path, name: &str, complexity: u32, rules: Rules) {
+        let f = metrics::FunctionMetrics {
+            file: "src/lib.rs".into(),
+            name: name.into(),
+            line: 1,
+            complexity,
+            lines: 0,
+            covered: 0,
+            crap: None,
+            is_test: false,
+        };
+        fs::write(path, Baseline::from_functions([&f], rules).encode()).expect("write");
     }
 
     #[test]
@@ -821,8 +850,13 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.write_baseline = Some(path.clone());
         let (result, _) = logged(&args);
         result.expect("writing the baseline accepts the current state");
-        let text = fs::read_to_string(&path).expect("written");
-        assert!(text.contains("src/lib.rs\tpick\t4\t-"), "{text}");
+        let bytes = fs::read(&path).expect("written");
+        assert!(bytes.starts_with(b"JCIB"), "a binary baseline: {bytes:?}");
+        let names: Vec<_> = fs::read_dir(dir.path())
+            .expect("list")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(!names.iter().any(|n| n.ends_with(".tmp")), "{names:?}");
 
         args.write_baseline = None;
         args.baseline = Some(path);
@@ -841,33 +875,56 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let path = baseline_path(&dir);
         args.baseline = Some(path.clone());
 
-        fs::write(&path, "src/lib.rs\tpick\t3\t-\n").expect("write");
+        write_baseline_file(&path, "pick", 3, Rules::Rca);
         let err = run(&args).unwrap_err().to_string();
         assert!(err.contains("pick"), "worse than recorded: {err}");
 
-        fs::write(&path, "src/lib.rs\tother\t9\t-\n").expect("write");
+        write_baseline_file(&path, "other", 9, Rules::Rca);
         let err = run(&args).unwrap_err().to_string();
         assert!(err.contains("pick"), "not in the baseline: {err}");
 
-        fs::write(&path, "src/lib.rs\tpick\t4\t-\n").expect("write");
+        write_baseline_file(&path, "pick", 4, Rules::Rca);
         run(&args).expect("as recorded");
     }
 
     #[test]
-    fn a_baseline_that_cannot_be_read_stops_the_run_before_the_report_changes() {
+    fn a_baseline_that_cannot_be_used_stops_the_run_before_the_report_changes() {
         let (dir, mut args) = setup();
         let before = fs::read_to_string(&args.file).expect("read");
-        args.baseline = Some(dir.path().join("missing.tsv"));
+        args.baseline = Some(dir.path().join("missing.bin"));
         let err = format!("{:#}", run(&args).unwrap_err());
-        assert!(err.contains("missing.tsv"), "{err}");
+        assert!(err.contains("missing.bin"), "{err}");
         assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
 
         let bad = baseline_path(&dir);
         fs::write(&bad, "not a baseline\n").expect("write");
-        args.baseline = Some(bad);
+        args.baseline = Some(bad.clone());
         let err = format!("{:#}", run(&args).unwrap_err());
-        assert!(err.contains("baseline line 1"), "{err}");
+        assert!(err.contains("cannot be used as a baseline"), "{err}");
         assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+
+        write_baseline_file(&bad, "pick", 4, Rules::Rca);
+        let mut bytes = fs::read(&bad).expect("read");
+        let at = bytes.len() / 2;
+        bytes[at] ^= 0x04;
+        fs::write(&bad, bytes).expect("write");
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(
+            err.contains("corrupt"),
+            "a damaged baseline is refused: {err}"
+        );
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn a_baseline_written_for_the_other_rule_set_is_refused() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let path = baseline_path(&dir);
+        write_baseline_file(&path, "pick", 4, Rules::Mccabe);
+        args.baseline = Some(path);
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(err.contains("Mccabe") && err.contains("Rca"), "{err}");
     }
 
     #[test]

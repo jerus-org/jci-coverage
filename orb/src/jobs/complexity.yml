@@ -72,7 +72,7 @@ parameters:
     default: '0'
   baseline:
     type: string
-    description: Let the functions listed in this file stay over a maximum. A function in the baseline fails only if it has got worse than it was recorded. It is still warned about. Make the file with `--write-baseline`.
+    description: Let the functions listed in this file stay over a maximum. A function in the baseline fails only if it has got worse than it was recorded. It is still warned about. Make the file with `--write-baseline`; it is a binary file for this tool, not meant to be edited.
     default: ''
   write_baseline:
     type: string
