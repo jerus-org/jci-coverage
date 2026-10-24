@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - make report_complexity_and_upload the default(pr [#51])
 - warn on risky functions(pr [#57])
 - fail on --max-complexity and --max-crap(pr [#58])
+- add --baseline and --write-baseline(pr [#59])
 
 ### Changed
 
@@ -192,6 +193,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#54]: https://github.com/jerus-org/jci-coverage/pull/54
 [#57]: https://github.com/jerus-org/jci-coverage/pull/57
 [#58]: https://github.com/jerus-org/jci-coverage/pull/58
+[#59]: https://github.com/jerus-org/jci-coverage/pull/59
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
