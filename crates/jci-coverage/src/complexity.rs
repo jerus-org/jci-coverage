@@ -243,10 +243,7 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
     let analyses = analyse_sources(&report, &args.source_root);
 
     tracing::info!(?args, methods = report.methods.len(), "complexity");
-    let scored = args.warn_complexity > 0
-        || args.warn_crap > 0.0
-        || args.max_complexity > 0
-        || args.max_crap > 0.0;
+    let scored = args.warn_complexity > 0 || args.warn_crap > 0.0 || args.has_maximum();
     let functions = if scored {
         metrics::function_metrics(&report, &analyses, args.rules)
     } else {
@@ -297,6 +294,11 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
 }
 
 impl ComplexityArgs {
+    /// Whether either maximum is on, so there is something to gate.
+    fn has_maximum(&self) -> bool {
+        self.max_complexity > 0 || self.max_crap > 0.0
+    }
+
     fn thresholds(&self) -> Thresholds {
         Thresholds {
             complexity: self.warn_complexity,
@@ -436,8 +438,8 @@ fn baseline_summary(accepted: usize, unused: usize) -> Option<String> {
 
 /// Check the baseline options before anything is read or written, and load the
 /// baseline to compare against.
-fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
-    if args.write_baseline.is_some() && args.max_complexity == 0 && args.max_crap == 0.0 {
+fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
+    if args.write_baseline.is_some() && !args.has_maximum() {
         bail!(
             "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
         );
@@ -451,9 +453,14 @@ fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
             );
         }
     }
-    if args.baseline.is_some() && args.max_complexity == 0 && args.max_crap == 0.0 {
+    if args.baseline.is_some() && !args.has_maximum() {
         tracing::warn!("--baseline has no effect without --max-complexity or --max-crap");
     }
+    Ok(())
+}
+
+/// Read the baseline to compare against, if one was given.
+fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
     args.baseline
         .as_deref()
         .map(|path| {
@@ -539,22 +546,29 @@ fn check(
     baseline: Option<&Baseline>,
     functions: &[FunctionMetrics],
 ) -> Result<()> {
-    if args.max_complexity == 0 && args.max_crap == 0.0 && args.write_baseline.is_none() {
-        println!("complexity check: no maximum is set, so there is nothing to check");
-        return Ok(());
-    }
     let gate = gate(args, baseline, functions);
-    if baseline.is_none() {
-        println!(
-            "complexity check: {} function(s) over a maximum",
-            gate.over.len()
-        );
-    }
+    let allowed = baseline.map(|_| gate.over.len() - gate.failing.len());
+    println!("{}", check_line(gate.over.len(), allowed));
     finish(args, baseline, &gate)
+}
+
+/// The one line `--check-only` prints: what is over a maximum and, with a
+/// baseline, how much of that it allows.
+fn check_line(over: usize, allowed: Option<usize>) -> String {
+    let mut line = format!("complexity check: {over} function(s) over a maximum");
+    if let Some(n) = allowed {
+        line += &format!(", {n} allowed by the baseline");
+    }
+    line
 }
 
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
+    check_baseline_args(args)?;
+    if args.check_only && !args.has_maximum() {
+        println!("complexity check: no maximum is set, so there is nothing to check");
+        return Ok(());
+    }
     let baseline = load_baseline(args)?;
     let Outcome { summary, functions } = execute(args)?;
     if args.check_only {
@@ -1192,6 +1206,71 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
 
         args.write_baseline = None;
+        args.baseline = Some(path);
+        run(&args).expect("baselined");
+    }
+
+    #[test]
+    fn check_only_with_no_maximum_does_not_read_the_report_or_the_baseline() {
+        let (dir, mut args) = setup();
+        args.check_only = true;
+        args.file = dir.path().join("missing.xml");
+        args.baseline = Some(dir.path().join("missing.bin"));
+        let (result, log) = logged(&args);
+        result.expect("nothing to check, so nothing to read");
+        assert!(log.contains("--baseline has no effect"), "{log}");
+
+        args.baseline = None;
+        args.write_baseline = Some(baseline_path(&dir));
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("--max-complexity"), "still refused: {err}");
+    }
+
+    #[test]
+    fn the_gate_judges_the_same_functions_as_the_annotating_step() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 1;
+        let annotated = execute(&args).expect("runs").functions;
+        let mut gate = args;
+        gate.check_only = true;
+        gate.duplicates = Duplicates::Keep;
+        gate.exclude_tests = true;
+        gate.unmatched = Unmatched::One;
+        let checked = execute(&gate).expect("runs").functions;
+        assert!(!annotated.is_empty());
+        assert_eq!(annotated, checked);
+    }
+
+    #[test]
+    fn a_maximum_is_set_when_either_is_above_zero() {
+        let (_dir, mut args) = setup();
+        assert!(!args.has_maximum());
+        args.max_complexity = 1;
+        assert!(args.has_maximum());
+        args.max_complexity = 0;
+        args.max_crap = 0.5;
+        assert!(args.has_maximum());
+    }
+
+    #[test]
+    fn the_check_line_counts_what_is_over_and_what_the_baseline_allows() {
+        assert_eq!(
+            check_line(0, None),
+            "complexity check: 0 function(s) over a maximum"
+        );
+        assert_eq!(
+            check_line(3, Some(2)),
+            "complexity check: 3 function(s) over a maximum, 2 allowed by the baseline"
+        );
+    }
+
+    #[test]
+    fn check_only_prints_one_line_with_a_baseline_too() {
+        let (dir, mut args) = setup();
+        args.check_only = true;
+        args.max_complexity = 4;
+        let path = baseline_path(&dir);
+        write_baseline_file(&path, "pick", 4, Rules::Rca);
         args.baseline = Some(path);
         run(&args).expect("baselined");
     }
