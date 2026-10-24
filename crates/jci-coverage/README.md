@@ -101,20 +101,29 @@ each is over. A function over a maximum is reported only as a failure, not also 
 score, so it can only fail `--max-complexity`.
 
 A project adopting a maximum usually has functions that are already over it. Record them
-with `--write-baseline <PATH>` (which needs a maximum, writes nothing with `--dry-run`, and
-does not fail), commit the file, and pass it back with `--baseline <PATH>`. A baselined
-function then fails only if it gets worse, with higher complexity or CRAP than recorded, and
-is still warned about; a new function over the maximum fails. A function is identified by its
-file and name, not its line, so functions of one name in one file (and closures) share an
-entry holding their highest scores.
+with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not
+fail), commit the file, and pass it back with `--baseline`. A baselined function then fails
+only if it gets worse, with higher complexity or CRAP than recorded, and is still warned
+about; a new function over the maximum fails. A function is identified by its file and name,
+not its line, so functions of one name in one file (and closures) share an entry holding
+their highest scores.
+
+Without a value both options use `.jci-coverage-baseline` in the directory `jci-coverage`
+runs from. By convention that is the repository root, committed beside the workspace
+`Cargo.toml`: the file paths in the report, and so in the baseline, are relative to the
+workspace root, where `complexity` already expects to run (`--source-root` defaults to `.`).
+Give a path, as in `--baseline ci/complexity.bin`, to keep it elsewhere; a relative path is
+resolved against the directory the command runs in, not the repository or package root.
 
 The baseline is a small binary file for this tool, not meant to be read or edited: file
 names are stored once, numbers are variable-length, and a checksum covers the whole file.
-It is written atomically, and the same entries always give the same bytes, so it only shows
-up in a diff when something changed. A file that is damaged, truncated, from a newer format
-or scored with the other `--rules` is refused rather than trusted. The summary says how many
-entries are no longer needed once a function is fixed or removed; regenerate the file to drop
-them. A gate step in the orb job is planned (jerus-org/jci-coverage#52).
+It is written atomically, and the same entries always give the same bytes, so it changes in
+a commit only when something did. Git shows no text diff of it; add
+`.jci-coverage-baseline binary` to `.gitattributes` to say so. A file that is damaged,
+truncated, from a newer format or scored with the other `--rules` is refused rather than
+trusted. The summary says how many entries are no longer needed once a function is fixed or
+removed; regenerate the file to drop them. A gate step in the orb job is planned
+(jerus-org/jci-coverage#52).
 
 Limitations of reading source rather than compiled code:
 

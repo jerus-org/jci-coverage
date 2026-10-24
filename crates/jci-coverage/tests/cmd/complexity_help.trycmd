@@ -118,19 +118,23 @@ Options:
           
           [default: 0]
 
-      --baseline <PATH>
+      --baseline [<PATH>]
           Let the functions listed in this file stay over a maximum.
           
           A function in the baseline fails only if it has got worse
-          than it was recorded. It is still warned about. Make the
+          than it was recorded. It is still warned about. Without a
+          value it reads `.jci-coverage-baseline` in the directory
+          this runs from, by convention the repository root. Make the
           file with `--write-baseline`; it is a binary file for this
           tool, not meant to be edited.
 
-      --write-baseline <PATH>
+      --write-baseline [<PATH>]
           Record the functions now over a maximum in this file, and do
           not fail.
           
-          Needs `--max-complexity` or `--max-crap`. Nothing is written
+          Needs `--max-complexity` or `--max-crap`. Without a value it
+          writes `.jci-coverage-baseline` in the directory this runs
+          from, by convention the repository root. Nothing is written
           with `--dry-run`.
 
       --gate-tests

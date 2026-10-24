@@ -45,6 +45,11 @@ use metrics::{FunctionMetrics, Thresholds};
 use plan::{Analyses, Options, Plan, Summary};
 pub use plan::{Duplicates, Unmatched};
 
+/// Where `--baseline` and `--write-baseline` read and write without a value: this
+/// file in the directory `jci-coverage` runs from, which by convention is the
+/// repository root, where the report's workspace-relative file paths start.
+pub const DEFAULT_BASELINE: &str = ".jci-coverage-baseline";
+
 /// Parsed `complexity` subcommand arguments.
 #[derive(Debug, Args)]
 pub struct ComplexityArgs {
@@ -121,16 +126,30 @@ pub struct ComplexityArgs {
     /// Let the functions listed in this file stay over a maximum.
     ///
     /// A function in the baseline fails only if it has got worse than it was
-    /// recorded. It is still warned about. Make the file with `--write-baseline`;
-    /// it is a binary file for this tool, not meant to be edited.
-    #[arg(long, value_name = "PATH", conflicts_with = "write_baseline")]
+    /// recorded. It is still warned about. Without a value it reads
+    /// `.jci-coverage-baseline` in the directory this runs from, by convention
+    /// the repository root. Make the file with `--write-baseline`; it is a
+    /// binary file for this tool, not meant to be edited.
+    #[arg(
+        long,
+        value_name = "PATH",
+        num_args = 0..=1,
+        default_missing_value = DEFAULT_BASELINE,
+        conflicts_with = "write_baseline"
+    )]
     pub baseline: Option<PathBuf>,
 
     /// Record the functions now over a maximum in this file, and do not fail.
     ///
-    /// Needs `--max-complexity` or `--max-crap`. Nothing is written with
-    /// `--dry-run`.
-    #[arg(long, value_name = "PATH")]
+    /// Needs `--max-complexity` or `--max-crap`. Without a value it writes
+    /// `.jci-coverage-baseline` in the directory this runs from, by convention
+    /// the repository root. Nothing is written with `--dry-run`.
+    #[arg(
+        long,
+        value_name = "PATH",
+        num_args = 0..=1,
+        default_missing_value = DEFAULT_BASELINE
+    )]
     pub write_baseline: Option<PathBuf>,
 
     /// Judge test code against the warning and maximum thresholds too.

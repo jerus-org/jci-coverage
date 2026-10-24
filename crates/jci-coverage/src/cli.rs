@@ -282,6 +282,44 @@ mod tests {
     }
 
     #[test]
+    fn the_baseline_options_default_to_a_file_in_the_directory_it_runs_from() {
+        let parse = |extra: &[&str]| {
+            let mut argv = vec!["jci-coverage", "complexity"];
+            argv.extend_from_slice(extra);
+            match Cli::try_parse_from(argv).expect("parses").command {
+                Commands::Complexity(args) => (args.baseline, args.write_baseline),
+                other => panic!("expected Complexity, got {other:?}"),
+            }
+        };
+        let default = Some(PathBuf::from(".jci-coverage-baseline"));
+        assert_eq!(complexity::DEFAULT_BASELINE, ".jci-coverage-baseline");
+        assert_eq!(parse(&[]), (None, None), "off unless asked for");
+        assert_eq!(parse(&["--baseline"]), (default.clone(), None));
+        assert_eq!(parse(&["--write-baseline"]), (None, default.clone()));
+        assert_eq!(
+            parse(&["--baseline", "ci/b.bin"]),
+            (Some(PathBuf::from("ci/b.bin")), None)
+        );
+        assert_eq!(
+            parse(&["--write-baseline=ci/b.bin"]),
+            (None, Some(PathBuf::from("ci/b.bin")))
+        );
+        assert_eq!(
+            parse(&["--baseline", "--max-complexity", "15"]),
+            (default, None),
+            "a bare flag does not swallow the next option"
+        );
+        let err = Cli::try_parse_from([
+            "jci-coverage",
+            "complexity",
+            "--baseline",
+            "--write-baseline",
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot be used with"), "{err}");
+    }
+
+    #[test]
     fn every_subcommand_has_a_long_about_distinct_from_its_about() {
         use clap::CommandFactory;
         let cmd = Cli::command();
