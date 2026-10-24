@@ -12,6 +12,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - warn on risky functions(pr [#57])
 - fail on --max-complexity and --max-crap(pr [#58])
 - add --baseline and --write-baseline(pr [#59])
+- gate the composed job after the upload(pr [#60])
 
 ### Changed
 
@@ -194,6 +195,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#57]: https://github.com/jerus-org/jci-coverage/pull/57
 [#58]: https://github.com/jerus-org/jci-coverage/pull/58
 [#59]: https://github.com/jerus-org/jci-coverage/pull/59
+[#60]: https://github.com/jerus-org/jci-coverage/pull/60
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
