@@ -53,6 +53,9 @@ Options:
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too
+      --check-only
+          Only run the maximum and baseline checks, and leave the
+          report as it is
       --dry-run
           Work out and print the summary without writing anything
   -h, --help

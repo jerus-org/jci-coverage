@@ -167,6 +167,27 @@ default = "30"
 description = "Warn about each function whose CRAP score is at least this. 0 turns the check off"
 
 [[job_group.parameter]]
+name = "max_complexity"
+default = "0"
+description = "Fail the job, after the upload, if any function's cyclomatic complexity is at least this. 0 (the default) turns the check off"
+
+[[job_group.parameter]]
+name = "max_crap"
+default = "0"
+description = "Fail the job, after the upload, if any function's CRAP score is at least this. 0 (the default) turns the check off"
+
+[[job_group.parameter]]
+name = "baseline"
+default = ""
+description = "Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline"
+
+[[job_group.parameter]]
+name = "gate_tests"
+type = "boolean"
+default = "false"
+description = "Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too"
+
+[[job_group.parameter]]
 name = "log_level"
 enum = ["quiet", "default", "v", "vv", "vvv", "vvvv"]
 default = "default"
@@ -196,10 +217,9 @@ command = "complexity"
 # Left at the command's default on purpose: the report is annotated in place,
 # duplicate instantiations are merged and roll-ups are written because those
 # change what OtterWise sums, and `--dry-run` is for a local preview. The
-# maximums, and so the baseline options that go with them, are off here:
-# failing this step would skip `upload`, so the gate runs as a later step
-# (jerus-org/jci-coverage#52). Until then they have no effect in this job.
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "gate_tests", "max_complexity", "max_crap", "baseline", "write_baseline"]
+# maximums and the baseline are the gate step's, after `upload`: failing this
+# step would skip the upload and leave the dashboard stale.
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -209,6 +229,7 @@ unmatched = "<< parameters.unmatched >>"
 exclude_tests = "<< parameters.exclude_tests >>"
 warn_complexity = "<< parameters.warn_complexity >>"
 warn_crap = "<< parameters.warn_crap >>"
+gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 
 [[job_group.step]]
@@ -220,6 +241,28 @@ defaults = ["repo_token", "endpoint"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
+log_level = "<< parameters.log_level >>"
+
+# The gate: a second `complexity` step after `upload` (jerus-org/jci-coverage#52),
+# so a function over a maximum fails the job once the upload has happened and
+# the dashboard shows the failing state. `--check-only` leaves the report as it
+# is and does not repeat the summary or the warnings; with every maximum off
+# (the default) it has nothing to check and succeeds. The annotating step has
+# already matched the methods, set the roll-ups and warned, so `unmatched`,
+# `exclude_tests` and the warn thresholds are not the gate's.
+[[job_group.step]]
+command = "complexity"
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline"]
+
+[job_group.step.with]
+file = "coverage/cobertura.xml"
+check_only = "true"
+source_root = "<< parameters.source_root >>"
+rules = "<< parameters.rules >>"
+max_complexity = "<< parameters.max_complexity >>"
+max_crap = "<< parameters.max_crap >>"
+baseline = "<< parameters.baseline >>"
+gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 
 # Curated step names: without a label the generator uses the first paragraph of

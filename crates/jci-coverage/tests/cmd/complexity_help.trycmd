@@ -141,6 +141,16 @@ Options:
           Judge test code against the warning and maximum thresholds
           too
 
+      --check-only
+          Only run the maximum and baseline checks, and leave the
+          report as it is.
+          
+          For a gate step after `upload`, so a failure comes after the
+          upload and not before it. The report is not rewritten and
+          the summary and warnings, which the annotating step has
+          already given, are not repeated. With no maximum set there
+          is nothing to check and it succeeds.
+
       --dry-run
           Work out and print the summary without writing anything
 

@@ -202,6 +202,7 @@ mod tests {
                 assert_eq!(args.max_complexity, 0, "no maximum by default");
                 assert_eq!(args.max_crap, 0.0);
                 assert_eq!((args.baseline, args.write_baseline), (None, None));
+                assert!(!args.check_only);
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),
@@ -314,6 +315,24 @@ mod tests {
             "complexity",
             "--baseline",
             "--write-baseline",
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot be used with"), "{err}");
+    }
+
+    #[test]
+    fn check_only_cannot_be_combined_with_an_output_file() {
+        let cli = Cli::try_parse_from(["jci-coverage", "complexity", "--check-only"]).expect("ok");
+        match cli.command {
+            Commands::Complexity(args) => assert!(args.check_only),
+            other => panic!("expected Complexity, got {other:?}"),
+        }
+        let err = Cli::try_parse_from([
+            "jci-coverage",
+            "complexity",
+            "--check-only",
+            "--output",
+            "o.xml",
         ])
         .unwrap_err();
         assert!(err.to_string().contains("cannot be used with"), "{err}");

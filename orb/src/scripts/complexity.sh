@@ -21,5 +21,6 @@ esac
 [[ ! "${GCO_BASELINE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --baseline "${GCO_BASELINE}"
 [[ ! "${GCO_WRITE_BASELINE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --write-baseline "${GCO_WRITE_BASELINE}"
 [[ "${GCO_GATE_TESTS:-false}" = "true" ]] && set -- "$@" --gate-tests
+[[ "${GCO_CHECK_ONLY:-false}" = "true" ]] && set -- "$@" --check-only
 [[ "${GCO_DRY_RUN:-false}" = "true" ]] && set -- "$@" --dry-run
 "$@"
