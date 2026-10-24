@@ -58,6 +58,22 @@ parameters:
     type: string
     description: Warn about each function whose CRAP score is at least this. 0 turns the check off
     default: '30'
+  max_complexity:
+    type: string
+    description: Fail the job, after the upload, if any function's cyclomatic complexity is at least this. 0 (the default) turns the check off
+    default: '0'
+  max_crap:
+    type: string
+    description: Fail the job, after the upload, if any function's CRAP score is at least this. 0 (the default) turns the check off
+    default: '0'
+  baseline:
+    type: string
+    description: Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline
+    default: ''
+  gate_tests:
+    type: boolean
+    description: Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too
+    default: false
   log_level:
     type: enum
     description: Logging verbosity, from `quiet` to `vvvv` (most verbose).
@@ -99,6 +115,7 @@ steps:
 - complexity:
     exclude_tests: << parameters.exclude_tests >>
     file: coverage/cobertura.xml
+    gate_tests: << parameters.gate_tests >>
     log_level: << parameters.log_level >>
     rules: << parameters.rules >>
     source_root: << parameters.source_root >>
@@ -108,3 +125,13 @@ steps:
 - upload:
     file: coverage/cobertura.xml
     log_level: << parameters.log_level >>
+- complexity:
+    baseline: << parameters.baseline >>
+    check_only: true
+    file: coverage/cobertura.xml
+    gate_tests: << parameters.gate_tests >>
+    log_level: << parameters.log_level >>
+    max_complexity: << parameters.max_complexity >>
+    max_crap: << parameters.max_crap >>
+    rules: << parameters.rules >>
+    source_root: << parameters.source_root >>

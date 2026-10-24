@@ -12,6 +12,13 @@ description: >
   Never pass a token as a parameter: it would be stored in your config and
   appear on the command line.
 
+  To fail the build on an individual risky function, set max_complexity
+  and/or max_crap (both 0, meaning off, by default). The check is a last step
+  after the upload, so a failing gate still updates the dashboard. To adopt a
+  maximum on existing code, commit a baseline made with `jci-coverage complexity
+  --write-baseline` and set baseline: .jci-coverage-baseline; then only a new
+  or worse function fails.
+
   The default executor carries jci-coverage, cargo-llvm-cov and a Rust
   toolchain. If a prior job built the binary, set attach_workspace: true.
 usage:
@@ -24,3 +31,8 @@ usage:
         - jci-coverage/report_complexity_and_upload
         # Optional parameters: runner: nextest, package: my-crate,
         # unmatched: fail (stop if a method cannot be matched), format: both, ...
+        #
+        # Fail on risky functions, allowing today's with a committed baseline:
+        # - jci-coverage/report_complexity_and_upload:
+        #     max_complexity: 15
+        #     baseline: .jci-coverage-baseline

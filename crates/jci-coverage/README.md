@@ -122,8 +122,8 @@ a commit only when something did. Git shows no text diff of it; add
 `.jci-coverage-baseline binary` to `.gitattributes` to say so. A file that is damaged,
 truncated, from a newer format or scored with the other `--rules` is refused rather than
 trusted. The summary says how many entries are no longer needed once a function is fixed or
-removed; regenerate the file to drop them. A gate step in the orb job is planned
-(jerus-org/jci-coverage#52).
+removed; regenerate the file to drop them. `--check-only` runs just these
+checks and leaves the report as it is; it is what the orb job's last step uses.
 
 Limitations of reading source rather than compiled code:
 
@@ -181,6 +181,20 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `rules` | `rca` | count the stricter `mccabe` decision points |
 | `warn_complexity` | `10` | warn about each function at or over this complexity (`0` is off) |
 | `warn_crap` | `30` | warn about each function at or over this CRAP score (`0` is off) |
+| `max_complexity` | `0` | fail the job, after the upload, if any function is at or over this complexity (`0` is off) |
+| `max_crap` | `0` | fail the job, after the upload, if any function is at or over this CRAP score (`0` is off) |
+| `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
+| `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
+
+The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:
+it leaves the report as it is, repeats nothing the annotating step already printed, and
+fails the job only if a function is at or over a maximum and not allowed by the baseline.
+Because it comes after the upload, a failing gate still updates the OtterWise dashboard
+before the job goes red. With both maximums at their default of `0` it has nothing to check
+and succeeds. To adopt a maximum on existing code, record today's functions once with
+`jci-coverage complexity --max-complexity 15 --write-baseline`, commit
+`.jci-coverage-baseline` at the repository root, and set `max_complexity: 15` and
+`baseline: .jci-coverage-baseline`; after that only a new or worse function fails.
 
 It is Rust-only. For a project in another language, or one that wants the lcov report only,
 use `report_and_upload` or `upload`.

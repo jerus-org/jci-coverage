@@ -82,6 +82,10 @@ parameters:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
     default: false
+  check_only:
+    type: boolean
+    description: Only run the maximum and baseline checks, and leave the report as it is. For a gate step after `upload`, so a failure comes after the upload and not before it. The report is not rewritten and the summary and warnings, which the annotating step has already given, are not repeated. With no maximum set there is nothing to check and it succeeds.
+    default: false
   dry_run:
     type: boolean
     description: Work out and print the summary without writing anything
@@ -123,4 +127,5 @@ steps:
     baseline: << parameters.baseline >>
     write_baseline: << parameters.write_baseline >>
     gate_tests: << parameters.gate_tests >>
+    check_only: << parameters.check_only >>
     dry_run: << parameters.dry_run >>
