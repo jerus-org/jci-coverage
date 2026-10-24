@@ -70,6 +70,14 @@ parameters:
     type: string
     description: Fail if any function's CRAP score is at least this. A function with no executable lines has no CRAP score and never fails this. 0 turns the check off.
     default: '0'
+  baseline:
+    type: string
+    description: '[<PATH>] Let the functions listed in this file stay over a maximum. A function in the baseline fails only if it has got worse than it was recorded. It is still warned about. Without a value it reads `.jci-coverage-baseline` in the directory this runs from, by convention the repository root. Make the file with `--write-baseline`; it is a binary file for this tool, not meant to be edited.'
+    default: ''
+  write_baseline:
+    type: string
+    description: '[<PATH>] Record the functions now over a maximum in this file, and do not fail. Needs `--max-complexity` or `--max-crap`. Without a value it writes `.jci-coverage-baseline` in the directory this runs from, by convention the repository root. Nothing is written with `--dry-run`.'
+    default: ''
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -112,5 +120,7 @@ steps:
     warn_crap: << parameters.warn_crap >>
     max_complexity: << parameters.max_complexity >>
     max_crap: << parameters.max_crap >>
+    baseline: << parameters.baseline >>
+    write_baseline: << parameters.write_baseline >>
     gate_tests: << parameters.gate_tests >>
     dry_run: << parameters.dry_run >>

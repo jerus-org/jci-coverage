@@ -196,9 +196,10 @@ command = "complexity"
 # Left at the command's default on purpose: the report is annotated in place,
 # duplicate instantiations are merged and roll-ups are written because those
 # change what OtterWise sums, and `--dry-run` is for a local preview. The
-# maximums are off here: failing this step would skip `upload`, so the gate
-# runs as a later step (jerus-org/jci-coverage#52).
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "gate_tests", "max_complexity", "max_crap"]
+# maximums, and so the baseline options that go with them, are off here:
+# failing this step would skip `upload`, so the gate runs as a later step
+# (jerus-org/jci-coverage#52). Until then they have no effect in this job.
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "gate_tests", "max_complexity", "max_crap", "baseline", "write_baseline"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"

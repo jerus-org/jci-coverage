@@ -45,6 +45,11 @@ Options:
       --max-crap <N>
           Fail if any function's CRAP score is at least this [default:
           0]
+      --baseline [<PATH>]
+          Let the functions listed in this file stay over a maximum
+      --write-baseline [<PATH>]
+          Record the functions now over a maximum in this file, and do
+          not fail
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too
