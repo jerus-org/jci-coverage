@@ -27,6 +27,7 @@
 mod baseline;
 mod cobertura;
 mod counter;
+mod gate_report;
 mod metrics;
 mod plan;
 
@@ -316,40 +317,6 @@ impl ComplexityArgs {
     }
 }
 
-/// How many functions over a maximum the failure message names.
-const MAX_LISTED_FAILURES: usize = 5;
-
-/// The failure message for the functions over a maximum, or `None` if there are
-/// none. Each function is listed with the limits it is over.
-fn gate_failure(over: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
-    if over.is_empty() {
-        return None;
-    }
-    let mut out = format!("{} function(s) over a maximum:", over.len());
-    for r in over.iter().take(MAX_LISTED_FAILURES) {
-        let f = r.function;
-        out += &format!(
-            "\n  {}:{} {} (complexity {}",
-            f.file, f.line, f.name, f.complexity
-        );
-        if let Some(crap) = f.crap {
-            out += &format!(", CRAP {crap:.1}");
-        }
-        let mut limits = Vec::new();
-        if r.complexity {
-            limits.push(format!("--max-complexity {}", args.max_complexity));
-        }
-        if r.crap {
-            limits.push(format!("--max-crap {}", args.max_crap));
-        }
-        out += &format!("; over {})", limits.join(", "));
-    }
-    if over.len() > MAX_LISTED_FAILURES {
-        out += &format!("\n  ... and {} more", over.len() - MAX_LISTED_FAILURES);
-    }
-    Some(out)
-}
-
 /// The risks that are only warnings: a function over a maximum is reported once,
 /// as a failure, not also warned about.
 fn warnings_only<'a, 'b>(
@@ -534,10 +501,14 @@ fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -
         }
         return Ok(());
     }
-    match gate_failure(failing, args) {
-        Some(message) => bail!("{message}"),
-        None => Ok(()),
+    if failing.is_empty() {
+        return Ok(());
     }
+    let limits = gate_report::Limits {
+        complexity: args.max_complexity,
+        crap: args.max_crap,
+    };
+    bail!("{}", gate_report::render(failing, &limits, baseline))
 }
 
 /// `--check-only`: run just the maximum and baseline checks.
@@ -772,7 +743,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.max_complexity = 4;
         let err = run(&args).unwrap_err().to_string();
         assert!(
-            err.contains("pick") && err.contains("complexity 4"),
+            err.contains("pick") && err.contains("Complexity (max 4)"),
             "{err}"
         );
         let xml = fs::read_to_string(&args.file).expect("read");
@@ -803,11 +774,15 @@ fn pick(x: Option<i32>) -> Option<i32> {
         run(&args).expect("20 is under 21");
         args.max_crap = 20.0;
         let err = run(&args).unwrap_err().to_string();
-        assert!(err.contains("pick") && err.contains("CRAP 20.0"), "{err}");
-        assert!(err.contains("over --max-crap 20"), "{err}");
+        assert!(
+            err.contains("pick") && err.contains("CRAP (max 20)") && err.contains("20.0"),
+            "{err}"
+        );
+        assert!(err.contains("0/3 (0%)"), "the coverage behind it: {err}");
+        assert!(err.contains("cover 1 more line (1 of 3)"), "{err}");
         assert!(
             !err.contains("--max-complexity"),
-            "only the limit it is over: {err}"
+            "only the limits that are set: {err}"
         );
     }
 
@@ -910,7 +885,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     #[test]
-    fn the_failure_lists_the_worst_functions_and_counts_the_rest() {
+    fn the_failure_is_a_table_naming_every_function_with_how_to_resolve_it() {
         let f = |name: &str, complexity| metrics::FunctionMetrics {
             file: "src/a.rs".into(),
             name: name.into(),
@@ -925,14 +900,18 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (_dir, mut args) = setup();
         args.max_complexity = 10;
         args.max_crap = 100.0;
-        let risks = metrics::risky(&functions, &args.max_thresholds());
-        let msg = gate_failure(&risks, &args).expect("fails");
-        assert!(msg.starts_with("8 function(s) over a maximum"), "{msg}");
-        assert!(
-            msg.contains("f8") && !msg.contains("f1 "),
-            "worst first, capped: {msg}"
-        );
-        assert!(msg.contains("and 3 more"), "{msg}");
+        let over = metrics::risky(&functions, &args.max_thresholds());
+        let gate = Gate {
+            failing: over.clone(),
+            over,
+        };
+        let err = finish(&args, None, &gate).unwrap_err().to_string();
+        assert!(err.starts_with("8 function(s) fail the gate"), "{err}");
+        for n in 1..=8 {
+            assert!(err.contains(&format!("| f{n} ")), "f{n} missing: {err}");
+        }
+        assert!(!err.contains("more)") && !err.contains("... and"), "{err}");
+        assert!(err.contains("How to resolve"), "{err}");
     }
 
     fn baseline_path(dir: &tempfile::TempDir) -> PathBuf {

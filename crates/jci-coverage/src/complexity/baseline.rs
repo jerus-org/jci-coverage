@@ -52,6 +52,14 @@ struct Allowance {
     crap: Option<u64>,
 }
 
+/// The scores a baselined function was recorded with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Recorded {
+    pub(crate) complexity: u32,
+    /// `None` when its coverage was unknown.
+    pub(crate) crap: Option<f64>,
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct Baseline {
     rules: Rules,
@@ -277,6 +285,14 @@ impl Baseline {
             bail!("there is data after the last entry");
         }
         Ok(Self { rules, entries })
+    }
+
+    /// What was recorded for `f`, if it is in the baseline.
+    pub(crate) fn recorded(&self, f: &FunctionMetrics) -> Option<Recorded> {
+        self.entries.get(&key(f)).map(|a| Recorded {
+            complexity: a.complexity,
+            crap: a.crap.map(|tenths| tenths as f64 / 10.0),
+        })
     }
 
     /// Whether `f` is in the baseline and no worse than it was recorded.
@@ -524,6 +540,29 @@ mod tests {
             let read = Baseline::decode(&baseline(std::slice::from_ref(&f)).encode()).expect("ok");
             assert!(read.allows(&f), "{crap}");
         }
+    }
+
+    #[test]
+    fn a_baselined_function_reports_what_was_recorded() {
+        let b = baseline(&[func("src/a.rs", "f", 15, Some(30.04))]);
+        let r = b
+            .recorded(&func("src/a.rs", "f", 99, None))
+            .expect("recorded");
+        assert_eq!(r.complexity, 15);
+        assert_eq!(r.crap, Some(30.1), "rounded up to the tenth it is kept at");
+        let unknown = baseline(&[func("src/a.rs", "g", 7, None)]);
+        assert_eq!(
+            unknown
+                .recorded(&func("src/a.rs", "g", 1, None))
+                .expect("r")
+                .crap,
+            None
+        );
+        assert!(b.recorded(&func("src/a.rs", "other", 1, None)).is_none());
+        assert!(
+            b.recorded(&func("src/b.rs", "f", 1, None)).is_none(),
+            "other file"
+        );
     }
 
     #[test]
