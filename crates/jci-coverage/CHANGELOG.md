@@ -5,9 +5,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.13] - 2026-10-26
+
+Summary: Added[5], Changed[1], Documentation[3], Fixed[6], Testing[2]
+
+### Added
+
+ - feat(orb): gate the composed job after the upload
+ - feat(complexity): default the baseline to .jci-coverage-baseline
+ - feat(complexity): add --baseline and --write-baseline
+ - feat(complexity): fail on --max-complexity and --max-crap
+ - feat(complexity): warn on risky functions
+
+### Fixed
+
+ - fix(complexity): address review of --check-only
+ - fix(complexity): address review of the baseline
+ - fix(complexity): report a failing function once
+ - fix(complexity): address review of risky warnings
+ - fix: resolve Cobertura paths against <source>
+ - fix: summarise Cobertura paths in the upload log
+
+### Changed
+
+ - refactor(complexity): store the baseline as a checked binary file
+
 ## [0.0.12] - 2026-10-18
 
-Summary: Added[5], Documentation[2], Fixed[2]
+Summary: Added[5], Chore[1], Documentation[2], Fixed[2]
 
 ### Added
 
@@ -128,7 +153,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...HEAD
+[0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/jerus-org/jci-coverage/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/jerus-org/jci-coverage/compare/v0.0.8...v0.0.9

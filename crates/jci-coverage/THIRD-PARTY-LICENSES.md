@@ -2605,14 +2605,14 @@ Used by:
 - base64 0.23.1
 - bitflags 2.13.2
 - bumpalo 3.20.3
-- cc 1.8.0
+- cc 1.9.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
 - core-foundation 0.10.1
 - displaydoc 0.2.7
 - errno 0.3.14
-- find-msvc-tools 0.1.14
+- find-msvc-tools 0.1.15
 - form_urlencoded 1.2.2
 - git2 0.21.0
 - heck 0.5.0
@@ -2636,7 +2636,7 @@ Used by:
 - regex-syntax 0.8.11
 - rustc_version 0.4.1
 - rustix 1.1.5
-- rustls-native-certs 0.8.4
+- rustls-native-certs 0.8.5
 - rustls 0.23.46
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
@@ -2864,7 +2864,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.12
+- jci-coverage 0.0.13
 
 ```text
                               Apache License
@@ -3505,7 +3505,7 @@ Used by:
 - jni-macros 0.22.4
 - jni-sys-macros 0.4.1
 - jni 0.22.4
-- libc 0.2.190
+- libc 0.2.191
 - pin-project-lite 0.2.17
 - proc-macro2 1.0.107
 - quote 1.0.47
@@ -3664,7 +3664,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 Used by:
 
-- webpki-root-certs 1.0.9
+- webpki-root-certs 1.0.10
 
 ```text
 # Community Data License Agreement - Permissive - Version 2.0
@@ -3758,7 +3758,7 @@ Used by:
 
 Used by:
 
-- rustls-webpki 0.103.15
+- rustls-webpki 0.103.16
 
 ```text
 Except as otherwise noted, this project is licensed under the following
@@ -3864,7 +3864,7 @@ THE SOFTWARE.
 
 Used by:
 
-- schannel 0.1.29
+- schannel 0.1.30
 
 ```text
 Copyright (c) 2015 steffengy
@@ -4294,7 +4294,7 @@ SOFTWARE.
 
 Used by:
 
-- tokio 1.53.2
+- tokio 1.54.1
 
 ```text
 MIT License
@@ -4421,7 +4421,7 @@ SOFTWARE.
 
 Used by:
 
-- combine 4.6.8
+- combine 4.6.9
 
 ```text
 The MIT License (MIT)
@@ -4663,24 +4663,24 @@ authorization of the copyright holder.
 
 Used by:
 
-- icu_collections 2.3.0
-- icu_locale_core 2.3.0
-- icu_normalizer 2.3.0
-- icu_normalizer_data 2.3.0
-- icu_properties 2.3.0
-- icu_properties_data 2.3.0
-- icu_provider 2.3.1
+- icu_collections 2.4.0
+- icu_locale_core 2.4.0
+- icu_normalizer 2.4.0
+- icu_normalizer_data 2.4.0
+- icu_properties 2.4.0
+- icu_properties_data 2.4.0
+- icu_provider 2.4.0
 - litemap 0.8.3
 - potential_utf 0.1.6
-- tinystr 0.8.4
+- tinystr 0.8.5
 - writeable 0.6.4
 - yoke-derive 0.8.4
-- yoke 0.8.3
+- yoke 0.8.4
 - zerofrom-derive 0.1.8
 - zerofrom 0.1.8
 - zerotrie 0.2.5
-- zerovec-derive 0.11.6
-- zerovec 0.11.8
+- zerovec-derive 0.11.7
+- zerovec 0.11.9
 
 ```text
 UNICODE LICENSE V3
