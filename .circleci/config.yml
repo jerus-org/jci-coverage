@@ -136,7 +136,9 @@ workflows:
       # upload, fails the job if a function is at or over a maximum that
       # .jci-coverage-baseline (committed at the repo root, made with
       # `jci-coverage complexity --write-baseline`) does not allow. Only a new
-      # or worse function fails; regenerate the baseline when one is fixed.
+      # or worse function fails. Regenerate the baseline when a baselined function
+      # is fixed (the job says when an entry is no longer needed) and if `rules`
+      # is ever changed, as the file records the rule set it was scored with.
       - jci-coverage/report_complexity_and_upload:
           max_complexity: "15"
           max_crap: "30"
