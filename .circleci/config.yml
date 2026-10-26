@@ -133,16 +133,14 @@ workflows:
       # report_and_upload.
       #
       # Also gates individual risky functions (#52): a last step, after the
-      # upload, fails the job if a function is at or over a maximum that
-      # .jci-coverage-baseline (committed at the repo root, made with
-      # `jci-coverage complexity --write-baseline`) does not allow. Only a new
-      # or worse function fails. Regenerate the baseline when a baselined function
-      # is fixed (the job says when an entry is no longer needed) and if `rules`
-      # is ever changed, as the file records the rule set it was scored with.
+      # upload, fails the job if a function is at or over a maximum.
+      # TEMPORARY, at review: the baseline (.jci-coverage-baseline, which
+      # allows the six functions over the limits today) is removed, so the job
+      # fails and shows the gate's report. Restore it, and the `baseline:`
+      # parameter below, by reverting the commit that removed them.
       - jci-coverage/report_complexity_and_upload:
           max_complexity: "15"
           max_crap: "30"
-          baseline: .jci-coverage-baseline
           # Temporary: full verbosity while more of #44 is worked on. Logs the
           # complexity summary and every upload field (token withheld). Remove
           # once that work is done.
