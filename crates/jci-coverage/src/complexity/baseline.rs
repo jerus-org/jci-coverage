@@ -52,6 +52,29 @@ struct Allowance {
     crap: Option<u64>,
 }
 
+/// The scores a baselined function was recorded with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Recorded {
+    pub(crate) complexity: u32,
+    /// `None` when its coverage was unknown.
+    pub(crate) crap: Option<f64>,
+}
+
+/// How a function compares with its baseline entry.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Standing {
+    /// Not in the baseline: a new function.
+    New,
+    /// In the baseline and no worse than recorded.
+    Allowed,
+    /// In the baseline but worse, in the scores flagged.
+    Worse {
+        complexity: bool,
+        crap: bool,
+        recorded: Recorded,
+    },
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct Baseline {
     rules: Rules,
@@ -279,19 +302,35 @@ impl Baseline {
         Ok(Self { rules, entries })
     }
 
+    /// Where `f` stands against the baseline, and, if it is worse, in what.
+    pub(crate) fn standing(&self, f: &FunctionMetrics) -> Standing {
+        let Some(a) = self.entries.get(&key(f)) else {
+            return Standing::New;
+        };
+        let complexity = f.complexity > a.complexity;
+        let crap = match (f.crap, a.crap) {
+            (Some(now), Some(then)) => tenths(now) > then,
+            // CRAP was never accepted for it, so a known one is new.
+            (Some(_), None) => true,
+            // Coverage data is missing now; complexity alone is judged.
+            (None, _) => false,
+        };
+        if !complexity && !crap {
+            return Standing::Allowed;
+        }
+        Standing::Worse {
+            complexity,
+            crap,
+            recorded: Recorded {
+                complexity: a.complexity,
+                crap: a.crap.map(|tenths| tenths as f64 / 10.0),
+            },
+        }
+    }
+
     /// Whether `f` is in the baseline and no worse than it was recorded.
     pub(crate) fn allows(&self, f: &FunctionMetrics) -> bool {
-        let Some(a) = self.entries.get(&key(f)) else {
-            return false;
-        };
-        f.complexity <= a.complexity
-            && match (f.crap, a.crap) {
-                (Some(now), Some(then)) => tenths(now) <= then,
-                // CRAP was never accepted for it, so a known one is new.
-                (Some(_), None) => false,
-                // Coverage data is missing now; complexity alone is judged.
-                (None, _) => true,
-            }
+        self.standing(f) == Standing::Allowed
     }
 
     /// How many entries match none of the functions currently over a maximum:
@@ -523,6 +562,100 @@ mod tests {
             let f = func("src/a.rs", "f", 10, Some(crap));
             let read = Baseline::decode(&baseline(std::slice::from_ref(&f)).encode()).expect("ok");
             assert!(read.allows(&f), "{crap}");
+        }
+    }
+
+    #[test]
+    fn standing_says_which_scores_are_worse_than_recorded() {
+        let b = baseline(&[func("src/a.rs", "f", 29, Some(29.2))]);
+        assert_eq!(
+            b.standing(&func("src/a.rs", "f", 29, Some(29.2))),
+            Standing::Allowed
+        );
+        assert_eq!(
+            b.standing(&func("src/a.rs", "f", 20, None)),
+            Standing::Allowed
+        );
+        assert_eq!(
+            b.standing(&func("src/a.rs", "other", 1, None)),
+            Standing::New
+        );
+        assert_eq!(
+            b.standing(&func("src/b.rs", "f", 1, None)),
+            Standing::New,
+            "other file"
+        );
+
+        let recorded = Recorded {
+            complexity: 29,
+            crap: Some(29.2),
+        };
+        assert_eq!(
+            b.standing(&func("src/a.rs", "f", 31, Some(29.2))),
+            Standing::Worse {
+                complexity: true,
+                crap: false,
+                recorded
+            }
+        );
+        assert_eq!(
+            b.standing(&func("src/a.rs", "f", 29, Some(40.0))),
+            Standing::Worse {
+                complexity: false,
+                crap: true,
+                recorded
+            }
+        );
+        assert_eq!(
+            b.standing(&func("src/a.rs", "f", 30, Some(40.0))),
+            Standing::Worse {
+                complexity: true,
+                crap: true,
+                recorded
+            }
+        );
+    }
+
+    #[test]
+    fn a_crap_that_was_never_recorded_is_worse_once_it_is_known() {
+        let b = baseline(&[func("src/a.rs", "g", 7, None)]);
+        assert_eq!(
+            b.standing(&func("src/a.rs", "g", 7, Some(9.0))),
+            Standing::Worse {
+                complexity: false,
+                crap: true,
+                recorded: Recorded {
+                    complexity: 7,
+                    crap: None
+                }
+            }
+        );
+        assert_eq!(
+            b.standing(&func("src/a.rs", "g", 7, None)),
+            Standing::Allowed
+        );
+    }
+
+    #[test]
+    fn allows_is_exactly_the_allowed_standing() {
+        let b = baseline(&[
+            func("src/a.rs", "f", 15, Some(30.04)),
+            func("src/a.rs", "g", 7, None),
+        ]);
+        for probe in [
+            func("src/a.rs", "f", 15, Some(30.04)),
+            func("src/a.rs", "f", 16, Some(1.0)),
+            func("src/a.rs", "f", 15, Some(99.0)),
+            func("src/a.rs", "f", 15, None),
+            func("src/a.rs", "g", 7, Some(1.0)),
+            func("src/a.rs", "g", 7, None),
+            func("src/a.rs", "nope", 1, None),
+        ] {
+            assert_eq!(
+                b.allows(&probe),
+                b.standing(&probe) == Standing::Allowed,
+                "{probe:?}"
+            );
         }
     }
 
