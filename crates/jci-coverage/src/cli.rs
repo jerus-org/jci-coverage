@@ -203,6 +203,7 @@ mod tests {
                 assert_eq!(args.max_crap, 0.0);
                 assert_eq!((args.baseline, args.write_baseline), (None, None));
                 assert!(!args.check_only);
+                assert_eq!(args.summary_file, None);
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),
@@ -318,6 +319,18 @@ mod tests {
         ])
         .unwrap_err();
         assert!(err.to_string().contains("cannot be used with"), "{err}");
+    }
+
+    #[test]
+    fn complexity_takes_a_summary_file() {
+        let cli = Cli::try_parse_from(["jci-coverage", "complexity", "--summary-file", "out/s.md"])
+            .expect("parses");
+        match cli.command {
+            Commands::Complexity(args) => {
+                assert_eq!(args.summary_file, Some(PathBuf::from("out/s.md")));
+            }
+            other => panic!("expected Complexity, got {other:?}"),
+        }
     }
 
     #[test]

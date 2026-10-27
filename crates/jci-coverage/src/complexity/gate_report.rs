@@ -10,6 +10,14 @@
 //! the complexity: a function whose complexity is at or over the CRAP limit
 //! cannot be fixed by tests, only by making it simpler.
 
+mod summary;
+
+#[cfg(test)]
+pub(crate) use summary::MARKER;
+pub(crate) use summary::{
+    Context, MAX_ROWS, failing as failing_summary, passing as passing_summary,
+};
+
 use crate::complexity::{
     baseline::{Baseline, Standing},
     metrics::{FunctionMetrics, Risk, Thresholds, crap},
@@ -246,16 +254,10 @@ fn resolution(limits: &Thresholds, with_baseline: bool, record: &Record) -> Stri
     out
 }
 
-/// The report for the functions that fail the gate, worst first.
-pub(crate) fn render(
-    failing: &[Risk<'_>],
-    limits: &Thresholds,
-    baseline: Option<&Baseline>,
-    record: &Record,
-) -> String {
+/// The headline sentence: how many functions fail the gate, by cause, and how
+/// many of the CRAP failures tests alone can fix.
+fn headline(failures: &[Failure<'_>], limits: &Thresholds) -> String {
     let (complexity_on, crap_on) = (limits.complexity > 0, limits.crap > 0.0);
-    let failures: Vec<Failure<'_>> = failing.iter().map(|r| Failure::new(r, limits)).collect();
-
     let by_complexity = failures.iter().filter(|r| r.complexity).count();
     let by_crap = failures.iter().filter(|r| r.crap).count();
     let tests_fix = failures
@@ -282,6 +284,45 @@ pub(crate) fn render(
         summary += &format!("; {tests_fix} of the CRAP failures can be fixed with tests alone");
     }
     summary.push('.');
+    summary
+}
+
+/// The "Over" cell: which limits a function breaks. A CRAP failure says where
+/// the CRAP comes from: missing coverage, or a complexity that no amount of
+/// testing gets under the limit.
+fn over_label(r: &Failure<'_>) -> String {
+    let mut over: Vec<&str> = Vec::new();
+    if r.complexity {
+        over.push("complexity");
+    }
+    match r.fix {
+        Some(CrapFix::MoreCoverage { .. }) => over.push("CRAP (coverage)"),
+        Some(CrapFix::ReduceComplexity) => over.push("CRAP (complexity)"),
+        None => {}
+    }
+    over.join(", ")
+}
+
+/// A function's name, or `<closure>` for one that has none.
+fn display_name(f: &FunctionMetrics) -> String {
+    if f.name.is_empty() {
+        "<closure>".to_string()
+    } else {
+        f.name.clone()
+    }
+}
+
+/// The report for the functions that fail the gate, worst first.
+pub(crate) fn render(
+    failing: &[Risk<'_>],
+    limits: &Thresholds,
+    baseline: Option<&Baseline>,
+    record: &Record,
+) -> String {
+    let (complexity_on, crap_on) = (limits.complexity > 0, limits.crap > 0.0);
+    let failures: Vec<Failure<'_>> = failing.iter().map(|r| Failure::new(r, limits)).collect();
+
+    let summary = headline(&failures, limits);
 
     let mut header: Vec<String> = ["Function", "Location"].map(String::from).to_vec();
     header.push(if complexity_on {
@@ -305,29 +346,14 @@ pub(crate) fn render(
         .iter()
         .map(|r| {
             let f = r.function;
-            let mut over: Vec<&str> = Vec::new();
-            if r.complexity {
-                over.push("complexity");
-            }
-            // Say where the CRAP comes from: missing coverage, or a complexity
-            // that no amount of testing gets under the limit.
-            match r.fix {
-                Some(CrapFix::MoreCoverage { .. }) => over.push("CRAP (coverage)"),
-                Some(CrapFix::ReduceComplexity) => over.push("CRAP (complexity)"),
-                None => {}
-            }
             let mut row = vec![
-                if f.name.is_empty() {
-                    "<closure>".to_string()
-                } else {
-                    f.name.clone()
-                },
+                display_name(f),
                 format!("{}:{}", f.file, f.line),
                 f.complexity.to_string(),
                 covered_cell(f),
                 f.crap
                     .map_or_else(|| "n/a".to_string(), |c| format!("{c:.1}")),
-                over.join(", "),
+                over_label(r),
             ];
             if let Some(b) = baseline {
                 row.push(against_baseline(f, b));

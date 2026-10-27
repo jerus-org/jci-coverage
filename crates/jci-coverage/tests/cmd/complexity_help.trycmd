@@ -137,6 +137,17 @@ Options:
           from, by convention the repository root. Nothing is written
           with `--dry-run`.
 
+      --summary-file <PATH>
+          Write a short markdown summary of the gate result to this
+          file.
+          
+          The failing functions (or that the gate passes) in a form
+          for a pull request comment: the headline, a compact table,
+          and a link to the CI job from `CIRCLE_BUILD_URL`. Written
+          when a maximum is set, after the report; nothing is written
+          with `--dry-run` or `--write-baseline`. A failure to write
+          it is a warning and does not change the result.
+
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too
