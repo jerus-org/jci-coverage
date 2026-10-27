@@ -27,6 +27,7 @@
 mod baseline;
 mod cobertura;
 mod counter;
+mod gate_report;
 mod metrics;
 mod plan;
 
@@ -316,40 +317,6 @@ impl ComplexityArgs {
     }
 }
 
-/// How many functions over a maximum the failure message names.
-const MAX_LISTED_FAILURES: usize = 5;
-
-/// The failure message for the functions over a maximum, or `None` if there are
-/// none. Each function is listed with the limits it is over.
-fn gate_failure(over: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
-    if over.is_empty() {
-        return None;
-    }
-    let mut out = format!("{} function(s) over a maximum:", over.len());
-    for r in over.iter().take(MAX_LISTED_FAILURES) {
-        let f = r.function;
-        out += &format!(
-            "\n  {}:{} {} (complexity {}",
-            f.file, f.line, f.name, f.complexity
-        );
-        if let Some(crap) = f.crap {
-            out += &format!(", CRAP {crap:.1}");
-        }
-        let mut limits = Vec::new();
-        if r.complexity {
-            limits.push(format!("--max-complexity {}", args.max_complexity));
-        }
-        if r.crap {
-            limits.push(format!("--max-crap {}", args.max_crap));
-        }
-        out += &format!("; over {})", limits.join(", "));
-    }
-    if over.len() > MAX_LISTED_FAILURES {
-        out += &format!("\n  ... and {} more", over.len() - MAX_LISTED_FAILURES);
-    }
-    Some(out)
-}
-
 /// The risks that are only warnings: a function over a maximum is reported once,
 /// as a failure, not also warned about.
 fn warnings_only<'a, 'b>(
@@ -481,6 +448,49 @@ fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
         .transpose()
 }
 
+/// The command that records the current state as a baseline, and the file it
+/// writes: what the failure report tells the user to run. It repeats the options
+/// that decide which functions are over a maximum, so the baseline it makes
+/// covers the same functions that failed.
+fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
+    use clap::ValueEnum;
+
+    let path = args
+        .baseline
+        .as_ref()
+        .or(args.write_baseline.as_ref())
+        .map_or_else(|| DEFAULT_BASELINE.to_string(), |p| p.display().to_string());
+    let mut words = vec!["jci-coverage complexity".to_string(), "--check-only".into()];
+    if args.file != Path::new("coverage/cobertura.xml") {
+        words.push(format!("--file {}", args.file.display()));
+    }
+    if args.source_root != Path::new(".") {
+        words.push(format!("--source-root {}", args.source_root.display()));
+    }
+    if args.rules != Rules::Rca
+        && let Some(name) = args.rules.to_possible_value()
+    {
+        words.push(format!("--rules {}", name.get_name()));
+    }
+    if args.gate_tests {
+        words.push("--gate-tests".into());
+    }
+    if args.max_complexity > 0 {
+        words.push(format!("--max-complexity {}", args.max_complexity));
+    }
+    if args.max_crap > 0.0 {
+        words.push(format!("--max-crap {}", args.max_crap));
+    }
+    words.push("--write-baseline".into());
+    if path != DEFAULT_BASELINE {
+        words.push(path.clone());
+    }
+    gate_report::Record {
+        command: words.join(" "),
+        path,
+    }
+}
+
 /// The functions over a maximum, and those of them that fail the gate.
 struct Gate<'a> {
     over: Vec<metrics::Risk<'a>>,
@@ -534,10 +544,14 @@ fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -
         }
         return Ok(());
     }
-    match gate_failure(failing, args) {
-        Some(message) => bail!("{message}"),
-        None => Ok(()),
+    if failing.is_empty() {
+        return Ok(());
     }
+    let record = write_baseline_record(args);
+    bail!(
+        "{}",
+        gate_report::render(failing, &args.max_thresholds(), baseline, &record)
+    )
 }
 
 /// `--check-only`: run just the maximum and baseline checks.
@@ -772,7 +786,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.max_complexity = 4;
         let err = run(&args).unwrap_err().to_string();
         assert!(
-            err.contains("pick") && err.contains("complexity 4"),
+            err.contains("pick") && err.contains("Complexity (max 4)"),
             "{err}"
         );
         let xml = fs::read_to_string(&args.file).expect("read");
@@ -803,11 +817,15 @@ fn pick(x: Option<i32>) -> Option<i32> {
         run(&args).expect("20 is under 21");
         args.max_crap = 20.0;
         let err = run(&args).unwrap_err().to_string();
-        assert!(err.contains("pick") && err.contains("CRAP 20.0"), "{err}");
-        assert!(err.contains("over --max-crap 20"), "{err}");
+        assert!(
+            err.contains("pick") && err.contains("CRAP (max 20)") && err.contains("20.0"),
+            "{err}"
+        );
+        assert!(err.contains("0/3 (0%)"), "the coverage behind it: {err}");
+        assert!(err.contains("cover 1 more line (1 of 3)"), "{err}");
         assert!(
             !err.contains("--max-complexity"),
-            "only the limit it is over: {err}"
+            "only the limits that are set: {err}"
         );
     }
 
@@ -910,7 +928,45 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     #[test]
-    fn the_failure_lists_the_worst_functions_and_counts_the_rest() {
+    fn the_suggested_baseline_command_carries_the_options_in_use() {
+        let (_dir, mut args) = setup();
+        args.file = PathBuf::from("coverage/cobertura.xml");
+        args.source_root = PathBuf::from(".");
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let record = write_baseline_record(&args);
+        assert_eq!(
+            record.command,
+            "jci-coverage complexity --check-only --max-complexity 15 --max-crap 30 --write-baseline"
+        );
+        assert_eq!(record.path, ".jci-coverage-baseline");
+
+        args.file = PathBuf::from("cov.xml");
+        args.source_root = PathBuf::from("src");
+        args.rules = Rules::Mccabe;
+        args.gate_tests = true;
+        args.max_crap = 0.0;
+        args.baseline = Some(PathBuf::from("ci/b.bin"));
+        let record = write_baseline_record(&args);
+        assert_eq!(
+            record.command,
+            "jci-coverage complexity --check-only --file cov.xml --source-root src --rules mccabe --gate-tests --max-complexity 15 --write-baseline ci/b.bin"
+        );
+        assert_eq!(record.path, "ci/b.bin");
+    }
+
+    #[test]
+    fn the_failure_names_the_command_for_the_options_the_run_used() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.rules = Rules::Rca;
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("--check-only --file"), "{err}");
+        assert!(err.contains("--max-complexity 4 --write-baseline"), "{err}");
+    }
+
+    #[test]
+    fn the_failure_is_a_table_naming_every_function_with_how_to_resolve_it() {
         let f = |name: &str, complexity| metrics::FunctionMetrics {
             file: "src/a.rs".into(),
             name: name.into(),
@@ -925,14 +981,18 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (_dir, mut args) = setup();
         args.max_complexity = 10;
         args.max_crap = 100.0;
-        let risks = metrics::risky(&functions, &args.max_thresholds());
-        let msg = gate_failure(&risks, &args).expect("fails");
-        assert!(msg.starts_with("8 function(s) over a maximum"), "{msg}");
-        assert!(
-            msg.contains("f8") && !msg.contains("f1 "),
-            "worst first, capped: {msg}"
-        );
-        assert!(msg.contains("and 3 more"), "{msg}");
+        let over = metrics::risky(&functions, &args.max_thresholds());
+        let gate = Gate {
+            failing: over.clone(),
+            over,
+        };
+        let err = finish(&args, None, &gate).unwrap_err().to_string();
+        assert!(err.starts_with("8 function(s) fail the gate"), "{err}");
+        for n in 1..=8 {
+            assert!(err.contains(&format!("| f{n} ")), "f{n} missing: {err}");
+        }
+        assert!(!err.contains("more)") && !err.contains("... and"), "{err}");
+        assert!(err.contains("How to resolve"), "{err}");
     }
 
     fn baseline_path(dir: &tempfile::TempDir) -> PathBuf {

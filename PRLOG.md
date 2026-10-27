@@ -8,6 +8,16 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ### Fixed
 
+- deps: update dependency jci-coverage to v0.0.14(pr [#67])
+
+## [0.0.14] - 2026-10-27
+
+### Added
+
+- report gate failures as a table with fixes(pr [#66])
+
+### Fixed
+
 - deps: lock file maintenance(pr [#62])
 - deps: update rust:1-slim-trixie docker digest to 1a93974(pr [#61])
 - deps: update dependency jci-coverage to v0.0.13(pr [#63])
@@ -207,7 +217,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#62]: https://github.com/jerus-org/jci-coverage/pull/62
 [#61]: https://github.com/jerus-org/jci-coverage/pull/61
 [#63]: https://github.com/jerus-org/jci-coverage/pull/63
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...HEAD
+[#66]: https://github.com/jerus-org/jci-coverage/pull/66
+[#67]: https://github.com/jerus-org/jci-coverage/pull/67
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...HEAD
+[0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/jerus-org/jci-coverage/compare/v0.0.10...v0.0.11

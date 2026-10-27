@@ -2605,7 +2605,7 @@ Used by:
 - base64 0.23.1
 - bitflags 2.13.2
 - bumpalo 3.20.3
-- cc 1.9.0
+- cc 1.10.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
@@ -2641,7 +2641,7 @@ Used by:
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.16.3
+- smallvec 1.16.4
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - thread_local 1.1.10
@@ -2864,7 +2864,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.13
+- jci-coverage 0.0.14
 
 ```text
                               Apache License
@@ -3664,7 +3664,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 Used by:
 
-- webpki-root-certs 1.0.10
+- webpki-root-certs 1.0.11
 
 ```text
 # Community Data License Agreement - Permissive - Version 2.0
