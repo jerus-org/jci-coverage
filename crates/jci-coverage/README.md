@@ -106,18 +106,26 @@ The failure names every function that fails (none are left out), in a table:
 
 | Function            | Location                                            | Complexity (max 15) | Covered      | CRAP (max 30) | Over                          | Fix                         |
 |---------------------|-----------------------------------------------------|---------------------|--------------|---------------|-------------------------------|-----------------------------|
-| rewrite             | crates/jci-coverage/src/complexity/cobertura.rs:224 | 39                  | 71/75 (95%)  | 39.2          | complexity, CRAP (complexity) | reduce complexity below 15  |
+| rewrite             | crates/jci-coverage/src/complexity/cobertura.rs:224 | 39                  | 71/75 (94%)  | 39.2          | complexity, CRAP (complexity) | reduce complexity below 15  |
 | post_multipart      | crates/jci-coverage/src/upload/http.rs:135          | 5                   | 0/26 (0%)    | 30.0          | CRAP (coverage)               | cover 1 more line (1 of 26) |
 ```
 
 *Over* says which limit a function breaks. A CRAP failure is marked *(coverage)* when more
 tests would fix it, and *(complexity)* when they cannot, because CRAP is never below
 complexity: a function whose complexity is at or over the CRAP limit has to be made simpler,
-however well it is tested. For a coverage failure, *Fix* says how many of the function's own
-lines must be covered to pass. With a baseline in use the table adds a *Baseline* column
-saying whether the function is new or worse than it was recorded. The report ends with the
-ways to resolve a failure: reduce the complexity, add tests, accept the current state with a
-baseline, or change the limits.
+however well it is tested. *Fix* says what to do. For a coverage failure it gives how many of
+the function's own lines must be covered to pass. A function over both limits needs both, and
+says so: "reduce complexity below 15, then cover 15 more lines (15 of 26)", the second figure
+being what it needs once it is simple enough. *Covered* is rounded down, so only a fully
+covered function reads 100%.
+
+With a baseline in use the table adds a *Baseline* column saying whether the function is new
+or worse than it was recorded, and in which score ("complexity 31 > 29"). The report ends
+with the ways to resolve a failure: reduce the complexity, add tests, accept the current state
+with a baseline, or change the limits. The `--write-baseline` command it suggests repeats the
+options in use (`--file`, `--source-root`, `--rules`, `--gate-tests`, the limits and the
+baseline path), so it records the functions that failed. Every failing function is listed,
+however many; a baseline is the way to adopt a limit on code that already breaks it.
 
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not

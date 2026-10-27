@@ -448,6 +448,49 @@ fn load_baseline(args: &ComplexityArgs) -> Result<Option<Baseline>> {
         .transpose()
 }
 
+/// The command that records the current state as a baseline, and the file it
+/// writes: what the failure report tells the user to run. It repeats the options
+/// that decide which functions are over a maximum, so the baseline it makes
+/// covers the same functions that failed.
+fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
+    use clap::ValueEnum;
+
+    let path = args
+        .baseline
+        .as_ref()
+        .or(args.write_baseline.as_ref())
+        .map_or_else(|| DEFAULT_BASELINE.to_string(), |p| p.display().to_string());
+    let mut words = vec!["jci-coverage complexity".to_string(), "--check-only".into()];
+    if args.file != Path::new("coverage/cobertura.xml") {
+        words.push(format!("--file {}", args.file.display()));
+    }
+    if args.source_root != Path::new(".") {
+        words.push(format!("--source-root {}", args.source_root.display()));
+    }
+    if args.rules != Rules::Rca
+        && let Some(name) = args.rules.to_possible_value()
+    {
+        words.push(format!("--rules {}", name.get_name()));
+    }
+    if args.gate_tests {
+        words.push("--gate-tests".into());
+    }
+    if args.max_complexity > 0 {
+        words.push(format!("--max-complexity {}", args.max_complexity));
+    }
+    if args.max_crap > 0.0 {
+        words.push(format!("--max-crap {}", args.max_crap));
+    }
+    words.push("--write-baseline".into());
+    if path != DEFAULT_BASELINE {
+        words.push(path.clone());
+    }
+    gate_report::Record {
+        command: words.join(" "),
+        path,
+    }
+}
+
 /// The functions over a maximum, and those of them that fail the gate.
 struct Gate<'a> {
     over: Vec<metrics::Risk<'a>>,
@@ -504,11 +547,11 @@ fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -
     if failing.is_empty() {
         return Ok(());
     }
-    let limits = gate_report::Limits {
-        complexity: args.max_complexity,
-        crap: args.max_crap,
-    };
-    bail!("{}", gate_report::render(failing, &limits, baseline))
+    let record = write_baseline_record(args);
+    bail!(
+        "{}",
+        gate_report::render(failing, &args.max_thresholds(), baseline, &record)
+    )
 }
 
 /// `--check-only`: run just the maximum and baseline checks.
@@ -882,6 +925,44 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert!(over.is_empty());
         assert_eq!(warnings_only(&risks, &over).len(), risks.len());
         assert!(!risks.is_empty());
+    }
+
+    #[test]
+    fn the_suggested_baseline_command_carries_the_options_in_use() {
+        let (_dir, mut args) = setup();
+        args.file = PathBuf::from("coverage/cobertura.xml");
+        args.source_root = PathBuf::from(".");
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let record = write_baseline_record(&args);
+        assert_eq!(
+            record.command,
+            "jci-coverage complexity --check-only --max-complexity 15 --max-crap 30 --write-baseline"
+        );
+        assert_eq!(record.path, ".jci-coverage-baseline");
+
+        args.file = PathBuf::from("cov.xml");
+        args.source_root = PathBuf::from("src");
+        args.rules = Rules::Mccabe;
+        args.gate_tests = true;
+        args.max_crap = 0.0;
+        args.baseline = Some(PathBuf::from("ci/b.bin"));
+        let record = write_baseline_record(&args);
+        assert_eq!(
+            record.command,
+            "jci-coverage complexity --check-only --file cov.xml --source-root src --rules mccabe --gate-tests --max-complexity 15 --write-baseline ci/b.bin"
+        );
+        assert_eq!(record.path, "ci/b.bin");
+    }
+
+    #[test]
+    fn the_failure_names_the_command_for_the_options_the_run_used() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.rules = Rules::Rca;
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("--check-only --file"), "{err}");
+        assert!(err.contains("--max-complexity 4 --write-baseline"), "{err}");
     }
 
     #[test]
