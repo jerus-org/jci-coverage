@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- report gate failures as a table with fixes(pr [#66])
+
 ### Fixed
 
 - deps: lock file maintenance(pr [#62])
@@ -207,6 +211,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#62]: https://github.com/jerus-org/jci-coverage/pull/62
 [#61]: https://github.com/jerus-org/jci-coverage/pull/61
 [#63]: https://github.com/jerus-org/jci-coverage/pull/63
+[#66]: https://github.com/jerus-org/jci-coverage/pull/66
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...HEAD
 [0.0.13]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12
