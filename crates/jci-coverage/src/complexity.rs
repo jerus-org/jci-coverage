@@ -40,6 +40,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
+use crate::github;
+
 use baseline::Baseline;
 pub use counter::Rules;
 use metrics::{FunctionMetrics, Thresholds};
@@ -162,6 +164,18 @@ pub struct ComplexityArgs {
     /// write it is a warning and does not change the result.
     #[arg(long, value_name = "PATH")]
     pub summary_file: Option<PathBuf>,
+
+    /// Post the gate summary as a comment on the pull request.
+    ///
+    /// The same summary as `--summary-file`, posted to the pull request this
+    /// build is for (from `CIRCLE_PULL_REQUEST`), using the token in
+    /// `GITHUB_TOKEN`. An earlier comment from this tool is edited in place; a
+    /// passing gate only updates one that exists. Nothing is posted, and a
+    /// reason is logged, when there is no token or no pull request, or the
+    /// pull request is from a fork. A failure to post is a warning and does not
+    /// change the result.
+    #[arg(long)]
+    pub pr_comment: bool,
 
     /// Judge test code against the warning and maximum thresholds too.
     #[arg(long)]
@@ -469,6 +483,9 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
     if args.baseline.is_some() && !args.has_maximum() {
         tracing::warn!("--baseline has no effect without --max-complexity or --max-crap");
     }
+    if args.pr_comment && !args.has_maximum() {
+        tracing::warn!("--pr-comment has no effect without --max-complexity or --max-crap");
+    }
     Ok(())
 }
 
@@ -537,30 +554,61 @@ fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
     }
 }
 
-/// Write the markdown summary of the gate result, if one was asked for and
-/// there is a result to summarise. Failing to write it is a warning: the gate's
-/// own result is what matters.
-fn write_summary(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) {
-    let Some(path) = &args.summary_file else {
-        return;
-    };
-    if !args.has_maximum() {
+/// Posts a summary to the pull request (given whether the gate passes), and says
+/// what it did; `None` when nothing was posted.
+type Publisher<'a> = &'a dyn Fn(&str, bool) -> Option<github::Posted>;
+
+/// The real thing: the pull request, token and API address come from the
+/// environment.
+fn publish_to_github(markdown: &str, passing: bool) -> Option<github::Posted> {
+    let get_env = |key: &str| std::env::var(key).ok();
+    let api_url = get_env("GITHUB_API_URL").filter(|url| !url.is_empty());
+    github::publish(
+        get_env,
+        |token| github::ApiClient::new(api_url.as_deref(), token),
+        gate_report::MARKER,
+        markdown,
+        passing,
+    )
+}
+
+/// Write and post the markdown summary of the gate result, whichever was asked
+/// for, when there is a result to summarise. Failing to do either is a warning:
+/// the gate's own result is what matters.
+fn publish_summary(
+    args: &ComplexityArgs,
+    baseline: Option<&Baseline>,
+    gate: &Gate<'_>,
+    publisher: Publisher<'_>,
+) {
+    if !args.has_maximum() || (args.summary_file.is_none() && !args.pr_comment) {
         return;
     }
     if args.dry_run {
-        println!("(dry run) would write the summary to {}", path.display());
+        if let Some(path) = &args.summary_file {
+            println!("(dry run) would write the summary to {}", path.display());
+        }
+        if args.pr_comment {
+            println!("(dry run) would post the summary to the pull request");
+        }
         return;
     }
     let limits = args.max_thresholds();
-    let markdown = if gate.failing.is_empty() {
+    let passing = gate.failing.is_empty();
+    let markdown = if passing {
         let allowed = baseline.map(|_| gate.over.len());
         gate_report::passing_summary(&limits, allowed)
     } else {
         gate_report::failing_summary(&gate.failing, &limits, baseline, gate_report::MAX_ROWS)
     };
-    match write_atomic(path, markdown.as_bytes()) {
-        Ok(()) => println!("wrote the summary to {}", path.display()),
-        Err(e) => tracing::warn!(error = %format!("{e:#}"), "could not write the summary"),
+    if let Some(path) = &args.summary_file {
+        match write_atomic(path, markdown.as_bytes()) {
+            Ok(()) => println!("wrote the summary to {}", path.display()),
+            Err(e) => tracing::warn!(error = %format!("{e:#}"), "could not write the summary"),
+        }
+    }
+    if args.pr_comment {
+        publisher(&markdown, passing);
     }
 }
 
@@ -592,6 +640,15 @@ fn gate<'a>(
 /// Report on the baseline, record one if asked, and fail if a function is over
 /// a maximum that the baseline does not allow.
 fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -> Result<()> {
+    finish_with(args, baseline, gate, &publish_to_github)
+}
+
+fn finish_with(
+    args: &ComplexityArgs,
+    baseline: Option<&Baseline>,
+    gate: &Gate<'_>,
+    publisher: Publisher<'_>,
+) -> Result<()> {
     let Gate { over, failing } = gate;
     if let Some(b) = baseline {
         let still_over = over.iter().map(|r| r.function);
@@ -617,7 +674,7 @@ fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -
         }
         return Ok(());
     }
-    write_summary(args, baseline, gate);
+    publish_summary(args, baseline, gate, publisher);
     if failing.is_empty() {
         return Ok(());
     }
@@ -796,6 +853,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
             write_baseline: None,
             check_only: false,
             summary_file: None,
+            pr_comment: false,
             dry_run: false,
         };
         (dir, args)
@@ -1038,6 +1096,115 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let err = run(&args).unwrap_err().to_string();
         assert!(err.contains("--check-only --file"), "{err}");
         assert!(err.contains("--max-complexity 4 --write-baseline"), "{err}");
+    }
+
+    /// What `finish_with` made of a gate, with the summaries the publisher was
+    /// asked to post: `(result, posted)`.
+    fn finish_posting(
+        args: &ComplexityArgs,
+        baseline: Option<&Baseline>,
+        outcome: Option<github::Posted>,
+    ) -> (Result<()>, Vec<(String, bool)>) {
+        use std::cell::RefCell;
+
+        let functions = execute(args).expect("runs").functions;
+        let gate = gate(args, baseline, &functions);
+        let asked = RefCell::new(Vec::new());
+        let publisher = |markdown: &str, passing: bool| {
+            asked.borrow_mut().push((markdown.to_string(), passing));
+            outcome
+        };
+        let result = finish_with(args, baseline, &gate, &publisher);
+        (result, asked.into_inner())
+    }
+
+    #[test]
+    fn pr_comment_posts_the_failure_summary_and_the_gate_still_fails() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.pr_comment = true;
+        let (result, asked) = finish_posting(&args, None, Some(github::Posted::Created));
+        assert!(result.unwrap_err().to_string().contains("pick"));
+        assert_eq!(asked.len(), 1);
+        let (markdown, passing) = &asked[0];
+        assert!(!passing);
+        assert_eq!(markdown.lines().next(), Some(gate_report::MARKER));
+        assert!(markdown.contains("### jci-coverage gate: fails") && markdown.contains("`pick`"));
+    }
+
+    #[test]
+    fn pr_comment_posts_the_passing_summary_when_the_gate_passes() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 40;
+        args.pr_comment = true;
+        let (result, asked) = finish_posting(&args, None, Some(github::Posted::Updated));
+        result.expect("the gate passes");
+        assert_eq!(asked.len(), 1);
+        assert!(asked[0].1, "told it is a passing gate");
+        assert!(
+            asked[0].0.contains("### jci-coverage gate: passes"),
+            "{}",
+            asked[0].0
+        );
+    }
+
+    #[test]
+    fn a_comment_that_could_not_be_posted_does_not_change_the_gate() {
+        let (_dir, mut args) = setup();
+        args.pr_comment = true;
+        args.max_complexity = 4;
+        let (failed, _) = finish_posting(&args, None, None);
+        assert!(
+            failed.unwrap_err().to_string().contains("pick"),
+            "still the gate's failure"
+        );
+        args.max_complexity = 40;
+        let (passed, asked) = finish_posting(&args, None, None);
+        passed.expect("still passes");
+        assert_eq!(asked.len(), 1, "it was tried");
+    }
+
+    #[test]
+    fn nothing_is_posted_unless_asked_or_when_there_is_nothing_to_say() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let (_, asked) = finish_posting(&args, None, None);
+        assert!(asked.is_empty(), "off unless asked for");
+
+        args.pr_comment = true;
+        args.max_complexity = 0;
+        let (_, asked) = finish_posting(&args, None, None);
+        assert!(asked.is_empty(), "no maximum, nothing to summarise");
+
+        args.max_complexity = 4;
+        args.dry_run = true;
+        let (_, asked) = finish_posting(&args, None, None);
+        assert!(asked.is_empty(), "a dry run posts nothing");
+
+        args.dry_run = false;
+        args.write_baseline = Some(baseline_path(&dir));
+        let (_, asked) = finish_posting(&args, None, None);
+        assert!(asked.is_empty(), "recording a baseline is not a verdict");
+    }
+
+    #[test]
+    fn the_file_and_the_comment_hold_the_same_summary() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.pr_comment = true;
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        let (_, asked) = finish_posting(&args, None, None);
+        assert_eq!(fs::read_to_string(&path).expect("written"), asked[0].0);
+    }
+
+    #[test]
+    fn pr_comment_without_a_maximum_is_a_warning() {
+        let (_dir, mut args) = setup();
+        args.pr_comment = true;
+        let (result, log) = logged(&args);
+        result.expect("nothing to gate");
+        assert!(log.contains("--pr-comment has no effect"), "{log}");
     }
 
     #[test]

@@ -1,0 +1,85 @@
+//! A scripted [`Transport`] for tests: answers in order, records what was asked.
+
+use std::cell::RefCell;
+
+use anyhow::Result;
+use serde_json::{Value, json};
+
+use super::{Method, Response, Transport};
+
+/// Answers from a script and records what was asked.
+pub(crate) struct Mock {
+    script: RefCell<Vec<Result<Response>>>,
+    calls: RefCell<Vec<(Method, String, Option<String>)>>,
+}
+
+impl Mock {
+    pub(crate) fn new(script: Vec<Result<Response>>) -> Self {
+        Self {
+            script: RefCell::new(script.into_iter().rev().collect()),
+            calls: RefCell::default(),
+        }
+    }
+
+    pub(crate) fn calls(&self) -> Vec<(Method, String, Option<String>)> {
+        self.calls.borrow().clone()
+    }
+
+    pub(crate) fn methods(&self) -> Vec<Method> {
+        self.calls().into_iter().map(|c| c.0).collect()
+    }
+}
+
+impl Transport for Mock {
+    fn send(&self, method: Method, path: &str, body: Option<&str>) -> Result<Response> {
+        self.calls
+            .borrow_mut()
+            .push((method, path.to_string(), body.map(String::from)));
+        self.script
+            .borrow_mut()
+            .pop()
+            .expect("an unexpected request")
+    }
+}
+
+pub(crate) fn ok(status: u16, body: &str) -> Result<Response> {
+    Ok(Response {
+        status,
+        body: body.to_string(),
+    })
+}
+
+pub(crate) fn page(comments: &[(u64, &str)]) -> Result<Response> {
+    let items: Vec<Value> = comments
+        .iter()
+        .map(|(id, body)| json!({ "id": id, "body": body }))
+        .collect();
+    ok(200, &Value::Array(items).to_string())
+}
+
+/// Run `f`, returning what it logged along with its result.
+pub(crate) fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Buf {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("lock").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+    let writer = buf.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_ansi(false)
+        .finish();
+    let result = tracing::subscriber::with_default(subscriber, f);
+    let text = String::from_utf8(buf.0.lock().expect("lock").clone()).expect("utf8");
+    (result, text)
+}

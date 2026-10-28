@@ -81,6 +81,10 @@ parameters:
     type: string
     description: 'Write a short markdown summary of the gate result to this file. The failing functions (or that the gate passes) in a form for a pull request comment: the headline, a compact table, and a pointer to the CI log. Written only when requested, when a maximum is set, after the report; nothing is written with `--dry-run` or `--write-baseline`. A failure to write it is a warning and does not change the result.'
     default: ''
+  pr_comment:
+    type: boolean
+    description: Post the gate summary as a comment on the pull request. The same summary as `--summary-file`, posted to the pull request this build is for (from `CIRCLE_PULL_REQUEST`), using the token in `GITHUB_TOKEN`. An earlier comment from this tool is edited in place; a passing gate only updates one that exists. Nothing is posted, and a reason is logged, when there is no token or no pull request, or the pull request is from a fork. A failure to post is a warning and does not change the result.
+    default: false
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -106,6 +110,12 @@ steps:
     - run:
         name: Set GCO_EXCLUDE_TESTS flag
         command: echo 'export GCO_EXCLUDE_TESTS=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.pr_comment >>
+    steps:
+    - run:
+        name: Set GCO_PR_COMMENT flag
+        command: echo 'export GCO_PR_COMMENT=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.gate_tests >>
     steps:

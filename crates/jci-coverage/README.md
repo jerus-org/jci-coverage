@@ -140,8 +140,21 @@ after the report, and not with `--dry-run` or `--write-baseline`; it may not be 
 the baseline or any other output (compared by where the files are, not how they are
 spelled). In CI it is ephemeral unless you persist it, for example as a build artifact; if
 you keep it some other way, naming it, avoiding clashes and clearing stale copies are yours
-to manage. A failure to write it is a warning and does not change the gate's result. Posting it as a pull
-request comment is planned (jerus-org/jci-coverage#68).
+to manage. A failure to write it is a warning and does not change the gate's result.
+
+`--pr-comment` posts the same summary as a comment on the pull request the build is for
+(`CIRCLE_PULL_REQUEST`), in the repository named by `CIRCLE_PROJECT_USERNAME` and
+`CIRCLE_PROJECT_REPONAME`. The token is read from `GITHUB_TOKEN` (never a flag, so it stays
+out of the command line and the logs) and the API address from `GITHUB_API_URL`, default
+`https://api.github.com`; the token is only ever sent to `https`, or to `http` on this machine.
+The comment is found again by its marker and edited in place, so a pull request carries one gate
+comment however often CI runs. A failing gate creates it if there is none; a passing gate only
+updates one that exists, so a pull request that never failed gets no comment. If GitHub refuses
+the edit (the comment is not the token's to change), a failing gate posts a new comment, and the
+newest marked comment is the one edited next time. Nothing is posted, and the reason is logged,
+when there is no token (a warning), no pull request, or the pull request is from a fork (whose
+build has no secrets). Like the summary file it needs a maximum and does nothing with `--dry-run`
+or `--write-baseline`, and a failure to post is a warning that does not change the gate's result.
 
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not

@@ -41,6 +41,7 @@ quick-xml.workspace = true
 # upload: git metadata + OtterWise HTTP client
 git2.workspace = true
 reqwest.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -148,6 +148,18 @@ Options:
           with `--dry-run` or `--write-baseline`. A failure to write
           it is a warning and does not change the result.
 
+      --pr-comment
+          Post the gate summary as a comment on the pull request.
+          
+          The same summary as `--summary-file`, posted to the pull
+          request this build is for (from `CIRCLE_PULL_REQUEST`),
+          using the token in `GITHUB_TOKEN`. An earlier comment from
+          this tool is edited in place; a passing gate only updates
+          one that exists. Nothing is posted, and a reason is logged,
+          when there is no token or no pull request, or the pull
+          request is from a fork. A failure to post is a warning and
+          does not change the result.
+
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too

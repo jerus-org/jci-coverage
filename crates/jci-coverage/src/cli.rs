@@ -334,6 +334,20 @@ mod tests {
     }
 
     #[test]
+    fn complexity_posts_a_pr_comment_only_when_asked() {
+        let parse = |extra: &[&str]| {
+            let mut argv = vec!["jci-coverage", "complexity"];
+            argv.extend(extra);
+            match Cli::try_parse_from(argv).expect("parses").command {
+                Commands::Complexity(args) => args,
+                other => panic!("expected Complexity, got {other:?}"),
+            }
+        };
+        assert!(!parse(&[]).pr_comment);
+        assert!(parse(&["--pr-comment"]).pr_comment);
+    }
+
+    #[test]
     fn check_only_cannot_be_combined_with_an_output_file() {
         let cli = Cli::try_parse_from(["jci-coverage", "complexity", "--check-only"]).expect("ok");
         match cli.command {
