@@ -79,7 +79,7 @@ parameters:
     default: ''
   summary_file:
     type: string
-    description: 'Write a short markdown summary of the gate result to this file. The failing functions (or that the gate passes) in a form for a pull request comment: the headline, a compact table, and a link to the CI job from `CIRCLE_BUILD_URL`. Written when a maximum is set, after the report; nothing is written with `--dry-run` or `--write-baseline`. A failure to write it is a warning and does not change the result.'
+    description: 'Write a short markdown summary of the gate result to this file. The failing functions (or that the gate passes) in a form for a pull request comment: the headline, a compact table, and a pointer to the CI log. Written only when requested, when a maximum is set, after the report; nothing is written with `--dry-run` or `--write-baseline`. A failure to write it is a warning and does not change the result.'
     default: ''
   gate_tests:
     type: boolean
