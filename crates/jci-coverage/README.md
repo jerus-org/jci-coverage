@@ -129,15 +129,18 @@ however many; a baseline is the way to adopt a limit on code that already breaks
 
 `--summary-file <PATH>` writes a short markdown summary of the gate result: the headline
 counts, a compact table (function, where it is over, fix) of the first 25 failing functions
-with the rest counted, and a one-line pointer to the ways to resolve a failure. It links to
-the CI job (from `CIRCLE_BUILD_URL`, used only if it is a plain `https` URL) for the full
-report. A passing gate gets a "passes" summary, with how many functions over a limit the
-baseline allows. The file starts with a hidden marker, `<!-- jci-coverage:gate -->`, so a
-later step can find the comment it belongs to and edit it in place. Names and paths are put
-in code spans, with `|` escaped, and clipped, so a function name cannot break the table. It
-is written when a maximum is set, after the report, and not with `--dry-run` or
-`--write-baseline`; the file may not be the report, the baseline or any other output. A
-failure to write it is a warning and does not change the gate's result. Posting it as a pull
+with the rest counted, and a one-line pointer to the ways to resolve a failure and to the CI
+log for the full report. There is no link to the job, since its log may not be readable by
+everyone who can read the pull request. A passing gate gets a "passes" summary, with how
+many functions over a limit the baseline allows. The file starts with a hidden marker,
+`<!-- jci-coverage:gate -->`, so a later step can find the comment it belongs to and edit it
+in place. Names and paths are put in code spans, with `|` escaped, and clipped, so a function
+name cannot break the table. The file is written only when requested, when a maximum is set,
+after the report, and not with `--dry-run` or `--write-baseline`; it may not be the report,
+the baseline or any other output (compared by where the files are, not how they are
+spelled). In CI it is ephemeral unless you persist it, for example as a build artifact; if
+you keep it some other way, naming it, avoiding clashes and clearing stale copies are yours
+to manage. A failure to write it is a warning and does not change the gate's result. Posting it as a pull
 request comment is planned (jerus-org/jci-coverage#68).
 
 A project adopting a maximum usually has functions that are already over it. Record them

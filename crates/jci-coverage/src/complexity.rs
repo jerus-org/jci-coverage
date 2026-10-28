@@ -156,8 +156,8 @@ pub struct ComplexityArgs {
     /// Write a short markdown summary of the gate result to this file.
     ///
     /// The failing functions (or that the gate passes) in a form for a pull
-    /// request comment: the headline, a compact table, and a link to the CI job
-    /// from `CIRCLE_BUILD_URL`. Written when a maximum is set, after the report;
+    /// request comment: the headline, a compact table, and a pointer to the CI
+    /// log. Written only when requested, when a maximum is set, after the report;
     /// nothing is written with `--dry-run` or `--write-baseline`. A failure to
     /// write it is a warning and does not change the result.
     #[arg(long, value_name = "PATH")]
@@ -413,6 +413,27 @@ fn baseline_summary(accepted: usize, unused: usize) -> Option<String> {
     }
 }
 
+/// Where `path` is, as far as it can be told without creating it: the file
+/// itself if it exists, else its directory's real location plus its name.
+fn resolved(path: &Path) -> PathBuf {
+    if let Ok(real) = fs::canonicalize(path) {
+        return real;
+    }
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    match (
+        fs::canonicalize(parent.unwrap_or_else(|| Path::new("."))),
+        path.file_name(),
+    ) {
+        (Ok(dir), Some(name)) => dir.join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// Whether two paths name the same file, however they are spelled.
+fn same_file(a: &Path, b: &Path) -> bool {
+    resolved(a) == resolved(b)
+}
+
 /// Check the baseline options before anything is read or written, and load the
 /// baseline to compare against.
 fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
@@ -421,30 +442,28 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
             "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
         );
     }
+    let report = args.output.as_deref().unwrap_or(&args.file);
     for path in [&args.baseline, &args.write_baseline, &args.summary_file]
         .into_iter()
         .flatten()
     {
-        let report = args.output.as_deref().unwrap_or(&args.file);
-        if path == &args.file || path == report {
+        if same_file(path, &args.file) || same_file(path, report) {
             bail!(
                 "{} is the same file as the report; give it its own path",
                 path.display()
             );
         }
     }
-    // The baseline and the summary are read or written by name, so no two of them
-    // may be the same file.
-    let named: Vec<&PathBuf> = [&args.baseline, &args.write_baseline, &args.summary_file]
-        .into_iter()
-        .flatten()
-        .collect();
-    for (i, path) in named.iter().enumerate() {
-        if named[i + 1..].contains(path) {
-            bail!(
-                "{} would be the same file for two of the baseline, the baseline being recorded and the summary; give each its own path",
-                path.display()
-            );
+    // Clap already keeps `--baseline` and `--write-baseline` apart; the summary
+    // is the one other output that could land on either.
+    if let Some(summary) = &args.summary_file {
+        for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
+            if same_file(summary, other) {
+                bail!(
+                    "{} is both the summary and the baseline; give each its own path",
+                    summary.display()
+                );
+            }
         }
     }
     if args.baseline.is_some() && !args.has_maximum() {
@@ -518,11 +537,6 @@ fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
     }
 }
 
-/// The CI job's link, from `CIRCLE_BUILD_URL`.
-fn job_url(get_env: impl Fn(&str) -> Option<String>) -> Option<String> {
-    get_env("CIRCLE_BUILD_URL").filter(|url| !url.is_empty())
-}
-
 /// Write the markdown summary of the gate result, if one was asked for and
 /// there is a result to summarise. Failing to write it is a warning: the gate's
 /// own result is what matters.
@@ -537,17 +551,12 @@ fn write_summary(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate
         println!("(dry run) would write the summary to {}", path.display());
         return;
     }
-    let url = job_url(|key| std::env::var(key).ok());
-    let context = gate_report::Context {
-        job_url: url.as_deref(),
-        max_rows: gate_report::MAX_ROWS,
-    };
     let limits = args.max_thresholds();
     let markdown = if gate.failing.is_empty() {
         let allowed = baseline.map(|_| gate.over.len());
-        gate_report::passing_summary(&limits, allowed, &context)
+        gate_report::passing_summary(&limits, allowed)
     } else {
-        gate_report::failing_summary(&gate.failing, &limits, baseline, &context)
+        gate_report::failing_summary(&gate.failing, &limits, baseline, gate_report::MAX_ROWS)
     };
     match write_atomic(path, markdown.as_bytes()) {
         Ok(()) => println!("wrote the summary to {}", path.display()),
@@ -1112,6 +1121,49 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.summary_file = Some(baseline_path(&dir));
         args.baseline = args.summary_file.clone();
         let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("both the summary and the baseline"), "{err}");
+    }
+
+    #[test]
+    fn paths_are_compared_by_where_they_are_not_how_they_are_spelled() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let report = args.file.clone();
+        let name = report.file_name().expect("name").to_owned();
+        let parent = report.parent().expect("dir").to_path_buf();
+
+        args.summary_file = Some(
+            parent
+                .join("..")
+                .join(parent.file_name().expect("n"))
+                .join(&name),
+        );
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        args.summary_file = None;
+        args.baseline = Some(parent.join(".").join(&name));
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        // A file that does not exist yet, spelled two ways.
+        args.baseline = None;
+        let b = dir.path().join("b.bin");
+        args.write_baseline = Some(b.clone());
+        args.summary_file = Some(dir.path().join(".").join("b.bin"));
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file") || err.contains("both"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_the_report_is_the_report() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let link = dir.path().join("link.md");
+        std::os::unix::fs::symlink(&args.file, &link).expect("symlink");
+        args.summary_file = Some(link);
+        let err = run(&args).unwrap_err().to_string();
         assert!(err.contains("same file"), "{err}");
     }
 
@@ -1129,22 +1181,6 @@ fn pick(x: Option<i32>) -> Option<i32> {
             "the gate's own failure, not the summary's: {err}"
         );
         assert!(log.contains("summary"), "{log}");
-    }
-
-    #[test]
-    fn the_job_link_comes_from_circle_build_url() {
-        let env = |value: Option<&'static str>| {
-            move |key: &str| {
-                (key == "CIRCLE_BUILD_URL")
-                    .then(|| value.map(String::from))
-                    .flatten()
-            }
-        };
-        assert_eq!(
-            job_url(env(Some("https://circleci.com/gh/o/r/7"))).as_deref(),
-            Some("https://circleci.com/gh/o/r/7")
-        );
-        assert_eq!(job_url(env(None)), None);
     }
 
     #[test]
