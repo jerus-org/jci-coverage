@@ -172,9 +172,10 @@ pub struct ComplexityArgs {
     /// build is for (from `CIRCLE_PULL_REQUEST`), using the token in
     /// `GITHUB_TOKEN`. An earlier comment from this tool is edited in place,
     /// otherwise one is created, whether the gate passes or fails, so the pull
-    /// request shows that the gate ran. Nothing is posted, and a reason is logged, when there is no token or no pull request, or the
-    /// pull request is from a fork. A failure to post is a warning and does not
-    /// change the result.
+    /// request shows that the gate ran. Nothing is posted, and a reason is
+    /// logged, when there is no token or no pull request, or the pull request
+    /// is from a fork. A failure to post is a warning and does not change the
+    /// result.
     #[arg(long)]
     pub pr_comment: bool,
 

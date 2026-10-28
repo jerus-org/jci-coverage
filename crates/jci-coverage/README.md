@@ -257,13 +257,15 @@ and succeeds. To adopt a maximum on existing code, record today's functions once
 
 `pr_comment: true` passes `--pr-comment` to that last step, so the gate's result is also
 posted as one comment on the pull request, whether the gate passes or fails, and edited in
-place on each run. It needs a maximum to have a result to post, and a GitHub token with
-permission to comment pull requests in the `GITHUB_TOKEN` environment variable. Take the
-token from a [context](https://circleci.com/docs/contexts/) or the project's settings, never
-from a parameter, which would be stored in your config. Nothing is posted, and the reason
-is logged, for a build with no pull request or a pull request from a fork (CircleCI does not
-give a fork's build your secrets), and a failure to post is a warning that does not change
-the gate's result. Add the context to the job in the workflow:
+place on each run. The gate is the job's last step, after the upload, so a job that fails
+earlier (the tests, the report, the upload) posts nothing and leaves any earlier comment as
+it was. It needs a maximum to have a result to post, and a GitHub token with permission to
+comment on pull requests in the `GITHUB_TOKEN` environment variable. Take the token from a
+[context](https://circleci.com/docs/contexts/) or the project's environment variables, never
+from a parameter, which would be stored in your config. Nothing is posted, and the reason is
+logged, for a build with no pull request or a pull request from a fork (CircleCI gives a
+fork's build neither a context nor your project's variables), and a failure to post is a
+warning that does not change the gate's result. Add the context to the job in the workflow:
 
 ```yaml
       - jci-coverage/report_complexity_and_upload:

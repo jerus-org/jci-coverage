@@ -21,9 +21,11 @@ description: >
 
   Set pr_comment: true to also post the gate's result as one comment on the
   pull request, edited in place on each run, whether the gate passes or fails.
+  The gate is the job's last step, so a job that fails earlier posts nothing
+  and leaves any earlier comment as it was.
   It needs a maximum, and a GitHub token with permission to comment in the
-  GITHUB_TOKEN environment variable, from a context or the project's settings.
-  Never pass the token as a parameter. Nothing is posted for a build with no
+  GITHUB_TOKEN environment variable, from a context or the project's environment
+  variables. Never pass the token as a parameter. Nothing is posted for a build with no
   pull request or one from a fork, and a failure to post does not change the
   result.
 
@@ -45,7 +47,8 @@ usage:
         #     max_complexity: 15
         #     baseline: .jci-coverage-baseline
         #
-        # Also comment the result on the pull request (GITHUB_TOKEN from a context):
+        # Also comment the result on the pull request (GITHUB_TOKEN from a context;
+        # needs an orb release that includes pr_comment, an older one rejects it):
         # - jci-coverage/report_complexity_and_upload:
         #     context: my-github-token-context
         #     max_complexity: 15
