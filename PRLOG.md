@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- write a markdown summary of the gate result(pr [#69])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.14(pr [#67])
@@ -219,6 +223,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#63]: https://github.com/jerus-org/jci-coverage/pull/63
 [#66]: https://github.com/jerus-org/jci-coverage/pull/66
 [#67]: https://github.com/jerus-org/jci-coverage/pull/67
+[#69]: https://github.com/jerus-org/jci-coverage/pull/69
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...HEAD
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...v0.0.13
