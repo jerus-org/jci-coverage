@@ -19,6 +19,14 @@ description: >
   --write-baseline` and set baseline: .jci-coverage-baseline; then only a new
   or worse function fails.
 
+  Set pr_comment: true to also post the gate's result as one comment on the
+  pull request, edited in place on each run, whether the gate passes or fails.
+  It needs a maximum, and a GitHub token with permission to comment in the
+  GITHUB_TOKEN environment variable, from a context or the project's settings.
+  Never pass the token as a parameter. Nothing is posted for a build with no
+  pull request or one from a fork, and a failure to post does not change the
+  result.
+
   The default executor carries jci-coverage, cargo-llvm-cov and a Rust
   toolchain. If a prior job built the binary, set attach_workspace: true.
 usage:
@@ -36,3 +44,10 @@ usage:
         # - jci-coverage/report_complexity_and_upload:
         #     max_complexity: 15
         #     baseline: .jci-coverage-baseline
+        #
+        # Also comment the result on the pull request (GITHUB_TOKEN from a context):
+        # - jci-coverage/report_complexity_and_upload:
+        #     context: my-github-token-context
+        #     max_complexity: 15
+        #     baseline: .jci-coverage-baseline
+        #     pr_comment: true

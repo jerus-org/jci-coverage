@@ -242,6 +242,7 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `max_complexity` | `0` | fail the job, after the upload, if any function is at or over this complexity (`0` is off) |
 | `max_crap` | `0` | fail the job, after the upload, if any function is at or over this CRAP score (`0` is off) |
 | `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
+| `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 
 The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:
@@ -253,6 +254,27 @@ and succeeds. To adopt a maximum on existing code, record today's functions once
 `jci-coverage complexity --max-complexity 15 --write-baseline`, commit
 `.jci-coverage-baseline` at the repository root, and set `max_complexity: 15` and
 `baseline: .jci-coverage-baseline`; after that only a new or worse function fails.
+
+`pr_comment: true` passes `--pr-comment` to that last step, so the gate's result is also
+posted as one comment on the pull request, whether the gate passes or fails, and edited in
+place on each run. It needs a maximum to have a result to post, and a GitHub token with
+permission to comment pull requests in the `GITHUB_TOKEN` environment variable. Take the
+token from a [context](https://circleci.com/docs/contexts/) or the project's settings, never
+from a parameter, which would be stored in your config. Nothing is posted, and the reason
+is logged, for a build with no pull request or a pull request from a fork (CircleCI does not
+give a fork's build your secrets), and a failure to post is a warning that does not change
+the gate's result. Add the context to the job in the workflow:
+
+```yaml
+      - jci-coverage/report_complexity_and_upload:
+          context: my-github-token-context
+          max_complexity: 15
+          baseline: .jci-coverage-baseline
+          pr_comment: true
+```
+
+The `pr_comment` parameter exists only in the orb release that adds it, so pin an orb version
+at or after that one to use it.
 
 It is Rust-only. For a project in another language, or one that wants the lcov report only,
 use `report_and_upload` or `upload`.
