@@ -2,8 +2,8 @@
 //!
 //! The comment is found again by the hidden marker on its first line and edited
 //! in place, so a PR carries one gate comment however many times CI runs. A
-//! failing gate creates the comment if there is none; a passing gate only
-//! updates one that exists. Posting is an extra: every problem here is reported
+//! comment is created if there is none, whether the gate passes or fails, so a
+//! pull request always shows that the gate ran. Posting is an extra: every problem here is reported
 //! to the caller to log, and none of it changes the gate's own result.
 
 mod client;
@@ -146,10 +146,6 @@ pub(crate) enum Posted {
     Updated,
     /// The existing comment could not be edited, so a new one was created.
     Replaced,
-    /// A passing gate with no earlier comment to update.
-    Nothing,
-    /// A passing gate whose earlier comment could not be edited.
-    NotEditable,
 }
 
 fn comments_path(target: &Target) -> String {
@@ -239,13 +235,14 @@ fn update(api: &impl Transport, target: &Target, id: u64, markdown: &str) -> Res
     }
 }
 
-/// Post `markdown` (which starts with `marker`) to the pull request.
+/// Post `markdown` (which starts with `marker`) to the pull request: edit the
+/// comment already there, or create one. The same for a passing gate and a
+/// failing one, so a pull request always shows that the gate ran.
 pub(crate) fn post(
     api: &impl Transport,
     target: &Target,
     marker: &str,
     markdown: &str,
-    passing: bool,
 ) -> Result<Posted> {
     let existing = find_ours(api, target, marker)?;
     for &id in &existing {
@@ -253,12 +250,12 @@ pub(crate) fn post(
             return Ok(Posted::Updated);
         }
     }
-    match (existing.is_empty(), passing) {
-        (true, true) => Ok(Posted::Nothing),
-        (true, false) => create(api, target, markdown).map(|()| Posted::Created),
-        (false, true) => Ok(Posted::NotEditable),
-        (false, false) => create(api, target, markdown).map(|()| Posted::Replaced),
-    }
+    let posted = if existing.is_empty() {
+        Posted::Created
+    } else {
+        Posted::Replaced
+    };
+    create(api, target, markdown).map(|()| posted)
 }
 
 /// What was done, as a line for the log.
@@ -269,8 +266,6 @@ fn describe(posted: Posted) -> &'static str {
         Posted::Replaced => {
             "posted the summary as a new comment: the earlier one could not be edited"
         }
-        Posted::Nothing => "the gate passes and there is no earlier comment to update",
-        Posted::NotEditable => "the gate passes but the earlier comment could not be edited",
     }
 }
 
@@ -284,7 +279,6 @@ pub(crate) fn publish<T: Transport>(
     connect: impl FnOnce(Token) -> Result<T>,
     marker: &str,
     markdown: &str,
-    passing: bool,
 ) -> Option<Posted> {
     let (target, token) = match target(&get_env) {
         Ok(found) => found,
@@ -297,7 +291,7 @@ pub(crate) fn publish<T: Transport>(
             return None;
         }
     };
-    let posted = connect(token).and_then(|api| post(&api, &target, marker, markdown, passing));
+    let posted = connect(token).and_then(|api| post(&api, &target, marker, markdown));
     match posted {
         Ok(posted) => {
             println!("{}", describe(posted));
@@ -354,7 +348,7 @@ mod tests {
     #[test]
     fn a_failing_gate_with_no_comment_creates_one() {
         let api = Mock::new(vec![page(&[(1, "thanks!")]), ok(201, "{}")]);
-        let posted = post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        let posted = post(&api, &target(), MARKER, &ours("fails")).expect("posts");
         assert_eq!(posted, Posted::Created);
         let calls = api.calls();
         assert_eq!(calls[1].0, Method::Post);
@@ -373,7 +367,7 @@ mod tests {
             page(&[(1, "thanks!"), (2, &ours("fails earlier"))]),
             ok(200, "{}"),
         ]);
-        let posted = post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        let posted = post(&api, &target(), MARKER, &ours("fails")).expect("posts");
         assert_eq!(posted, Posted::Updated);
         assert_eq!(api.methods(), [Method::Get, Method::Patch]);
         assert_eq!(
@@ -387,7 +381,7 @@ mod tests {
         let quoted = format!("> {MARKER}\nsomeone quoting it");
         let mentioned = format!("see {MARKER}");
         let api = Mock::new(vec![page(&[(1, &quoted), (2, &mentioned)]), ok(201, "{}")]);
-        let posted = post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        let posted = post(&api, &target(), MARKER, &ours("fails")).expect("posts");
         assert_eq!(posted, Posted::Created);
     }
 
@@ -397,7 +391,7 @@ mod tests {
             page(&[(3, &ours("someone else's")), (9, &ours("ours"))]),
             ok(200, "{}"),
         ]);
-        post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        post(&api, &target(), MARKER, &ours("fails")).expect("posts");
         assert_eq!(
             api.calls()[1].1,
             "/repos/jerus-org/jci-coverage/issues/comments/9"
@@ -412,7 +406,7 @@ mod tests {
             ok(403, "{}"),
             ok(200, "{}"),
         ]);
-        let posted = post(&api, &target(), MARKER, &ours("passes"), true).expect("posts");
+        let posted = post(&api, &target(), MARKER, &ours("passes")).expect("posts");
         assert_eq!(posted, Posted::Updated);
         let paths: Vec<String> = api.calls().into_iter().map(|c| c.1).collect();
         assert!(
@@ -420,7 +414,7 @@ mod tests {
             "{paths:?}"
         );
 
-        // None can be edited: a failing gate posts a new comment, a passing one does not.
+        // None can be edited: a new comment is posted, passing or failing.
         let failing = Mock::new(vec![
             page(&[(3, &ours("a")), (9, &ours("b"))]),
             ok(403, "{}"),
@@ -428,17 +422,18 @@ mod tests {
             ok(201, "{}"),
         ]);
         assert_eq!(
-            post(&failing, &target(), MARKER, &ours("fails"), false).expect("posts"),
+            post(&failing, &target(), MARKER, &ours("fails")).expect("posts"),
             Posted::Replaced
         );
         let passing = Mock::new(vec![
             page(&[(3, &ours("a")), (9, &ours("b"))]),
             ok(403, "{}"),
             ok(403, "{}"),
+            ok(201, "{}"),
         ]);
         assert_eq!(
-            post(&passing, &target(), MARKER, &ours("passes"), true).expect("ok"),
-            Posted::NotEditable
+            post(&passing, &target(), MARKER, &ours("passes")).expect("ok"),
+            Posted::Replaced
         );
     }
 
@@ -449,7 +444,7 @@ mod tests {
             "You have exceeded a secondary Rate Limit",
         ] {
             let api = Mock::new(vec![page(&[(2, &ours("old"))]), ok(403, body)]);
-            let err = post(&api, &target(), MARKER, &ours("fails"), false)
+            let err = post(&api, &target(), MARKER, &ours("fails"))
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("403") && err.contains("rate limit"), "{err}");
@@ -469,36 +464,35 @@ mod tests {
                 ok(refusal, "{}"),
                 ok(201, "{}"),
             ]);
-            let posted = post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+            let posted = post(&api, &target(), MARKER, &ours("fails")).expect("posts");
             assert_eq!(posted, Posted::Replaced, "{refusal}");
             assert_eq!(api.methods(), [Method::Get, Method::Patch, Method::Post]);
         }
     }
 
     #[test]
-    fn a_passing_gate_only_updates_and_never_creates() {
-        let none = Mock::new(vec![page(&[(1, "thanks!")])]);
+    fn a_passing_gate_is_posted_the_same_way_so_the_pull_request_shows_it_ran() {
+        let none = Mock::new(vec![page(&[(1, "thanks!")]), ok(201, "{}")]);
         assert_eq!(
-            post(&none, &target(), MARKER, &ours("passes"), true).expect("ok"),
-            Posted::Nothing
+            post(&none, &target(), MARKER, &ours("passes")).expect("ok"),
+            Posted::Created
         );
-        assert_eq!(none.methods(), [Method::Get]);
+        assert_eq!(none.methods(), [Method::Get, Method::Post]);
 
         let there = Mock::new(vec![page(&[(2, &ours("fails"))]), ok(200, "{}")]);
         assert_eq!(
-            post(&there, &target(), MARKER, &ours("passes"), true).expect("ok"),
+            post(&there, &target(), MARKER, &ours("passes")).expect("ok"),
             Posted::Updated
         );
 
-        let refused = Mock::new(vec![page(&[(2, &ours("fails"))]), ok(403, "{}")]);
+        let refused = Mock::new(vec![
+            page(&[(2, &ours("fails"))]),
+            ok(403, "{}"),
+            ok(201, "{}"),
+        ]);
         assert_eq!(
-            post(&refused, &target(), MARKER, &ours("passes"), true).expect("ok"),
-            Posted::NotEditable
-        );
-        assert_eq!(
-            refused.methods(),
-            [Method::Get, Method::Patch],
-            "no new comment"
+            post(&refused, &target(), MARKER, &ours("passes")).expect("ok"),
+            Posted::Replaced
         );
     }
 
@@ -510,7 +504,7 @@ mod tests {
         let full: Vec<(u64, &str)> = full.iter().map(|(n, b)| (*n, b.as_str())).collect();
         let second = ours("on the second page");
         let api = Mock::new(vec![page(&full), page(&[(500, &second)]), ok(200, "{}")]);
-        post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        post(&api, &target(), MARKER, &ours("fails")).expect("posts");
         let calls = api.calls();
         assert!(
             calls[0].1.ends_with("?per_page=100&page=1"),
@@ -540,7 +534,7 @@ mod tests {
             })
             .collect();
         let api = Mock::new(script);
-        let err = post(&api, &target(), MARKER, &ours("fails"), false)
+        let err = post(&api, &target(), MARKER, &ours("fails"))
             .unwrap_err()
             .to_string();
         assert!(err.contains("more than 5000 comments"), "{err}");
@@ -554,32 +548,29 @@ mod tests {
     #[test]
     fn api_failures_are_errors_that_name_the_status_and_not_the_token() {
         let listing = Mock::new(vec![ok(401, "Bad credentials ghs_secret")]);
-        let err = format!(
-            "{:#}",
-            post(&listing, &target(), MARKER, "x", false).unwrap_err()
-        );
+        let err = format!("{:#}", post(&listing, &target(), MARKER, "x").unwrap_err());
         assert!(err.contains("401") && err.contains("list"), "{err}");
         assert!(!err.contains("ghs_secret"), "the body is not echoed: {err}");
 
         let creating = Mock::new(vec![page(&[]), ok(422, "{}")]);
-        let err = post(&creating, &target(), MARKER, "x", false)
+        let err = post(&creating, &target(), MARKER, "x")
             .unwrap_err()
             .to_string();
         assert!(err.contains("422") && err.contains("create"), "{err}");
 
         let updating = Mock::new(vec![page(&[(2, &ours("old"))]), ok(500, "{}")]);
-        let err = post(&updating, &target(), MARKER, "x", false)
+        let err = post(&updating, &target(), MARKER, "x")
             .unwrap_err()
             .to_string();
         assert!(err.contains("500") && err.contains("update"), "{err}");
 
         let garbled = Mock::new(vec![ok(200, "not json")]);
-        assert!(post(&garbled, &target(), MARKER, "x", false).is_err());
+        assert!(post(&garbled, &target(), MARKER, "x").is_err());
         let not_a_list = Mock::new(vec![ok(200, "{}")]);
-        assert!(post(&not_a_list, &target(), MARKER, "x", false).is_err());
+        assert!(post(&not_a_list, &target(), MARKER, "x").is_err());
 
         let transport = Mock::new(vec![Err(anyhow::anyhow!("connection refused"))]);
-        assert!(post(&transport, &target(), MARKER, "x", false).is_err());
+        assert!(post(&transport, &target(), MARKER, "x").is_err());
     }
 
     #[test]
@@ -653,7 +644,7 @@ mod tests {
         assert!(!shown.contains("ghs_secret"), "{shown}");
     }
 
-    fn publish_with(vars: &[(&str, &str)], api: &Mock, passing: bool) -> (Option<Posted>, String) {
+    fn publish_with(vars: &[(&str, &str)], api: &Mock) -> (Option<Posted>, String) {
         super::testing::logged(|| {
             publish(
                 env(vars),
@@ -663,7 +654,6 @@ mod tests {
                 },
                 MARKER,
                 &ours("fails"),
-                passing,
             )
         })
     }
@@ -671,7 +661,7 @@ mod tests {
     #[test]
     fn publishing_posts_to_the_pull_request_this_build_is_for() {
         let api = Mock::new(vec![page(&[]), ok(201, "{}")]);
-        let (posted, _) = publish_with(&PR_ENV, &api, false);
+        let (posted, _) = publish_with(&PR_ENV, &api);
         assert_eq!(posted, Some(Posted::Created));
         assert_eq!(
             api.calls()[1].1,
@@ -685,7 +675,7 @@ mod tests {
         vars.retain(|(k, _)| *k != "CIRCLE_PULL_REQUEST");
         assert_eq!(target_from(&vars).unwrap_err(), Skip::NotAPullRequest);
         let api = Mock::new(vec![]);
-        let (posted, log) = publish_with(&vars, &api, false);
+        let (posted, log) = publish_with(&vars, &api);
         assert_eq!(posted, None);
         assert!(!log.contains("WARN"), "{log}");
     }
@@ -693,7 +683,7 @@ mod tests {
     #[test]
     fn publishing_without_a_token_is_a_warning_and_asks_nothing_of_github() {
         let api = Mock::new(vec![]);
-        let (posted, log) = publish_with(&without("GITHUB_TOKEN"), &api, false);
+        let (posted, log) = publish_with(&without("GITHUB_TOKEN"), &api);
         assert_eq!(posted, None);
         assert!(
             log.contains("WARN") && log.contains("GITHUB_TOKEN"),
@@ -705,7 +695,7 @@ mod tests {
     #[test]
     fn publishing_from_a_build_with_no_pull_request_is_noted_and_asks_nothing_of_github() {
         let api = Mock::new(vec![]);
-        let (posted, log) = publish_with(&without("CIRCLE_PULL_REQUEST"), &api, false);
+        let (posted, log) = publish_with(&without("CIRCLE_PULL_REQUEST"), &api);
         assert_eq!(posted, None);
         assert!(
             log.contains("not for a pull request") && !log.contains("WARN"),
@@ -714,7 +704,7 @@ mod tests {
 
         let mut fork = PR_ENV.to_vec();
         fork.push(("CIRCLE_PR_NUMBER", "7"));
-        let (posted, log) = publish_with(&fork, &api, false);
+        let (posted, log) = publish_with(&fork, &api);
         assert_eq!(posted, None);
         assert!(log.contains("fork"), "{log}");
         assert!(api.calls().is_empty());
@@ -723,7 +713,7 @@ mod tests {
     #[test]
     fn a_posting_failure_is_logged_and_never_raised() {
         let api = Mock::new(vec![ok(500, "{}")]);
-        let (posted, log) = publish_with(&PR_ENV, &api, false);
+        let (posted, log) = publish_with(&PR_ENV, &api);
         assert_eq!(posted, None);
         assert!(log.contains("WARN") && log.contains("500"), "{log}");
 
@@ -733,7 +723,6 @@ mod tests {
                 |_| -> Result<&Mock> { Err(anyhow::anyhow!("no such host")) },
                 MARKER,
                 "x",
-                false,
             )
         });
         assert_eq!(posted, None);

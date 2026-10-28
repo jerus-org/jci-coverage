@@ -170,9 +170,9 @@ pub struct ComplexityArgs {
     ///
     /// The same summary as `--summary-file`, posted to the pull request this
     /// build is for (from `CIRCLE_PULL_REQUEST`), using the token in
-    /// `GITHUB_TOKEN`. An earlier comment from this tool is edited in place; a
-    /// passing gate only updates one that exists. Nothing is posted, and a
-    /// reason is logged, when there is no token or no pull request, or the
+    /// `GITHUB_TOKEN`. An earlier comment from this tool is edited in place,
+    /// otherwise one is created, whether the gate passes or fails, so the pull
+    /// request shows that the gate ran. Nothing is posted, and a reason is logged, when there is no token or no pull request, or the
     /// pull request is from a fork. A failure to post is a warning and does not
     /// change the result.
     #[arg(long)]
@@ -555,13 +555,13 @@ fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
     }
 }
 
-/// Posts a summary to the pull request (given whether the gate passes), and says
+/// Posts a summary to the pull request, and says
 /// what it did.
-type Publisher<'a> = &'a dyn Fn(&str, bool);
+type Publisher<'a> = &'a dyn Fn(&str);
 
 /// The real thing: the pull request, token and API address come from the
 /// environment.
-fn publish_to_github(markdown: &str, passing: bool) {
+fn publish_to_github(markdown: &str) {
     let get_env = |key: &str| std::env::var(key).ok();
     let api_url = get_env("GITHUB_API_URL").filter(|url| !url.is_empty());
     github::publish(
@@ -569,7 +569,6 @@ fn publish_to_github(markdown: &str, passing: bool) {
         |token| github::ApiClient::new(api_url.as_deref(), token),
         gate_report::MARKER,
         markdown,
-        passing,
     );
 }
 
@@ -609,7 +608,7 @@ fn publish_summary(
         }
     }
     if args.pr_comment {
-        publisher(&markdown, passing);
+        publisher(&markdown);
     }
 }
 
@@ -1104,14 +1103,14 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn finish_posting(
         args: &ComplexityArgs,
         baseline: Option<&Baseline>,
-    ) -> (Result<()>, Vec<(String, bool)>) {
+    ) -> (Result<()>, Vec<String>) {
         use std::cell::RefCell;
 
         let functions = execute(args).expect("runs").functions;
         let gate = gate(args, baseline, &functions);
         let asked = RefCell::new(Vec::new());
-        let publisher = |markdown: &str, passing: bool| {
-            asked.borrow_mut().push((markdown.to_string(), passing));
+        let publisher = |markdown: &str| {
+            asked.borrow_mut().push(markdown.to_string());
         };
         let result = finish_with(args, baseline, &gate, &publisher);
         (result, asked.into_inner())
@@ -1125,8 +1124,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (result, asked) = finish_posting(&args, None);
         assert!(result.unwrap_err().to_string().contains("pick"));
         assert_eq!(asked.len(), 1);
-        let (markdown, passing) = &asked[0];
-        assert!(!passing);
+        let markdown = &asked[0];
         assert_eq!(markdown.lines().next(), Some(gate_report::MARKER));
         assert!(markdown.contains("### jci-coverage gate: fails") && markdown.contains("`pick`"));
     }
@@ -1139,11 +1137,10 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (result, asked) = finish_posting(&args, None);
         result.expect("the gate passes");
         assert_eq!(asked.len(), 1);
-        assert!(asked[0].1, "told it is a passing gate");
         assert!(
-            asked[0].0.contains("### jci-coverage gate: passes"),
+            asked[0].contains("### jci-coverage gate: passes"),
             "{}",
-            asked[0].0
+            asked[0]
         );
     }
 
@@ -1178,7 +1175,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let path = dir.path().join("summary.md");
         args.summary_file = Some(path.clone());
         let (_, asked) = finish_posting(&args, None);
-        assert_eq!(fs::read_to_string(&path).expect("written"), asked[0].0);
+        assert_eq!(fs::read_to_string(&path).expect("written"), asked[0]);
     }
 
     #[test]

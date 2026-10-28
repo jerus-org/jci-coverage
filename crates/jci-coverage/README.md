@@ -148,10 +148,11 @@ to manage. A failure to write it is a warning and does not change the gate's res
 out of the command line and the logs) and the API address from `GITHUB_API_URL`, default
 `https://api.github.com`; the token is only ever sent to `https`, or to `http` on this machine.
 The comment is found again by its marker and edited in place, so a pull request carries one gate
-comment however often CI runs. A failing gate creates it if there is none; a passing gate only
-updates one that exists, so a pull request that never failed gets no comment. If GitHub refuses
+comment however often CI runs. The comment is created if there is none, whether the gate passes or fails, so a pull request
+always shows that the gate ran (a run that passes first time is not mistaken for one that did
+not run). If GitHub refuses
 the edit (the comment is not the token's to change, as when someone else has posted the marker),
-the next-newest marked comment is tried; if none can be edited, a failing gate posts a new one. A
+the next-newest marked comment is tried; if none can be edited, a new one is posted. A
 rate-limit refusal is an error, and so is a pull request with more than 5000 comments. Nothing is posted, and the reason is logged,
 when there is no token (a warning), no pull request, or the pull request is from a fork (whose
 build has no secrets). Like the summary file it needs a maximum, does nothing with `--dry-run` and cannot be
