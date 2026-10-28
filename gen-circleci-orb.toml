@@ -182,6 +182,12 @@ default = ""
 description = "Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline"
 
 [[job_group.parameter]]
+name = "pr_comment"
+type = "boolean"
+default = "false"
+description = "Post the gate's result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job's last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project's environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
 name = "gate_tests"
 type = "boolean"
 default = "false"
@@ -249,10 +255,13 @@ log_level = "<< parameters.log_level >>"
 # is and does not repeat the summary or the warnings; with every maximum off
 # (the default) it has nothing to check and succeeds. The annotating step has
 # already matched the methods, set the roll-ups and warned, so `unmatched`,
-# `exclude_tests` and the warn thresholds are not the gate's.
+# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment` is the
+# gate's: the summary it posts is the gate's result. It is off by default, and
+# needs `GITHUB_TOKEN` from the environment or a context (never a parameter,
+# which would be stored in the consumer's config).
 [[job_group.step]]
 command = "complexity"
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file", "pr_comment"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -262,6 +271,7 @@ rules = "<< parameters.rules >>"
 max_complexity = "<< parameters.max_complexity >>"
 max_crap = "<< parameters.max_crap >>"
 baseline = "<< parameters.baseline >>"
+pr_comment = "<< parameters.pr_comment >>"
 gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 
