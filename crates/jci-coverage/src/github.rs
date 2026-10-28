@@ -119,9 +119,6 @@ fn valid_repo(repo: &str) -> bool {
 pub(crate) fn target(
     get_env: impl Fn(&str) -> Option<String>,
 ) -> std::result::Result<(Target, Token), Skip> {
-    let token = get_env("GITHUB_TOKEN")
-        .and_then(Token::new)
-        .ok_or(Skip::NoToken)?;
     if get_env("CIRCLE_PR_NUMBER").is_some_and(|n| !n.is_empty()) {
         return Err(Skip::ForkedPullRequest);
     }
@@ -134,6 +131,11 @@ pub(crate) fn target(
         .repo
         .filter(|r| valid_repo(r))
         .ok_or(Skip::NoRepository)?;
+    // Last, so a build with no pull request is not warned about a token it has
+    // no use for.
+    let token = get_env("GITHUB_TOKEN")
+        .and_then(Token::new)
+        .ok_or(Skip::NoToken)?;
     Ok((Target { repo, pr }, token))
 }
 
@@ -185,24 +187,29 @@ fn comments_on_page(
         .collect())
 }
 
-/// The newest comment that starts with the marker. The newest, because if an
-/// older one cannot be edited (it is someone else's) a new one is created, and
-/// that is the one to find next time.
-fn find_ours(api: &impl Transport, target: &Target, marker: &str) -> Result<Option<u64>> {
-    let mut found = None;
+/// The comments that start with the marker, newest first. Ours is among them;
+/// the others (someone else posted the marker too) cannot be edited, which is
+/// found out by trying.
+fn find_ours(api: &impl Transport, target: &Target, marker: &str) -> Result<Vec<u64>> {
+    let mut found = Vec::new();
     for page in 1..=MAX_PAGES {
         let comments = comments_on_page(api, target, page)?;
         let last_page = comments.len() < PER_PAGE;
-        for (id, body) in comments {
-            if body.starts_with(marker) {
-                found = Some(id);
-            }
-        }
+        found.extend(
+            comments
+                .into_iter()
+                .filter(|(_, body)| body.starts_with(marker))
+                .map(|(id, _)| id),
+        );
         if last_page {
-            break;
+            found.reverse();
+            return Ok(found);
         }
     }
-    Ok(found)
+    bail!(
+        "the pull request has more than {} comments; not looking further",
+        MAX_PAGES * PER_PAGE
+    )
 }
 
 fn create(api: &impl Transport, target: &Target, markdown: &str) -> Result<()> {
@@ -221,6 +228,12 @@ fn update(api: &impl Transport, target: &Target, id: u64, markdown: &str) -> Res
     let response = api.send(Method::Patch, &path, Some(&body))?;
     match response.status {
         200 => Ok(true),
+        403 if response.body.to_ascii_lowercase().contains("rate limit") => {
+            bail!(failed(
+                "could not update the comment (rate limited)",
+                &response
+            ))
+        }
         403 | 404 => Ok(false),
         _ => bail!(failed("could not update the comment", &response)),
     }
@@ -234,18 +247,17 @@ pub(crate) fn post(
     markdown: &str,
     passing: bool,
 ) -> Result<Posted> {
-    match (find_ours(api, target, marker)?, passing) {
-        (None, true) => Ok(Posted::Nothing),
-        (None, false) => create(api, target, markdown).map(|()| Posted::Created),
-        (Some(id), passing) => {
-            if update(api, target, id, markdown)? {
-                Ok(Posted::Updated)
-            } else if passing {
-                Ok(Posted::NotEditable)
-            } else {
-                create(api, target, markdown).map(|()| Posted::Replaced)
-            }
+    let existing = find_ours(api, target, marker)?;
+    for &id in &existing {
+        if update(api, target, id, markdown)? {
+            return Ok(Posted::Updated);
         }
+    }
+    match (existing.is_empty(), passing) {
+        (true, true) => Ok(Posted::Nothing),
+        (true, false) => create(api, target, markdown).map(|()| Posted::Created),
+        (false, true) => Ok(Posted::NotEditable),
+        (false, false) => create(api, target, markdown).map(|()| Posted::Replaced),
     }
 }
 
@@ -393,6 +405,63 @@ mod tests {
     }
 
     #[test]
+    fn a_marked_comment_that_is_not_ours_does_not_stop_ours_being_edited() {
+        // 9 is newest but someone else's: refused, so 3 is tried.
+        let api = Mock::new(vec![
+            page(&[(3, &ours("ours")), (9, &ours("theirs"))]),
+            ok(403, "{}"),
+            ok(200, "{}"),
+        ]);
+        let posted = post(&api, &target(), MARKER, &ours("passes"), true).expect("posts");
+        assert_eq!(posted, Posted::Updated);
+        let paths: Vec<String> = api.calls().into_iter().map(|c| c.1).collect();
+        assert!(
+            paths[1].ends_with("/comments/9") && paths[2].ends_with("/comments/3"),
+            "{paths:?}"
+        );
+
+        // None can be edited: a failing gate posts a new comment, a passing one does not.
+        let failing = Mock::new(vec![
+            page(&[(3, &ours("a")), (9, &ours("b"))]),
+            ok(403, "{}"),
+            ok(404, "{}"),
+            ok(201, "{}"),
+        ]);
+        assert_eq!(
+            post(&failing, &target(), MARKER, &ours("fails"), false).expect("posts"),
+            Posted::Replaced
+        );
+        let passing = Mock::new(vec![
+            page(&[(3, &ours("a")), (9, &ours("b"))]),
+            ok(403, "{}"),
+            ok(403, "{}"),
+        ]);
+        assert_eq!(
+            post(&passing, &target(), MARKER, &ours("passes"), true).expect("ok"),
+            Posted::NotEditable
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_is_an_error_not_a_reason_to_post_again() {
+        for body in [
+            "API rate limit exceeded",
+            "You have exceeded a secondary Rate Limit",
+        ] {
+            let api = Mock::new(vec![page(&[(2, &ours("old"))]), ok(403, body)]);
+            let err = post(&api, &target(), MARKER, &ours("fails"), false)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("403") && err.contains("rate limit"), "{err}");
+            assert_eq!(
+                api.methods(),
+                [Method::Get, Method::Patch],
+                "no new comment: {body}"
+            );
+        }
+    }
+
+    #[test]
     fn a_refused_edit_falls_back_to_a_new_comment_when_failing() {
         for refusal in [403, 404] {
             let api = Mock::new(vec![
@@ -460,7 +529,7 @@ mod tests {
     }
 
     #[test]
-    fn reading_stops_after_a_bounded_number_of_pages() {
+    fn a_pull_request_with_too_many_comments_is_an_error_not_a_duplicate() {
         let full: Vec<(u64, String)> = (1..=PER_PAGE as u64)
             .map(|n| (n, "chat".to_string()))
             .collect();
@@ -469,14 +538,16 @@ mod tests {
                 let full: Vec<(u64, &str)> = full.iter().map(|(n, b)| (*n, b.as_str())).collect();
                 page(&full)
             })
-            .chain([ok(201, "{}")])
             .collect();
         let api = Mock::new(script);
-        post(&api, &target(), MARKER, &ours("fails"), false).expect("posts");
+        let err = post(&api, &target(), MARKER, &ours("fails"), false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("more than 5000 comments"), "{err}");
         assert_eq!(
             api.calls().len(),
-            MAX_PAGES + 1,
-            "the pages, then the create"
+            MAX_PAGES,
+            "the pages, and nothing posted"
         );
     }
 
@@ -606,6 +677,17 @@ mod tests {
             api.calls()[1].1,
             "/repos/jerus-org/jci-coverage/issues/7/comments"
         );
+    }
+
+    #[test]
+    fn a_build_with_no_pull_request_is_not_warned_about_a_missing_token() {
+        let mut vars = without("GITHUB_TOKEN");
+        vars.retain(|(k, _)| *k != "CIRCLE_PULL_REQUEST");
+        assert_eq!(target_from(&vars).unwrap_err(), Skip::NotAPullRequest);
+        let api = Mock::new(vec![]);
+        let (posted, log) = publish_with(&vars, &api, false);
+        assert_eq!(posted, None);
+        assert!(!log.contains("WARN"), "{log}");
     }
 
     #[test]

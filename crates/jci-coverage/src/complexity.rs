@@ -151,7 +151,8 @@ pub struct ComplexityArgs {
         long,
         value_name = "PATH",
         num_args = 0..=1,
-        default_missing_value = DEFAULT_BASELINE
+        default_missing_value = DEFAULT_BASELINE,
+        conflicts_with_all = ["summary_file", "pr_comment"]
     )]
     pub write_baseline: Option<PathBuf>,
 
@@ -555,12 +556,12 @@ fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
 }
 
 /// Posts a summary to the pull request (given whether the gate passes), and says
-/// what it did; `None` when nothing was posted.
-type Publisher<'a> = &'a dyn Fn(&str, bool) -> Option<github::Posted>;
+/// what it did.
+type Publisher<'a> = &'a dyn Fn(&str, bool);
 
 /// The real thing: the pull request, token and API address come from the
 /// environment.
-fn publish_to_github(markdown: &str, passing: bool) -> Option<github::Posted> {
+fn publish_to_github(markdown: &str, passing: bool) {
     let get_env = |key: &str| std::env::var(key).ok();
     let api_url = get_env("GITHUB_API_URL").filter(|url| !url.is_empty());
     github::publish(
@@ -569,7 +570,7 @@ fn publish_to_github(markdown: &str, passing: bool) -> Option<github::Posted> {
         gate_report::MARKER,
         markdown,
         passing,
-    )
+    );
 }
 
 /// Write and post the markdown summary of the gate result, whichever was asked
@@ -1103,7 +1104,6 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn finish_posting(
         args: &ComplexityArgs,
         baseline: Option<&Baseline>,
-        outcome: Option<github::Posted>,
     ) -> (Result<()>, Vec<(String, bool)>) {
         use std::cell::RefCell;
 
@@ -1112,7 +1112,6 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let asked = RefCell::new(Vec::new());
         let publisher = |markdown: &str, passing: bool| {
             asked.borrow_mut().push((markdown.to_string(), passing));
-            outcome
         };
         let result = finish_with(args, baseline, &gate, &publisher);
         (result, asked.into_inner())
@@ -1123,7 +1122,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (_dir, mut args) = setup();
         args.max_complexity = 4;
         args.pr_comment = true;
-        let (result, asked) = finish_posting(&args, None, Some(github::Posted::Created));
+        let (result, asked) = finish_posting(&args, None);
         assert!(result.unwrap_err().to_string().contains("pick"));
         assert_eq!(asked.len(), 1);
         let (markdown, passing) = &asked[0];
@@ -1137,7 +1136,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (_dir, mut args) = setup();
         args.max_complexity = 40;
         args.pr_comment = true;
-        let (result, asked) = finish_posting(&args, None, Some(github::Posted::Updated));
+        let (result, asked) = finish_posting(&args, None);
         result.expect("the gate passes");
         assert_eq!(asked.len(), 1);
         assert!(asked[0].1, "told it is a passing gate");
@@ -1149,41 +1148,25 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     #[test]
-    fn a_comment_that_could_not_be_posted_does_not_change_the_gate() {
-        let (_dir, mut args) = setup();
-        args.pr_comment = true;
-        args.max_complexity = 4;
-        let (failed, _) = finish_posting(&args, None, None);
-        assert!(
-            failed.unwrap_err().to_string().contains("pick"),
-            "still the gate's failure"
-        );
-        args.max_complexity = 40;
-        let (passed, asked) = finish_posting(&args, None, None);
-        passed.expect("still passes");
-        assert_eq!(asked.len(), 1, "it was tried");
-    }
-
-    #[test]
     fn nothing_is_posted_unless_asked_or_when_there_is_nothing_to_say() {
         let (dir, mut args) = setup();
         args.max_complexity = 4;
-        let (_, asked) = finish_posting(&args, None, None);
+        let (_, asked) = finish_posting(&args, None);
         assert!(asked.is_empty(), "off unless asked for");
 
         args.pr_comment = true;
         args.max_complexity = 0;
-        let (_, asked) = finish_posting(&args, None, None);
+        let (_, asked) = finish_posting(&args, None);
         assert!(asked.is_empty(), "no maximum, nothing to summarise");
 
         args.max_complexity = 4;
         args.dry_run = true;
-        let (_, asked) = finish_posting(&args, None, None);
+        let (_, asked) = finish_posting(&args, None);
         assert!(asked.is_empty(), "a dry run posts nothing");
 
         args.dry_run = false;
         args.write_baseline = Some(baseline_path(&dir));
-        let (_, asked) = finish_posting(&args, None, None);
+        let (_, asked) = finish_posting(&args, None);
         assert!(asked.is_empty(), "recording a baseline is not a verdict");
     }
 
@@ -1194,7 +1177,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.pr_comment = true;
         let path = dir.path().join("summary.md");
         args.summary_file = Some(path.clone());
-        let (_, asked) = finish_posting(&args, None, None);
+        let (_, asked) = finish_posting(&args, None);
         assert_eq!(fs::read_to_string(&path).expect("written"), asked[0].0);
     }
 

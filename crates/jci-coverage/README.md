@@ -136,7 +136,7 @@ many functions over a limit the baseline allows. The file starts with a hidden m
 `<!-- jci-coverage:gate -->`, so a later step can find the comment it belongs to and edit it
 in place. Names and paths are put in code spans, with `|` escaped, and clipped, so a function
 name cannot break the table. The file is written only when requested, when a maximum is set,
-after the report, and not with `--dry-run` or `--write-baseline`; it may not be the report,
+after the report, and not with `--dry-run` (it cannot be combined with `--write-baseline`); it may not be the report,
 the baseline or any other output (compared by where the files are, not how they are
 spelled). In CI it is ephemeral unless you persist it, for example as a build artifact; if
 you keep it some other way, naming it, avoiding clashes and clearing stale copies are yours
@@ -150,11 +150,12 @@ out of the command line and the logs) and the API address from `GITHUB_API_URL`,
 The comment is found again by its marker and edited in place, so a pull request carries one gate
 comment however often CI runs. A failing gate creates it if there is none; a passing gate only
 updates one that exists, so a pull request that never failed gets no comment. If GitHub refuses
-the edit (the comment is not the token's to change), a failing gate posts a new comment, and the
-newest marked comment is the one edited next time. Nothing is posted, and the reason is logged,
+the edit (the comment is not the token's to change, as when someone else has posted the marker),
+the next-newest marked comment is tried; if none can be edited, a failing gate posts a new one. A
+rate-limit refusal is an error, and so is a pull request with more than 5000 comments. Nothing is posted, and the reason is logged,
 when there is no token (a warning), no pull request, or the pull request is from a fork (whose
-build has no secrets). Like the summary file it needs a maximum and does nothing with `--dry-run`
-or `--write-baseline`, and a failure to post is a warning that does not change the gate's result.
+build has no secrets). Like the summary file it needs a maximum, does nothing with `--dry-run` and cannot be
+combined with `--write-baseline`, and a failure to post is a warning that does not change the gate's result.
 
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not
