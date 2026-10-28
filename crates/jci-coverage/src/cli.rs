@@ -334,6 +334,34 @@ mod tests {
     }
 
     #[test]
+    fn complexity_posts_a_pr_comment_only_when_asked() {
+        let parse = |extra: &[&str]| {
+            let mut argv = vec!["jci-coverage", "complexity"];
+            argv.extend(extra);
+            match Cli::try_parse_from(argv).expect("parses").command {
+                Commands::Complexity(args) => args,
+                other => panic!("expected Complexity, got {other:?}"),
+            }
+        };
+        assert!(!parse(&[]).pr_comment);
+        assert!(parse(&["--pr-comment"]).pr_comment);
+    }
+
+    #[test]
+    fn recording_a_baseline_excludes_the_options_that_have_nothing_to_do_there() {
+        for other in [
+            ["--baseline", "b.bin"],
+            ["--summary-file", "s.md"],
+            ["--pr-comment", ""],
+        ] {
+            let mut argv = vec!["jci-coverage", "complexity", "--write-baseline", "w.bin"];
+            argv.extend(other.iter().filter(|a| !a.is_empty()));
+            let err = Cli::try_parse_from(argv).expect_err(other[0]).to_string();
+            assert!(err.contains("cannot be used with"), "{}: {err}", other[0]);
+        }
+    }
+
+    #[test]
     fn check_only_cannot_be_combined_with_an_output_file() {
         let cli = Cli::try_parse_from(["jci-coverage", "complexity", "--check-only"]).expect("ok");
         match cli.command {

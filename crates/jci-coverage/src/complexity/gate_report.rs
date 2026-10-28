@@ -12,9 +12,9 @@
 
 mod summary;
 
-#[cfg(test)]
-pub(crate) use summary::MARKER;
-pub(crate) use summary::{MAX_ROWS, failing as failing_summary, passing as passing_summary};
+pub(crate) use summary::{
+    MARKER, MAX_ROWS, failing as failing_summary, passing as passing_summary,
+};
 
 use crate::complexity::{
     baseline::{Baseline, Standing},

@@ -219,7 +219,7 @@ command = "complexity"
 # change what OtterWise sums, and `--dry-run` is for a local preview. The
 # maximums and the baseline are the gate step's, after `upload`: failing this
 # step would skip the upload and leave the dashboard stale.
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -252,7 +252,7 @@ log_level = "<< parameters.log_level >>"
 # `exclude_tests` and the warn thresholds are not the gate's.
 [[job_group.step]]
 command = "complexity"
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file", "pr_comment"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"

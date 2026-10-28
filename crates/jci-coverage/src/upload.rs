@@ -4,7 +4,7 @@
 //! coverage file path and uploads it, with no assumption about how the file
 //! was produced.
 
-mod ci_meta;
+pub(crate) mod ci_meta;
 mod diagnostics;
 mod diff;
 mod git_meta;
