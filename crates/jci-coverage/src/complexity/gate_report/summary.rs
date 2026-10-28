@@ -62,12 +62,15 @@ fn function_cell(r: &Failure<'_>) -> String {
 
 /// The one-line "To resolve" pointer: the options that apply to the limits set.
 fn resolution(limits: &Thresholds) -> String {
-    let mut text = String::from("**To resolve:** reduce the complexity of each function listed");
+    let mut text =
+        String::from("**To resolve:** fix each function listed by reducing its complexity");
     if limits.crap > 0.0 {
-        text += ", add tests for its own lines (the Fix column says how many are enough)";
+        text += " or adding tests for its own lines (the Fix column says how many are enough)";
     }
-    text += ", accept today's state with a baseline (`jci-coverage complexity --write-baseline`, \
-            then commit `.jci-coverage-baseline`), or change the limits. \
+    text += "; or, to adopt the limits without fixing them all now, accept today's state with a \
+            baseline (`jci-coverage complexity --write-baseline`, then commit \
+            `.jci-coverage-baseline`), which leaves the functions it records allowed and fails \
+            any that get worse or are new; or change the limits. \
             The CI log has the full report and the exact command.";
     text
 }
