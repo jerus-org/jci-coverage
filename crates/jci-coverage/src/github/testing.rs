@@ -83,3 +83,52 @@ pub(crate) fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
     let text = String::from_utf8(buf.0.lock().expect("lock").clone()).expect("utf8");
     (result, text)
 }
+
+/// Serves `answers` in order, one request each, on a local port; returns the
+/// base URL and, once joined, the requests it received (head and body).
+pub(crate) fn serve(
+    answers: Vec<(&'static str, String)>,
+) -> (String, std::thread::JoinHandle<Vec<String>>) {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let base = format!("http://{}", listener.local_addr().expect("addr"));
+    let handle = std::thread::spawn(move || {
+        let mut requests = Vec::new();
+        for (status_line, answer) in answers {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut received = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = stream.read(&mut chunk).expect("read");
+                received.extend_from_slice(&chunk[..n]);
+                let text = String::from_utf8_lossy(&received).to_string();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let wanted = head
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().expect("length"))
+                        })
+                        .unwrap_or(0);
+                    if body.len() >= wanted {
+                        break;
+                    }
+                }
+                assert!(n > 0, "the client hung up early");
+            }
+            let reply = format!(
+                "HTTP/1.1 {status_line}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+            stream.write_all(reply.as_bytes()).expect("reply");
+            requests.push(String::from_utf8_lossy(&received).to_string());
+        }
+        requests
+    });
+    (base, handle)
+}

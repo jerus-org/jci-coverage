@@ -98,51 +98,18 @@ impl Transport for ApiClient {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{Read, Write},
-        net::TcpListener,
-        thread,
-    };
+    use std::{net::TcpListener, thread};
 
     use super::*;
+    use crate::github::testing::serve;
 
     /// Serves one request with `answer`, and returns what it received.
     fn serve_once(
         status_line: &'static str,
         answer: &'static str,
     ) -> (String, thread::JoinHandle<String>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
-        let base = format!("http://{}", listener.local_addr().expect("addr"));
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept");
-            let mut received = Vec::new();
-            let mut chunk = [0u8; 4096];
-            loop {
-                let n = stream.read(&mut chunk).expect("read");
-                received.extend_from_slice(&chunk[..n]);
-                let text = String::from_utf8_lossy(&received).to_string();
-                if let Some((head, body)) = text.split_once("\r\n\r\n") {
-                    let wanted = head
-                        .lines()
-                        .find_map(|l| {
-                            l.to_ascii_lowercase()
-                                .strip_prefix("content-length:")
-                                .map(|v| v.trim().parse::<usize>().expect("length"))
-                        })
-                        .unwrap_or(0);
-                    if body.len() >= wanted {
-                        break;
-                    }
-                }
-                assert!(n > 0, "the client hung up early");
-            }
-            let reply = format!(
-                "HTTP/1.1 {status_line}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
-                answer.len()
-            );
-            stream.write_all(reply.as_bytes()).expect("reply");
-            String::from_utf8_lossy(&received).to_string()
-        });
+        let (base, server) = serve(vec![(status_line, answer.to_string())]);
+        let handle = thread::spawn(move || server.join().expect("server").remove(0));
         (base, handle)
     }
 
@@ -193,6 +160,25 @@ mod tests {
             "{request}"
         );
         assert!(request.ends_with("{\"body\":\"hi\"}"), "{request}");
+    }
+
+    #[test]
+    fn a_comment_is_edited_with_a_patch() {
+        let (base, server) = serve_once("200 OK", "{}");
+        let response = local_client(&base)
+            .send(
+                Method::Patch,
+                "/repos/o/r/issues/comments/9",
+                Some("{\"body\":\"new\"}"),
+            )
+            .expect("sends");
+        assert_eq!(response.status, 200);
+        let request = server.join().expect("server");
+        assert!(
+            request.starts_with("PATCH /repos/o/r/issues/comments/9 HTTP/1.1"),
+            "{request}"
+        );
+        assert!(request.ends_with("{\"body\":\"new\"}"), "{request}");
     }
 
     #[test]

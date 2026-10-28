@@ -562,10 +562,13 @@ type Publisher<'a> = &'a dyn Fn(&str);
 /// The real thing: the pull request, token and API address come from the
 /// environment.
 fn publish_to_github(markdown: &str) {
-    let get_env = |key: &str| std::env::var(key).ok();
+    publish_with_env(|key| std::env::var(key).ok(), markdown);
+}
+
+fn publish_with_env(get_env: impl Fn(&str) -> Option<String>, markdown: &str) {
     let api_url = get_env("GITHUB_API_URL").filter(|url| !url.is_empty());
     github::publish(
-        get_env,
+        &get_env,
         |token| github::ApiClient::new(api_url.as_deref(), token),
         gate_report::MARKER,
         markdown,
@@ -1176,6 +1179,52 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.summary_file = Some(path.clone());
         let (_, asked) = finish_posting(&args, None);
         assert_eq!(fs::read_to_string(&path).expect("written"), asked[0]);
+    }
+
+    #[test]
+    fn the_real_wiring_posts_to_the_api_named_by_the_environment() {
+        let (base, server) = github::testing::serve(vec![
+            ("200 OK", "[]".to_string()),
+            ("201 Created", "{}".to_string()),
+        ]);
+        let vars = [
+            ("GITHUB_TOKEN", "ghs_secret"),
+            ("GITHUB_API_URL", base.as_str()),
+            (
+                "CIRCLE_PULL_REQUEST",
+                "https://github.com/jerus-org/jci-coverage/pull/7",
+            ),
+            ("CIRCLE_PROJECT_USERNAME", "jerus-org"),
+            ("CIRCLE_PROJECT_REPONAME", "jci-coverage"),
+        ];
+        let markdown = format!("{}\nsummary", gate_report::MARKER);
+        publish_with_env(
+            |key| {
+                vars.iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.to_string())
+            },
+            &markdown,
+        );
+        let requests = server.join().expect("server");
+        assert!(
+            requests[0].starts_with("GET /repos/jerus-org/jci-coverage/issues/7/comments?"),
+            "{}",
+            requests[0]
+        );
+        assert!(
+            requests[1].starts_with("POST /repos/jerus-org/jci-coverage/issues/7/comments "),
+            "{}",
+            requests[1]
+        );
+        assert!(
+            requests[1]
+                .to_ascii_lowercase()
+                .contains("authorization: bearer ghs_secret")
+                && requests[1].contains("summary"),
+            "{}",
+            requests[1]
+        );
     }
 
     #[test]

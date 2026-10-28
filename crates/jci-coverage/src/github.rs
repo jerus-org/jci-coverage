@@ -681,6 +681,21 @@ mod tests {
     }
 
     #[test]
+    fn publishing_says_whether_it_updated_or_replaced_the_comment() {
+        let old = ours("old");
+        let updated = Mock::new(vec![page(&[(2, &old)]), ok(200, "{}")]);
+        let (posted, _) = publish_with(&PR_ENV, &updated);
+        assert_eq!(posted, Some(Posted::Updated));
+
+        let replaced = Mock::new(vec![page(&[(2, &old)]), ok(403, "{}"), ok(201, "{}")]);
+        let (posted, _) = publish_with(&PR_ENV, &replaced);
+        assert_eq!(posted, Some(Posted::Replaced));
+        for posted in [Posted::Created, Posted::Updated, Posted::Replaced] {
+            assert!(describe(posted).contains("summary"), "{posted:?}");
+        }
+    }
+
+    #[test]
     fn publishing_without_a_token_is_a_warning_and_asks_nothing_of_github() {
         let api = Mock::new(vec![]);
         let (posted, log) = publish_with(&without("GITHUB_TOKEN"), &api);
