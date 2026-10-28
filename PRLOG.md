@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - write a markdown summary of the gate result(pr [#69])
+- post the gate summary as a PR comment(pr [#70])
 
 ### Fixed
 
@@ -224,6 +225,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#66]: https://github.com/jerus-org/jci-coverage/pull/66
 [#67]: https://github.com/jerus-org/jci-coverage/pull/67
 [#69]: https://github.com/jerus-org/jci-coverage/pull/69
+[#70]: https://github.com/jerus-org/jci-coverage/pull/70
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...HEAD
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...v0.0.13
