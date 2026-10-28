@@ -50,6 +50,9 @@ Options:
       --write-baseline [<PATH>]
           Record the functions now over a maximum in this file, and do
           not fail
+      --summary-file <PATH>
+          Write a short markdown summary of the gate result to this
+          file
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too

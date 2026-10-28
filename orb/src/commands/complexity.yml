@@ -77,6 +77,10 @@ parameters:
     type: string
     description: '[<PATH>] Record the functions now over a maximum in this file, and do not fail. Needs `--max-complexity` or `--max-crap`. Without a value it writes `.jci-coverage-baseline` in the directory this runs from, by convention the repository root. Nothing is written with `--dry-run`.'
     default: ''
+  summary_file:
+    type: string
+    description: 'Write a short markdown summary of the gate result to this file. The failing functions (or that the gate passes) in a form for a pull request comment: the headline, a compact table, and a pointer to the CI log. Written only when requested, when a maximum is set, after the report; nothing is written with `--dry-run` or `--write-baseline`. A failure to write it is a warning and does not change the result.'
+    default: ''
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -137,3 +141,4 @@ steps:
       GCO_MAX_CRAP: << parameters.max_crap >>
       GCO_BASELINE: << parameters.baseline >>
       GCO_WRITE_BASELINE: << parameters.write_baseline >>
+      GCO_SUMMARY_FILE: << parameters.summary_file >>

@@ -153,6 +153,16 @@ pub struct ComplexityArgs {
     )]
     pub write_baseline: Option<PathBuf>,
 
+    /// Write a short markdown summary of the gate result to this file.
+    ///
+    /// The failing functions (or that the gate passes) in a form for a pull
+    /// request comment: the headline, a compact table, and a pointer to the CI
+    /// log. Written only when requested, when a maximum is set, after the report;
+    /// nothing is written with `--dry-run` or `--write-baseline`. A failure to
+    /// write it is a warning and does not change the result.
+    #[arg(long, value_name = "PATH")]
+    pub summary_file: Option<PathBuf>,
+
     /// Judge test code against the warning and maximum thresholds too.
     #[arg(long)]
     pub gate_tests: bool,
@@ -403,6 +413,27 @@ fn baseline_summary(accepted: usize, unused: usize) -> Option<String> {
     }
 }
 
+/// Where `path` is, as far as it can be told without creating it: the file
+/// itself if it exists, else its directory's real location plus its name.
+fn resolved(path: &Path) -> PathBuf {
+    if let Ok(real) = fs::canonicalize(path) {
+        return real;
+    }
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    match (
+        fs::canonicalize(parent.unwrap_or_else(|| Path::new("."))),
+        path.file_name(),
+    ) {
+        (Ok(dir), Some(name)) => dir.join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// Whether two paths name the same file, however they are spelled.
+fn same_file(a: &Path, b: &Path) -> bool {
+    resolved(a) == resolved(b)
+}
+
 /// Check the baseline options before anything is read or written, and load the
 /// baseline to compare against.
 fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
@@ -411,13 +442,28 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
             "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
         );
     }
-    for path in [&args.baseline, &args.write_baseline].into_iter().flatten() {
-        let report = args.output.as_deref().unwrap_or(&args.file);
-        if path == &args.file || path == report {
+    let report = args.output.as_deref().unwrap_or(&args.file);
+    for path in [&args.baseline, &args.write_baseline, &args.summary_file]
+        .into_iter()
+        .flatten()
+    {
+        if same_file(path, &args.file) || same_file(path, report) {
             bail!(
-                "the baseline {} is the same file as the report; give it its own path",
+                "{} is the same file as the report; give it its own path",
                 path.display()
             );
+        }
+    }
+    // Clap already keeps `--baseline` and `--write-baseline` apart; the summary
+    // is the one other output that could land on either.
+    if let Some(summary) = &args.summary_file {
+        for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
+            if same_file(summary, other) {
+                bail!(
+                    "{} is both the summary and the baseline; give each its own path",
+                    summary.display()
+                );
+            }
         }
     }
     if args.baseline.is_some() && !args.has_maximum() {
@@ -491,6 +537,33 @@ fn write_baseline_record(args: &ComplexityArgs) -> gate_report::Record {
     }
 }
 
+/// Write the markdown summary of the gate result, if one was asked for and
+/// there is a result to summarise. Failing to write it is a warning: the gate's
+/// own result is what matters.
+fn write_summary(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) {
+    let Some(path) = &args.summary_file else {
+        return;
+    };
+    if !args.has_maximum() {
+        return;
+    }
+    if args.dry_run {
+        println!("(dry run) would write the summary to {}", path.display());
+        return;
+    }
+    let limits = args.max_thresholds();
+    let markdown = if gate.failing.is_empty() {
+        let allowed = baseline.map(|_| gate.over.len());
+        gate_report::passing_summary(&limits, allowed)
+    } else {
+        gate_report::failing_summary(&gate.failing, &limits, baseline, gate_report::MAX_ROWS)
+    };
+    match write_atomic(path, markdown.as_bytes()) {
+        Ok(()) => println!("wrote the summary to {}", path.display()),
+        Err(e) => tracing::warn!(error = %format!("{e:#}"), "could not write the summary"),
+    }
+}
+
 /// The functions over a maximum, and those of them that fail the gate.
 struct Gate<'a> {
     over: Vec<metrics::Risk<'a>>,
@@ -544,6 +617,7 @@ fn finish(args: &ComplexityArgs, baseline: Option<&Baseline>, gate: &Gate<'_>) -
         }
         return Ok(());
     }
+    write_summary(args, baseline, gate);
     if failing.is_empty() {
         return Ok(());
     }
@@ -721,6 +795,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
             baseline: None,
             write_baseline: None,
             check_only: false,
+            summary_file: None,
             dry_run: false,
         };
         (dir, args)
@@ -963,6 +1038,149 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let err = run(&args).unwrap_err().to_string();
         assert!(err.contains("--check-only --file"), "{err}");
         assert!(err.contains("--max-complexity 4 --write-baseline"), "{err}");
+    }
+
+    #[test]
+    fn the_summary_file_holds_the_failure_and_the_gate_still_fails() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("pick"), "the gate still fails: {err}");
+        let md = fs::read_to_string(&path).expect("written");
+        assert_eq!(md.lines().next(), Some(gate_report::MARKER), "{md}");
+        assert!(
+            md.contains("### jci-coverage gate: fails") && md.contains("`pick`"),
+            "{md}"
+        );
+    }
+
+    #[test]
+    fn the_summary_file_says_so_when_the_gate_passes() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 5;
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        run(&args).expect("nothing is over 5");
+        let md = fs::read_to_string(&path).expect("written");
+        assert!(md.contains("### jci-coverage gate: passes"), "{md}");
+        assert!(md.contains("(complexity 5)."), "{md}");
+    }
+
+    #[test]
+    fn the_summary_file_is_written_by_check_only_and_counts_the_baseline() {
+        let (dir, mut args) = setup();
+        args.check_only = true;
+        args.max_complexity = 4;
+        let baseline = baseline_path(&dir);
+        write_baseline_file(&baseline, "pick", 4, Rules::Rca);
+        args.baseline = Some(baseline);
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        run(&args).expect("baselined");
+        let md = fs::read_to_string(&path).expect("written");
+        assert!(
+            md.contains("1 function(s) over a limit are allowed by the baseline."),
+            "{md}"
+        );
+    }
+
+    #[test]
+    fn no_summary_is_written_when_there_is_nothing_to_summarise() {
+        let (dir, mut args) = setup();
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        run(&args).expect("no maximum is set");
+        assert!(!path.exists(), "no maximum, nothing to summarise");
+
+        args.check_only = true;
+        run(&args).expect("nothing to check");
+        assert!(!path.exists());
+
+        args.check_only = false;
+        args.max_complexity = 4;
+        args.dry_run = true;
+        run(&args).unwrap_err();
+        assert!(!path.exists(), "a dry run writes nothing");
+
+        args.dry_run = false;
+        args.write_baseline = Some(baseline_path(&dir));
+        run(&args).expect("recording a baseline does not fail");
+        assert!(!path.exists(), "recording a baseline is not a verdict");
+    }
+
+    #[test]
+    fn the_summary_file_may_not_be_another_output_of_the_run() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        args.summary_file = Some(args.file.clone());
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        args.summary_file = Some(baseline_path(&dir));
+        args.baseline = args.summary_file.clone();
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("both the summary and the baseline"), "{err}");
+    }
+
+    #[test]
+    fn paths_are_compared_by_where_they_are_not_how_they_are_spelled() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let report = args.file.clone();
+        let name = report.file_name().expect("name").to_owned();
+        let parent = report.parent().expect("dir").to_path_buf();
+
+        args.summary_file = Some(
+            parent
+                .join("..")
+                .join(parent.file_name().expect("n"))
+                .join(&name),
+        );
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        args.summary_file = None;
+        args.baseline = Some(parent.join(".").join(&name));
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+
+        // A file that does not exist yet, spelled two ways.
+        args.baseline = None;
+        let b = dir.path().join("b.bin");
+        args.write_baseline = Some(b.clone());
+        args.summary_file = Some(dir.path().join(".").join("b.bin"));
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file") || err.contains("both"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_the_report_is_the_report() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let link = dir.path().join("link.md");
+        std::os::unix::fs::symlink(&args.file, &link).expect("symlink");
+        args.summary_file = Some(link);
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("same file"), "{err}");
+    }
+
+    #[test]
+    fn a_summary_that_cannot_be_written_is_a_warning_and_the_gate_result_stands() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 4;
+        let blocker = dir.path().join("a-file");
+        fs::write(&blocker, "x").expect("write");
+        args.summary_file = Some(blocker.join("summary.md"));
+        let (result, log) = logged(&args);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("pick"),
+            "the gate's own failure, not the summary's: {err}"
+        );
+        assert!(log.contains("summary"), "{log}");
     }
 
     #[test]
