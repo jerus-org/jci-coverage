@@ -134,19 +134,20 @@ workflows:
       #
       # Also gates individual risky functions (#52) and comments the result on
       # the pull request (#68): the last step, after the upload, fails the job
-      # if a function is at or over a maximum, and `pr_comment` posts the
-      # result (pass or fail) as one comment, edited in place on each run. The
-      # token is GITHUB_TOKEN from the bot-check context, as the commit
-      # signature check uses.
-      # TEMPORARY, at review: the baseline (.jci-coverage-baseline, which
-      # allows the six functions over the limits today) is removed, so the job
-      # fails and the pull request shows the gate's failure summary. Restore
-      # it, and the `baseline:` parameter below, by reverting the commit that
-      # removed them.
+      # if a function is at or over a maximum that .jci-coverage-baseline
+      # (committed at the repo root, made with
+      # `jci-coverage complexity --write-baseline`) does not allow, and
+      # `pr_comment` posts the result (pass or fail) as one comment, edited in
+      # place on each run. The token is GITHUB_TOKEN from the bot-check
+      # context, as the commit signature check uses. Only a new or worse
+      # function fails. Regenerate the baseline when a baselined function is
+      # fixed (the job says when an entry is no longer needed) and if `rules`
+      # is ever changed, as the file records the rule set it was scored with.
       - jci-coverage/report_complexity_and_upload:
           context: bot-check
           max_complexity: "15"
           max_crap: "30"
+          baseline: .jci-coverage-baseline
           pr_comment: true
           # Temporary: full verbosity while more of #44 is worked on. Logs the
           # complexity summary and every upload field (token withheld). Remove
