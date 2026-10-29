@@ -4,6 +4,7 @@ Source-based Rust code coverage ([`cargo-llvm-cov`](https://crates.io/crates/car
 with upload to [OtterWise](https://getotterwise.com) for code quality reporting.
 
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![OtterWise Coverage](https://img.shields.io/endpoint?url=https://otterwise.app/badge/github/jerus-org/jci-coverage/coverage/9a4ad122-de69-4113-98ac-1358c62d545f)](https://otterwise.app/github/jerus-org/jci-coverage)
 
 This is a Cargo workspace. The published crate lives in
 [`crates/jci-coverage`](crates/jci-coverage) — see its
