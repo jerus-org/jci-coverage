@@ -7,6 +7,7 @@ Source-based Rust code coverage with
 [![Crates.io](https://img.shields.io/crates/v/jci-coverage.svg)](https://crates.io/crates/jci-coverage)
 [![Documentation](https://docs.rs/jci-coverage/badge.svg)](https://docs.rs/jci-coverage)
 [![License](https://img.shields.io/crates/l/jci-coverage.svg)](https://github.com/jerus-org/jci-coverage#license)
+[![OtterWise Coverage](https://img.shields.io/endpoint?url=https://otterwise.app/badge/github/jerus-org/jci-coverage/coverage/9a4ad122-de69-4113-98ac-1358c62d545f)](https://otterwise.app/github/jerus-org/jci-coverage)
 
 ## Why
 
