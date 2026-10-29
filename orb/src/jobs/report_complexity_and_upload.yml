@@ -70,6 +70,10 @@ parameters:
     type: string
     description: Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline
     default: ''
+  pr_comment:
+    type: boolean
+    description: 'Post the gate''s result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job''s last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project''s environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter.'
+    default: false
   gate_tests:
     type: boolean
     description: Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too
@@ -133,5 +137,6 @@ steps:
     log_level: << parameters.log_level >>
     max_complexity: << parameters.max_complexity >>
     max_crap: << parameters.max_crap >>
+    pr_comment: << parameters.pr_comment >>
     rules: << parameters.rules >>
     source_root: << parameters.source_root >>

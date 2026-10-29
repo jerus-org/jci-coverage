@@ -203,6 +203,7 @@ mod tests {
                 assert_eq!(args.max_crap, 0.0);
                 assert_eq!((args.baseline, args.write_baseline), (None, None));
                 assert!(!args.check_only);
+                assert_eq!(args.summary_file, None);
                 assert!(!args.dry_run);
             }
             other => panic!("expected Complexity, got {other:?}"),
@@ -318,6 +319,46 @@ mod tests {
         ])
         .unwrap_err();
         assert!(err.to_string().contains("cannot be used with"), "{err}");
+    }
+
+    #[test]
+    fn complexity_takes_a_summary_file() {
+        let cli = Cli::try_parse_from(["jci-coverage", "complexity", "--summary-file", "out/s.md"])
+            .expect("parses");
+        match cli.command {
+            Commands::Complexity(args) => {
+                assert_eq!(args.summary_file, Some(PathBuf::from("out/s.md")));
+            }
+            other => panic!("expected Complexity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn complexity_posts_a_pr_comment_only_when_asked() {
+        let parse = |extra: &[&str]| {
+            let mut argv = vec!["jci-coverage", "complexity"];
+            argv.extend(extra);
+            match Cli::try_parse_from(argv).expect("parses").command {
+                Commands::Complexity(args) => args,
+                other => panic!("expected Complexity, got {other:?}"),
+            }
+        };
+        assert!(!parse(&[]).pr_comment);
+        assert!(parse(&["--pr-comment"]).pr_comment);
+    }
+
+    #[test]
+    fn recording_a_baseline_excludes_the_options_that_have_nothing_to_do_there() {
+        for other in [
+            ["--baseline", "b.bin"],
+            ["--summary-file", "s.md"],
+            ["--pr-comment", ""],
+        ] {
+            let mut argv = vec!["jci-coverage", "complexity", "--write-baseline", "w.bin"];
+            argv.extend(other.iter().filter(|a| !a.is_empty()));
+            let err = Cli::try_parse_from(argv).expect_err(other[0]).to_string();
+            assert!(err.contains("cannot be used with"), "{}: {err}", other[0]);
+        }
     }
 
     #[test]

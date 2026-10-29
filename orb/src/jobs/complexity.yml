@@ -78,6 +78,14 @@ parameters:
     type: string
     description: '[<PATH>] Record the functions now over a maximum in this file, and do not fail. Needs `--max-complexity` or `--max-crap`. Without a value it writes `.jci-coverage-baseline` in the directory this runs from, by convention the repository root. Nothing is written with `--dry-run`.'
     default: ''
+  summary_file:
+    type: string
+    description: 'Write a short markdown summary of the gate result to this file. The failing functions (or that the gate passes) in a form for a pull request comment: the headline, a compact table, and a pointer to the CI log. Written only when requested, when a maximum is set, after the report; nothing is written with `--dry-run` or `--write-baseline`. A failure to write it is a warning and does not change the result.'
+    default: ''
+  pr_comment:
+    type: boolean
+    description: Post the gate summary as a comment on the pull request. The same summary as `--summary-file`, posted to the pull request this build is for (from `CIRCLE_PULL_REQUEST`), using the token in `GITHUB_TOKEN`. An earlier comment from this tool is edited in place, otherwise one is created, whether the gate passes or fails, so the pull request shows that the gate ran. Nothing is posted, and a reason is logged, when there is no token or no pull request, or the pull request is from a fork. A failure to post is a warning and does not change the result.
+    default: false
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -126,6 +134,8 @@ steps:
     max_crap: << parameters.max_crap >>
     baseline: << parameters.baseline >>
     write_baseline: << parameters.write_baseline >>
+    summary_file: << parameters.summary_file >>
+    pr_comment: << parameters.pr_comment >>
     gate_tests: << parameters.gate_tests >>
     check_only: << parameters.check_only >>
     dry_run: << parameters.dry_run >>

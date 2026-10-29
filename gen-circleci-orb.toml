@@ -16,11 +16,11 @@ cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
 rustup_components = ["llvm-tools-preview"]
 # Digest-pinned base images, as in jci-audit: pinned here (not left to the
 # generator's moving-tag default) so the @sha256 survives every regeneration.
-builder_image = "rust:1-slim-trixie@sha256:1a939748a7cbab172de91a014e3804a97af1394a8c844faa67fce9401c4e40fb"
+builder_image = "rust:1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247"
 # The runtime needs a full Rust toolchain, not just the tool binaries: `report`
 # compiles and runs the consumer's test suite under instrumentation. Same image
 # and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:1a939748a7cbab172de91a014e3804a97af1394a8c844faa67fce9401c4e40fb"
+base_image = "rust:1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247"
 # Hand-authored orb files the generator does not produce; without this the
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
@@ -182,6 +182,12 @@ default = ""
 description = "Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline"
 
 [[job_group.parameter]]
+name = "pr_comment"
+type = "boolean"
+default = "false"
+description = "Post the gate's result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job's last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project's environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
 name = "gate_tests"
 type = "boolean"
 default = "false"
@@ -219,7 +225,7 @@ command = "complexity"
 # change what OtterWise sums, and `--dry-run` is for a local preview. The
 # maximums and the baseline are the gate step's, after `upload`: failing this
 # step would skip the upload and leave the dashboard stale.
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -249,10 +255,13 @@ log_level = "<< parameters.log_level >>"
 # is and does not repeat the summary or the warnings; with every maximum off
 # (the default) it has nothing to check and succeeds. The annotating step has
 # already matched the methods, set the roll-ups and warned, so `unmatched`,
-# `exclude_tests` and the warn thresholds are not the gate's.
+# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment` is the
+# gate's: the summary it posts is the gate's result. It is off by default, and
+# needs `GITHUB_TOKEN` from the environment or a context (never a parameter,
+# which would be stored in the consumer's config).
 [[job_group.step]]
 command = "complexity"
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -262,6 +271,7 @@ rules = "<< parameters.rules >>"
 max_complexity = "<< parameters.max_complexity >>"
 max_crap = "<< parameters.max_crap >>"
 baseline = "<< parameters.baseline >>"
+pr_comment = "<< parameters.pr_comment >>"
 gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 

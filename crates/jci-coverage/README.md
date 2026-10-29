@@ -127,6 +127,37 @@ options in use (`--file`, `--source-root`, `--rules`, `--gate-tests`, the limits
 baseline path), so it records the functions that failed. Every failing function is listed,
 however many; a baseline is the way to adopt a limit on code that already breaks it.
 
+`--summary-file <PATH>` writes a short markdown summary of the gate result: the headline
+counts, a compact table (function, where it is over, fix) of the first 25 failing functions
+with the rest counted, and a one-line pointer to the ways to resolve a failure and to the CI
+log for the full report. There is no link to the job, since its log may not be readable by
+everyone who can read the pull request. A passing gate gets a "passes" summary, with how
+many functions over a limit the baseline allows. The file starts with a hidden marker,
+`<!-- jci-coverage:gate -->`, so a later step can find the comment it belongs to and edit it
+in place. Names and paths are put in code spans, with `|` escaped, and clipped, so a function
+name cannot break the table. The file is written only when requested, when a maximum is set,
+after the report, and not with `--dry-run` (it cannot be combined with `--write-baseline`); it may not be the report,
+the baseline or any other output (compared by where the files are, not how they are
+spelled). In CI it is ephemeral unless you persist it, for example as a build artifact; if
+you keep it some other way, naming it, avoiding clashes and clearing stale copies are yours
+to manage. A failure to write it is a warning and does not change the gate's result.
+
+`--pr-comment` posts the same summary as a comment on the pull request the build is for
+(`CIRCLE_PULL_REQUEST`), in the repository named by `CIRCLE_PROJECT_USERNAME` and
+`CIRCLE_PROJECT_REPONAME`. The token is read from `GITHUB_TOKEN` (never a flag, so it stays
+out of the command line and the logs) and the API address from `GITHUB_API_URL`, default
+`https://api.github.com`; the token is only ever sent to `https`, or to `http` on this machine.
+The comment is found again by its marker and edited in place, so a pull request carries one gate
+comment however often CI runs. The comment is created if there is none, whether the gate passes or fails, so a pull request
+always shows that the gate ran (a run that passes first time is not mistaken for one that did
+not run). If GitHub refuses
+the edit (the comment is not the token's to change, as when someone else has posted the marker),
+the next-newest marked comment is tried; if none can be edited, a new one is posted. A
+rate-limit refusal is an error, and so is a pull request with more than 5000 comments. Nothing is posted, and the reason is logged,
+when there is no token (a warning), no pull request, or the pull request is from a fork (whose
+build has no secrets). Like the summary file it needs a maximum, does nothing with `--dry-run` and cannot be
+combined with `--write-baseline`, and a failure to post is a warning that does not change the gate's result.
+
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not
 fail), commit the file, and pass it back with `--baseline`. A baselined function then fails
@@ -211,6 +242,7 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `max_complexity` | `0` | fail the job, after the upload, if any function is at or over this complexity (`0` is off) |
 | `max_crap` | `0` | fail the job, after the upload, if any function is at or over this CRAP score (`0` is off) |
 | `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
+| `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 
 The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:
@@ -222,6 +254,29 @@ and succeeds. To adopt a maximum on existing code, record today's functions once
 `jci-coverage complexity --max-complexity 15 --write-baseline`, commit
 `.jci-coverage-baseline` at the repository root, and set `max_complexity: 15` and
 `baseline: .jci-coverage-baseline`; after that only a new or worse function fails.
+
+`pr_comment: true` passes `--pr-comment` to that last step, so the gate's result is also
+posted as one comment on the pull request, whether the gate passes or fails, and edited in
+place on each run. The gate is the job's last step, after the upload, so a job that fails
+earlier (the tests, the report, the upload) posts nothing and leaves any earlier comment as
+it was. It needs a maximum to have a result to post, and a GitHub token with permission to
+comment on pull requests in the `GITHUB_TOKEN` environment variable. Take the token from a
+[context](https://circleci.com/docs/contexts/) or the project's environment variables, never
+from a parameter, which would be stored in your config. Nothing is posted, and the reason is
+logged, for a build with no pull request or a pull request from a fork (CircleCI gives a
+fork's build neither a context nor your project's variables), and a failure to post is a
+warning that does not change the gate's result. Add the context to the job in the workflow:
+
+```yaml
+      - jci-coverage/report_complexity_and_upload:
+          context: my-github-token-context
+          max_complexity: 15
+          baseline: .jci-coverage-baseline
+          pr_comment: true
+```
+
+The `pr_comment` parameter exists only in the orb release that adds it, so pin an orb version
+at or after that one to use it.
 
 It is Rust-only. For a project in another language, or one that wants the lcov report only,
 use `report_and_upload` or `upload`.
