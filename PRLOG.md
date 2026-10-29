@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - ci-comment the coverage gate result on pull requests(pr [#74])
 - ci-gate the dogfood job on risky functions(pr [#64])
 - ci-upload coverage for the head of main after the prlog(pr [#76])
+- docs-add the OtterWise coverage badge(pr [#77])
 
 ### Fixed
 
@@ -246,6 +247,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#74]: https://github.com/jerus-org/jci-coverage/pull/74
 [#64]: https://github.com/jerus-org/jci-coverage/pull/64
 [#76]: https://github.com/jerus-org/jci-coverage/pull/76
+[#77]: https://github.com/jerus-org/jci-coverage/pull/77
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...HEAD
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
