@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - ci-comment the coverage gate result on pull requests(pr [#74])
+- ci-gate the dogfood job on risky functions(pr [#64])
 
 ### Fixed
 
@@ -242,6 +243,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#72]: https://github.com/jerus-org/jci-coverage/pull/72
 [#73]: https://github.com/jerus-org/jci-coverage/pull/73
 [#74]: https://github.com/jerus-org/jci-coverage/pull/74
+[#64]: https://github.com/jerus-org/jci-coverage/pull/64
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...HEAD
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
