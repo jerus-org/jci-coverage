@@ -10,9 +10,42 @@ orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.3
 
   orb-tools: circleci/orb-tools@12.5.0
+  # Dogfood: the coverage job below uses this crate's own published orb.
+  jci-coverage: jerus-org/jci-coverage@0.0.15
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.6
   # <<< gen-circleci-orb
+jobs:
+  # Coverage for the commit that is the head of main once the prlog is
+  # updated (#75). The validation run on a merge covers the merge commit, but
+  # the prlog commit that follows (`[skip ci]`) becomes the head, so OtterWise
+  # reported no coverage on the head of main. This job runs after the prlog job,
+  # moves to the new head and uploads coverage for it. When the prlog job added
+  # no commit the head is still the commit validation covered, and it stops.
+  # The coverage is the report and annotated complexity of the composed
+  # `report_complexity_and_upload` job, without its gate: the gate's result is
+  # the validation run's.
+  coverage_on_main_head:
+    executor: jci-coverage/default
+    steps:
+      - checkout
+      - run:
+          name: Move to the head of main
+          command: |
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" = "$(git rev-parse HEAD)" ]; then
+              echo "The head of main is the commit validation covered - nothing to do."
+              circleci-agent step halt
+            fi
+            git checkout -B main origin/main
+            git log -1 --format='Covering the head of main: %h %s'
+      - jci-coverage/report:
+          format: cobertura
+      - jci-coverage/complexity:
+          file: coverage/cobertura.xml
+      - jci-coverage/upload:
+          file: coverage/cobertura.xml
+
 workflows:
   update_prlog:
     jobs:
@@ -26,12 +59,15 @@ workflows:
           pcu_from_merge: --from-merge
           update_pcu: << pipeline.parameters.update_pcu >>
           pcu_verbosity: "-vvv"
+      - coverage_on_main_head:
+          name: coverage-on-main-head
+          requires: [update-prlog-on-main]
       # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
       - gen-circleci-orb/build_rust_binary:
           name: post-merge-build-binary
           package: jci-coverage
           executor: toolkit/rust_env_rolling
-          requires: [update-prlog-on-main]
+          requires: [update-prlog-on-main, coverage-on-main-head]
           pre-steps:
             - run:
                 name: Check qualifying branch
