@@ -13,9 +13,50 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.3
   orb-tools: circleci/orb-tools@12.5.0
+  # Dogfood: the coverage job below uses this crate's own published orb.
+  jci-coverage: jerus-org/jci-coverage@0.0.15
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.6
   # <<< gen-circleci-orb
+jobs:
+  # Coverage for the head of main after a release (#75). The release ends with
+  # `toolkit/release_prlog`, whose `chore: update prlog for release … [skip ci]`
+  # commit becomes the head of main with no coverage: validation covered the
+  # release commit before it, and the update_prlog pipeline does not run for it
+  # (it follows a merged pull request). This job runs after `release_prlog`,
+  # moves to the new head and uploads coverage for it, as the
+  # `coverage_on_main_head` job of update_prlog.yml does for a merge. It stops
+  # unless the head is a prlog commit, so it never uploads a commit twice.
+  coverage_on_release_head:
+    executor: jci-coverage/default
+    steps:
+      - checkout
+      - run:
+          name: Move to the head of main
+          command: |
+            git fetch origin main
+            subject="$(git log -1 --format=%s origin/main)"
+            case "$subject" in
+              "chore: update prlog"*) ;;
+              *)
+                echo "The head of main is not a prlog commit ($subject) - nothing to do."
+                circleci-agent step halt
+                ;;
+            esac
+            git checkout -B main origin/main
+            git log -1 --format='Covering the head of main: %h %s'
+            # Label the upload as main, not as whatever this pipeline was started for.
+            {
+              echo 'export CIRCLE_BRANCH=main'
+              echo 'unset CIRCLE_PULL_REQUEST CIRCLE_PULL_REQUESTS CI_PULL_REQUEST CIRCLE_PR_NUMBER'
+            } >> "$BASH_ENV"
+      - jci-coverage/report:
+          format: cobertura
+      - jci-coverage/complexity:
+          file: coverage/cobertura.xml
+      - jci-coverage/upload:
+          file: coverage/cobertura.xml
+
 workflows:
   release:
     jobs:
@@ -54,6 +95,10 @@ workflows:
             - release
             - bot-check
             - pcu-app
+
+      - coverage_on_release_head:
+          name: coverage-on-release-head
+          requires: [toolkit/release_prlog]
       # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
       - gen-circleci-orb/build_rust_binary:
           name: release-gate-build-binary
