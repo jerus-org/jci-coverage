@@ -133,10 +133,9 @@ pub struct ComplexityArgs {
     /// while under `--max-crap` does not fail a function accepted for its
     /// complexity). It is still warned about, and one whose scores moved from the
     /// recorded ones is reported (worse or better) without failing. Without a
-    /// value it reads
-    /// `.jci-coverage-baseline` in the directory this runs from, by convention
-    /// the repository root. Make the file with `--write-baseline`; it is a
-    /// binary file for this tool, not meant to be edited.
+    /// value it reads `.jci-coverage-baseline` in the directory this runs from,
+    /// by convention the repository root. Make the file with `--write-baseline`;
+    /// it is a binary file for this tool, not meant to be edited.
     #[arg(
         long,
         value_name = "PATH",
@@ -653,7 +652,7 @@ fn gate<'a>(
     // Only a baselined function can have moved; the ones failing are reported
     // as failures.
     let moves = baseline.map_or_else(Vec::new, |b| {
-        b.movements(functions, args.max_thresholds().include_tests, &failing)
+        b.movements(functions, &args.max_thresholds(), &failing)
     });
     Gate {
         over,
@@ -667,28 +666,9 @@ fn gate<'a>(
 /// which the baseline can be recorded again to hold. Capped like the other
 /// warnings.
 fn log_moves(moves: &[Movement<'_>]) {
-    let shown = |m: &Movement<'_>| {
-        let score = |now: Option<String>, then: Option<String>, moved: bool| match (now, then) {
-            (Some(now), Some(then)) if moved => format!("{then} -> {now}"),
-            (Some(now), _) => now,
-            (None, _) => "n/a".to_string(),
-        };
-        (
-            score(
-                Some(m.now.complexity.to_string()),
-                Some(m.recorded.complexity.to_string()),
-                m.complexity.is_some(),
-            ),
-            score(
-                m.now.crap.map(|c| format!("{c:.1}")),
-                m.recorded.crap.map(|c| format!("{c:.1}")),
-                m.crap.is_some(),
-            ),
-        )
-    };
     for m in moves.iter().take(MAX_RISK_WARNINGS) {
         let f = m.function;
-        let (complexity, crap) = shown(m);
+        let (complexity, crap) = (m.complexity_text(), m.crap_text());
         if m.degraded() {
             tracing::warn!(
                 file = %f.file, line = f.line, function = %f.name, complexity, crap,
@@ -701,11 +681,19 @@ fn log_moves(moves: &[Movement<'_>]) {
             );
         }
     }
-    if moves.len() > MAX_RISK_WARNINGS {
-        tracing::warn!(
+    // The degraded come first, so the ones left out are all good news unless one
+    // of them is not.
+    let left_out = moves.get(MAX_RISK_WARNINGS..).unwrap_or_default();
+    if !left_out.is_empty() {
+        let text = format!(
             "{} more baselined function(s) moved, not listed",
-            moves.len() - MAX_RISK_WARNINGS
+            left_out.len()
         );
+        if left_out.iter().any(Movement::degraded) {
+            tracing::warn!("{text}");
+        } else {
+            tracing::info!("{text}");
+        }
     }
 }
 
@@ -1901,7 +1889,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
             log.contains("WARN") && log.contains("got worse") && log.contains("f00"),
             "{log}"
         );
-        assert!(log.contains("20.0 -> 20.4"), "{log}");
+        assert!(log.contains("20.0 → 20.4 (worse)"), "{log}");
 
         let (before, better) = baselined_pairs(1, true);
         let baseline = Baseline::from_functions(&before, args.rules);
@@ -1938,6 +1926,26 @@ fn pick(x: Option<i32>) -> Option<i32> {
             crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
         assert_eq!(log.matches("got worse").count(), MAX_RISK_WARNINGS, "{log}");
         assert!(log.contains("2 more baselined function(s) moved"), "{log}");
+    }
+
+    #[test]
+    fn leaving_out_only_good_news_is_not_a_warning() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let (before, better) = baselined_pairs(12, true);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &better);
+        let (result, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        result.expect("allowed");
+        assert_eq!(
+            log.matches("got better").count(),
+            MAX_RISK_WARNINGS,
+            "{log}"
+        );
+        assert!(log.contains("2 more baselined function(s) moved"), "{log}");
+        assert!(!log.contains("WARN"), "good news is not a warning: {log}");
     }
 
     #[test]

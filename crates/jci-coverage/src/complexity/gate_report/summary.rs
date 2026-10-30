@@ -15,7 +15,7 @@
 
 use super::{Failure, against_baseline, display_name, fix, headline, over_label};
 use crate::complexity::{
-    baseline::{Baseline, Direction, Movement},
+    baseline::{Baseline, Movement},
     metrics::{FunctionMetrics, Risk, Thresholds},
 };
 
@@ -75,22 +75,6 @@ fn resolution(limits: &Thresholds) -> String {
     text
 }
 
-/// One score's cell in the moved table: where it was and where it is, and which
-/// way it went. A CRAP that is unknown now, or was not recorded, has no way to go.
-fn moved_cell(
-    now: Option<String>,
-    recorded: Option<String>,
-    direction: Option<Direction>,
-) -> String {
-    match (now, recorded, direction) {
-        (None, _, _) => "n/a".to_string(),
-        (Some(now), None, _) => format!("{now}, none recorded"),
-        (Some(now), Some(_), None) => format!("{now} (same)"),
-        (Some(now), Some(then), Some(Direction::Worse)) => format!("{then} → {now} (worse)"),
-        (Some(now), Some(then), Some(Direction::Better)) => format!("{then} → {now} (better)"),
-    }
-}
-
 /// The baselined functions that moved, as a section: how many each way, what to
 /// do about them, and a capped table, the degraded ones first. Empty when none
 /// moved. They stay within what the baseline accepts, so they never fail the gate.
@@ -122,16 +106,8 @@ fn moved_section(moves: &[Movement<'_>], max_rows: usize) -> String {
         out += &format!(
             "| {} | {} | {} |\n",
             function_cell(m.function),
-            moved_cell(
-                Some(m.now.complexity.to_string()),
-                Some(m.recorded.complexity.to_string()),
-                m.complexity
-            ),
-            moved_cell(
-                m.now.crap.map(|c| format!("{c:.1}")),
-                m.recorded.crap.map(|c| format!("{c:.1}")),
-                m.crap
-            ),
+            m.complexity_text(),
+            m.crap_text(),
         );
     }
     if moves.len() > max_rows {
@@ -498,7 +474,7 @@ mod tests {
     }
 
     fn moves_of<'a>(before: &[FunctionMetrics], now: &'a [FunctionMetrics]) -> Vec<Movement<'a>> {
-        Baseline::from_functions(before, Rules::Rca).movements(now, false, &[])
+        Baseline::from_functions(before, Rules::Rca).movements(now, &LIMITS, &[])
     }
 
     #[test]
@@ -508,7 +484,7 @@ mod tests {
             func("src/a.rs", "decode", 16, 30, 30),
         ];
         let now = [
-            func("src/a.rs", "parse", 29, 51, 47),  // CRAP 29.2 to 29.4
+            func("src/a.rs", "parse", 29, 51, 47), // CRAP 29.2 to 29.405, shown as 29.5
             func("src/a.rs", "decode", 12, 30, 30), // complexity 16 to 12
         ];
         let moves = moves_of(&before, &now);
@@ -518,7 +494,7 @@ mod tests {
         assert!(out.contains("#### Baselined functions that moved"), "{out}");
         assert!(out.contains("1 degraded, 1 improved"), "{out}");
         assert!(
-            out.contains("| `parse`<br>`src/a.rs:10` | 29 (same) | 29.2 → 29.4 (worse) |"),
+            out.contains("| `parse`<br>`src/a.rs:10` | 29 (same) | 29.2 → 29.5 (worse) |"),
             "{out}"
         );
         assert!(
