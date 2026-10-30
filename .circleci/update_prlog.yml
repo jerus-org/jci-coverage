@@ -16,15 +16,16 @@ orbs:
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.6
   # <<< gen-circleci-orb
 jobs:
-  # Coverage for the commit that is the head of main once the prlog is
-  # updated (#75). The validation run on a merge covers the merge commit, but
-  # the prlog commit that follows (`[skip ci]`) becomes the head, so OtterWise
-  # reported no coverage on the head of main. This job runs after the prlog job,
-  # moves to the new head and uploads coverage for it. When the prlog job added
-  # no commit the head is still the commit validation covered, and it stops.
-  # The coverage is the report and annotated complexity of the composed
-  # `report_complexity_and_upload` job, without its gate: the gate's result is
-  # the validation run's.
+  # Coverage for the head of main (#75). OtterWise compares a pull request
+  # with the coverage of the head of main, and that head is the commit this
+  # pipeline delivers: the prlog commit (`[skip ci]`) when the prlog job added
+  # one, else the merge commit. The validation run on a merge covers the commit
+  # before the prlog is written, which is never the head, so it does not upload
+  # for main. This job runs after the prlog job, moves to the head, and uploads
+  # coverage for it: the report and annotated complexity (Complexity and CRAP)
+  # of the composed `report_complexity_and_upload` job, without its gate (the
+  # gate runs on pull requests). The pipeline starts on the merged pull
+  # request's branch, so the upload is labelled as main.
   coverage_on_main_head:
     executor: jci-coverage/default
     steps:
@@ -33,12 +34,13 @@ jobs:
           name: Move to the head of main
           command: |
             git fetch origin main
-            if [ "$(git rev-parse origin/main)" = "$(git rev-parse HEAD)" ]; then
-              echo "The head of main is the commit validation covered - nothing to do."
-              circleci-agent step halt
-            fi
             git checkout -B main origin/main
             git log -1 --format='Covering the head of main: %h %s'
+            # Label the upload as main, not as the merged pull request's branch.
+            {
+              echo 'export CIRCLE_BRANCH=main'
+              echo 'unset CIRCLE_PULL_REQUEST CIRCLE_PULL_REQUESTS CI_PULL_REQUEST CIRCLE_PR_NUMBER'
+            } >> "$BASH_ENV"
       - jci-coverage/report:
           format: cobertura
       - jci-coverage/complexity:

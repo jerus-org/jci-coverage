@@ -21,9 +21,9 @@ orbs:
 jobs:
   # Coverage for the head of main after a release (#75). The release ends with
   # `toolkit/release_prlog`, whose `chore: update prlog for release … [skip ci]`
-  # commit becomes the head of main with no coverage: validation covered the
-  # release commit before it, and the update_prlog pipeline does not run for it
-  # (it follows a merged pull request). This job runs after `release_prlog`,
+  # commit becomes the head of main with no coverage: validation does not
+  # upload for main, and the update_prlog pipeline does not run for it (it
+  # follows a merged pull request). This job runs after `release_prlog`,
   # moves to the new head and uploads coverage for it, as the
   # `coverage_on_main_head` job of update_prlog.yml does for a merge. It stops
   # unless the head is a prlog commit, so it never uploads a commit twice.
