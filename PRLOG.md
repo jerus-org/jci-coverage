@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.16(pr [#81])
+- complexity: judge a baselined function on the limit it is over(pr [#82])
 
 ## [0.0.16] - 2026-10-30
 
@@ -259,6 +260,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#79]: https://github.com/jerus-org/jci-coverage/pull/79
 [#78]: https://github.com/jerus-org/jci-coverage/pull/78
 [#81]: https://github.com/jerus-org/jci-coverage/pull/81
+[#82]: https://github.com/jerus-org/jci-coverage/pull/82
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...HEAD
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
