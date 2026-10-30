@@ -128,8 +128,11 @@ workflows:
       # Dogfooding (P4, #16): coverage via this crate's own orb, replacing
       # toolkit/code_coverage. Needs OTTERWISE_TOKEN set as a project
       # environment variable, so forked-PR builds (/pull/N, no secrets) are
-      # skipped. Uses the composed job so OtterWise gets a Cobertura report
-      # with complexity (Complexity and CRAP, #44), not the lcov-only
+      # skipped. Not run on main: the coverage of main is that of its head, the
+      # commit the update_prlog pipeline delivers (`coverage_on_main_head`), and
+      # a run on the merge commit before the prlog is written is never that head.
+      # Uses the composed job so OtterWise gets a Cobertura report with
+      # complexity (Complexity and CRAP, #44), not the lcov-only
       # report_and_upload.
       #
       # Also gates individual risky functions (#52) and comments the result on
@@ -156,6 +159,7 @@ workflows:
           filters:
             branches:
               ignore:
+                - main
                 - /pull\/[0-9]+/
       # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
       - gen-circleci-orb/build_rust_binary:
