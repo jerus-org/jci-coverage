@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- deps: update dependency jci-coverage to v0.0.17(pr [#84])
+
 ## [0.0.17] - 2026-10-30
 
 ### Added
@@ -266,6 +272,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#81]: https://github.com/jerus-org/jci-coverage/pull/81
 [#82]: https://github.com/jerus-org/jci-coverage/pull/82
 [#83]: https://github.com/jerus-org/jci-coverage/pull/83
+[#84]: https://github.com/jerus-org/jci-coverage/pull/84
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...HEAD
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
