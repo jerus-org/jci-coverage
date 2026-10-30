@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.16] - 2026-10-30
+
+Summary: Documentation[1]
+
 ## [0.0.15] - 2026-10-28
 
-Summary: Added[3], Changed[1], Documentation[1], Fixed[3], Testing[1]
+Summary: Added[3], Changed[1], Chore[1], Documentation[1], Fixed[3], Testing[1]
 
 ### Added
 
@@ -185,7 +189,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...HEAD
+[0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/jerus-org/jci-coverage/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/jerus-org/jci-coverage/compare/v0.0.11...v0.0.12

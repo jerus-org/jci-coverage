@@ -2624,7 +2624,7 @@ Used by:
 - js-sys 0.3.106
 - lazy_static 1.5.1
 - libgit2-sys 0.18.8+1.9.7
-- libz-sys 1.1.30
+- libz-sys 1.1.31
 - linux-raw-sys 0.12.1
 - log 0.4.34
 - mime 0.3.17
@@ -2864,7 +2864,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.15
+- jci-coverage 0.0.16
 
 ```text
                               Apache License
