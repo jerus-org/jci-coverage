@@ -140,9 +140,16 @@ fn covered_cell(f: &FunctionMetrics) -> String {
 }
 
 /// The "Baseline" cell: how a failing function stands against the baseline, and
-/// in which score it is worse.
-fn against_baseline(f: &FunctionMetrics, baseline: &Baseline) -> String {
-    match baseline.standing(f) {
+/// in which score it is worse. Only the scores it is over a limit in are judged,
+/// as the gate judged them.
+fn against_baseline(failure: &Failure<'_>, baseline: &Baseline) -> String {
+    let f = failure.function;
+    let risk = Risk {
+        function: f,
+        complexity: failure.complexity,
+        crap: failure.crap,
+    };
+    match baseline.standing(&risk) {
         Standing::New => "not in the baseline".to_string(),
         Standing::Allowed => "allowed by the baseline".to_string(),
         Standing::Worse {
@@ -354,7 +361,7 @@ pub(crate) fn render(
                 over_label(r),
             ];
             if let Some(b) = baseline {
-                row.push(against_baseline(f, b));
+                row.push(against_baseline(r, b));
             }
             row.push(fix(r, limits));
             row
@@ -773,6 +780,26 @@ mod tests {
             &record(),
         );
         assert!(out.contains("CRAP 20.0, none recorded"), "{out}");
+    }
+
+    #[test]
+    fn a_crap_that_moved_under_its_limit_is_not_named_for_a_complexity_failure() {
+        // Over only the complexity limit: its CRAP rose too (29.2 to 29.4) but is
+        // under the CRAP limit, so only the complexity is named.
+        let before = func("parse", 29, 51, 48, Some(29.2));
+        let now = func("parse", 30, 51, 47, Some(29.4));
+        let baseline = Baseline::from_functions([&before], crate::complexity::counter::Rules::Rca);
+        let out = render(
+            &[risk(&now, true, false)],
+            &LIMITS,
+            Some(&baseline),
+            &record(),
+        );
+        assert!(
+            out.contains("worse than the baseline: complexity 30 > 29"),
+            "{out}"
+        );
+        assert!(!out.contains("CRAP 29.4 >"), "{out}");
     }
 
     #[test]

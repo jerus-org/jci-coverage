@@ -96,7 +96,7 @@ pub(crate) fn failing(
     for r in failures.iter().take(max_rows) {
         let mut cells = vec![function_cell(r), over_label(r)];
         if let Some(b) = baseline {
-            cells.push(against_baseline(r.function, b));
+            cells.push(against_baseline(r, b));
         }
         cells.push(fix(r, limits));
         out += &format!("| {} |\n", cells.join(" | "));

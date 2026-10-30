@@ -129,7 +129,9 @@ pub struct ComplexityArgs {
     /// Let the functions listed in this file stay over a maximum.
     ///
     /// A function in the baseline fails only if it has got worse than it was
-    /// recorded. It is still warned about. Without a value it reads
+    /// recorded in a score that is over its maximum (a CRAP that moves while
+    /// under `--max-crap` does not fail a function accepted for its
+    /// complexity). It is still warned about. Without a value it reads
     /// `.jci-coverage-baseline` in the directory this runs from, by convention
     /// the repository root. Make the file with `--write-baseline`; it is a
     /// binary file for this tool, not meant to be edited.
@@ -634,7 +636,7 @@ fn gate<'a>(
         Vec::new()
     } else {
         over.iter()
-            .filter(|r| baseline.is_none_or(|b| !b.allows(r.function)))
+            .filter(|r| baseline.is_none_or(|b| !b.allows(r)))
             .copied()
             .collect()
     };
@@ -1725,6 +1727,46 @@ fn pick(x: Option<i32>) -> Option<i32> {
         args.max_complexity = 0;
         args.max_crap = 0.5;
         assert!(args.has_maximum());
+    }
+
+    /// `parse`-like: complexity 29 over 51 lines, `covered` of them covered.
+    fn parse_like(complexity: u32, covered: usize) -> FunctionMetrics {
+        FunctionMetrics {
+            file: "src/a.rs".into(),
+            name: "parse".into(),
+            line: 1,
+            complexity,
+            lines: 51,
+            covered,
+            crap: Some(metrics::crap(complexity, covered, 51)),
+            is_test: false,
+        }
+    }
+
+    #[test]
+    fn a_baselined_function_over_only_on_complexity_is_not_failed_for_its_crap() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let recorded = parse_like(29, 48); // CRAP 29.2, under the CRAP limit
+        let baseline = Baseline::from_functions([&recorded], args.rules);
+
+        // One line less covered: CRAP 29.4, still under the limit.
+        let drifted = [parse_like(29, 47)];
+        let g = gate(&args, Some(&baseline), &drifted);
+        assert_eq!(g.over.len(), 1, "still over the complexity limit");
+        assert!(g.failing.is_empty(), "the CRAP is not over its limit");
+
+        // Crossing the CRAP limit is a failure, however it got there.
+        let crossed = [parse_like(29, 30)];
+        let g = gate(&args, Some(&baseline), &crossed);
+        assert_eq!(g.failing.len(), 1, "CRAP is over its limit and worse");
+
+        // More complex than recorded fails; the CRAP limit is off here.
+        args.max_crap = 0.0;
+        let more_complex = [parse_like(30, 48)];
+        let g = gate(&args, Some(&baseline), &more_complex);
+        assert_eq!(g.failing.len(), 1);
     }
 
     #[test]
