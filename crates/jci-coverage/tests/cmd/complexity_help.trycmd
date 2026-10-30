@@ -125,11 +125,12 @@ Options:
           than it was recorded in a score that is at or over its
           maximum (a CRAP that moves while under `--max-crap` does not
           fail a function accepted for its complexity). It is still
-          warned about. Without a value it reads
-          `.jci-coverage-baseline` in the directory this runs from, by
-          convention the repository root. Make the file with
-          `--write-baseline`; it is a binary file for this tool, not
-          meant to be edited.
+          warned about, and one whose scores moved from the recorded
+          ones is reported (worse or better) without failing. Without
+          a value it reads `.jci-coverage-baseline` in the directory
+          this runs from, by convention the repository root. Make the
+          file with `--write-baseline`; it is a binary file for this
+          tool, not meant to be edited.
 
       --write-baseline [<PATH>]
           Record the functions now over a maximum in this file, and do

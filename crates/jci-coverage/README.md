@@ -171,6 +171,16 @@ and worse than recorded, and does. A baselined function is still warned about; a
 at or over the maximum fails. A function is identified by its file and name, not its line, so
 functions of one name in one file (and closures) share an entry holding their highest scores.
 
+A baselined function whose scores have moved from the recorded ones is reported without failing
+the gate, so a degradation that is still within what the baseline accepts is a prompt to rework
+the function, and an improvement shows where the baseline can be recorded again to hold the
+gain. The log warns about each function that got worse (any score worse than recorded, even
+one under its maximum, such as a CRAP moving from 29.2 to 29.4) and notes each that got
+better, up to ten; the `--summary-file` and the pull request comment gain a "Baselined
+functions that moved" table, the degraded ones first. Every movement is reported, so coverage
+that differs by a line between runs shows as a small CRAP change. A function that fails the
+gate is reported as a failure and not again here.
+
 Without a value both options use `.jci-coverage-baseline` in the directory `jci-coverage`
 runs from. By convention that is the repository root, committed beside the workspace
 `Cargo.toml`: the file paths in the report, and so in the baseline, are relative to the

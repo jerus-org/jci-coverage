@@ -42,7 +42,7 @@ use clap::Args;
 
 use crate::github;
 
-use baseline::Baseline;
+use baseline::{Baseline, Movement};
 pub use counter::Rules;
 use metrics::{FunctionMetrics, Thresholds};
 use plan::{Analyses, Options, Plan, Summary};
@@ -131,10 +131,11 @@ pub struct ComplexityArgs {
     /// A function in the baseline fails only if it has got worse than it was
     /// recorded in a score that is at or over its maximum (a CRAP that moves
     /// while under `--max-crap` does not fail a function accepted for its
-    /// complexity). It is still warned about. Without a value it reads
-    /// `.jci-coverage-baseline` in the directory this runs from, by convention
-    /// the repository root. Make the file with `--write-baseline`; it is a
-    /// binary file for this tool, not meant to be edited.
+    /// complexity). It is still warned about, and one whose scores moved from the
+    /// recorded ones is reported (worse or better) without failing. Without a
+    /// value it reads `.jci-coverage-baseline` in the directory this runs from,
+    /// by convention the repository root. Make the file with `--write-baseline`;
+    /// it is a binary file for this tool, not meant to be edited.
     #[arg(
         long,
         value_name = "PATH",
@@ -603,9 +604,15 @@ fn publish_summary(
     let passing = gate.failing.is_empty();
     let markdown = if passing {
         let allowed = baseline.map(|_| gate.over.len());
-        gate_report::passing_summary(&limits, allowed)
+        gate_report::passing_summary(&limits, allowed, gate_report::MAX_ROWS, &gate.moves)
     } else {
-        gate_report::failing_summary(&gate.failing, &limits, baseline, gate_report::MAX_ROWS)
+        gate_report::failing_summary(
+            &gate.failing,
+            &limits,
+            baseline,
+            gate_report::MAX_ROWS,
+            &gate.moves,
+        )
     };
     if let Some(path) = &args.summary_file {
         match write_atomic(path, markdown.as_bytes()) {
@@ -618,10 +625,12 @@ fn publish_summary(
     }
 }
 
-/// The functions over a maximum, and those of them that fail the gate.
+/// The functions over a maximum, those of them that fail the gate, and the
+/// baselined functions whose scores moved without failing it.
 struct Gate<'a> {
     over: Vec<metrics::Risk<'a>>,
     failing: Vec<metrics::Risk<'a>>,
+    moves: Vec<Movement<'a>>,
 }
 
 fn gate<'a>(
@@ -640,7 +649,52 @@ fn gate<'a>(
             .copied()
             .collect()
     };
-    Gate { over, failing }
+    // Only a baselined function can have moved; the ones failing are reported
+    // as failures.
+    let moves = baseline.map_or_else(Vec::new, |b| {
+        b.movements(functions, &args.max_thresholds(), &failing)
+    });
+    Gate {
+        over,
+        failing,
+        moves,
+    }
+}
+
+/// Log the baselined functions whose scores moved: a warning for each that got
+/// worse, which is a chance to rework it, and a note for each that got better,
+/// which the baseline can be recorded again to hold. Capped like the other
+/// warnings.
+fn log_moves(moves: &[Movement<'_>]) {
+    for m in moves.iter().take(MAX_RISK_WARNINGS) {
+        let f = m.function;
+        let (complexity, crap) = (m.complexity_text(), m.crap_text());
+        if m.degraded() {
+            tracing::warn!(
+                file = %f.file, line = f.line, function = %f.name, complexity, crap,
+                "baselined function got worse: rework it to bring it back to what was recorded"
+            );
+        } else {
+            tracing::info!(
+                file = %f.file, line = f.line, function = %f.name, complexity, crap,
+                "baselined function got better: record the baseline again to hold the gain"
+            );
+        }
+    }
+    // The degraded come first, so the ones left out are all good news unless one
+    // of them is not.
+    let left_out = moves.get(MAX_RISK_WARNINGS..).unwrap_or_default();
+    if !left_out.is_empty() {
+        let text = format!(
+            "{} more baselined function(s) moved, not listed",
+            left_out.len()
+        );
+        if left_out.iter().any(Movement::degraded) {
+            tracing::warn!("{text}");
+        } else {
+            tracing::info!("{text}");
+        }
+    }
 }
 
 /// Report on the baseline, record one if asked, and fail if a function is over
@@ -655,12 +709,13 @@ fn finish_with(
     gate: &Gate<'_>,
     publisher: Publisher<'_>,
 ) -> Result<()> {
-    let Gate { over, failing } = gate;
+    let Gate { over, failing, .. } = gate;
     if let Some(b) = baseline {
         let still_over = over.iter().map(|r| r.function);
         if let Some(line) = baseline_summary(over.len() - failing.len(), b.unused(still_over)) {
             println!("{line}");
         }
+        log_moves(&gate.moves);
     }
     if let Some(path) = &args.write_baseline {
         let recorded = Baseline::from_functions(over.iter().map(|r| r.function), args.rules);
@@ -732,11 +787,11 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
         tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
     }
     let risks = metrics::risky(&functions, &args.thresholds());
-    let Gate { over, failing } = gate(args, baseline.as_ref(), &functions);
+    let verdict = gate(args, baseline.as_ref(), &functions);
     // Everything over a warn threshold or a maximum is warned about, unless it
     // is failing, so accepted and recorded functions stay visible.
     let flagged = metrics::risky(&functions, &args.thresholds().either(args.max_thresholds()));
-    let warned = warnings_only(&flagged, &failing);
+    let warned = warnings_only(&flagged, &verdict.failing);
     for r in warned.iter().take(MAX_RISK_WARNINGS) {
         let f = r.function;
         match f.crap {
@@ -767,7 +822,7 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     } else {
         println!("wrote {}", target.display());
     }
-    finish(args, baseline.as_ref(), &Gate { over, failing })
+    finish(args, baseline.as_ref(), &verdict)
 }
 
 #[cfg(test)]
@@ -1402,6 +1457,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let gate = Gate {
             failing: over.clone(),
             over,
+            moves: Vec::new(),
         };
         let err = finish(&args, None, &gate).unwrap_err().to_string();
         assert!(err.starts_with("8 function(s) fail the gate"), "{err}");
@@ -1767,6 +1823,146 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let more_complex = [parse_like(30, 48)];
         let g = gate(&args, Some(&baseline), &more_complex);
         assert_eq!(g.failing.len(), 1);
+    }
+
+    /// `n` baselined functions over the complexity limit (20) as they were, and
+    /// as they are with one line less covered, so a CRAP of 20.0 is 20.4: worse,
+    /// but under the CRAP limit and so still allowed. With `better` it is the
+    /// other way round: 20.4 improved to 20.0.
+    fn baselined_pairs(n: usize, better: bool) -> (Vec<FunctionMetrics>, Vec<FunctionMetrics>) {
+        let covered = |covered: usize| -> Vec<FunctionMetrics> {
+            (0..n)
+                .map(|i| FunctionMetrics {
+                    file: "src/a.rs".into(),
+                    name: format!("f{i:02}"),
+                    line: 1,
+                    complexity: 20,
+                    lines: 10,
+                    covered,
+                    crap: Some(metrics::crap(20, covered, 10)),
+                    is_test: false,
+                })
+                .collect()
+        };
+        if better {
+            (covered(9), covered(10))
+        } else {
+            (covered(10), covered(9))
+        }
+    }
+
+    #[test]
+    fn the_gate_carries_the_baselined_functions_that_moved_but_not_the_failing_ones() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let recorded = parse_like(29, 48);
+        let baseline = Baseline::from_functions([&recorded], args.rules);
+
+        let drifted = [parse_like(29, 47)]; // CRAP 29.2 to 29.4, still allowed
+        let g = gate(&args, Some(&baseline), &drifted);
+        assert!(g.failing.is_empty());
+        assert_eq!(g.moves.len(), 1);
+        assert!(g.moves[0].degraded());
+
+        let failing = [parse_like(31, 48)]; // more complex: fails, so not a move
+        let g = gate(&args, Some(&baseline), &failing);
+        assert_eq!(g.failing.len(), 1);
+        assert!(g.moves.is_empty(), "a failure is reported as one");
+
+        let g = gate(&args, None, &drifted);
+        assert!(g.moves.is_empty(), "no baseline, nothing baselined");
+    }
+
+    #[test]
+    fn moved_functions_are_logged_worse_as_warnings_and_better_as_notes() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let (before, worse) = baselined_pairs(1, false);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &worse);
+        let (result, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        result.expect("allowed");
+        assert!(
+            log.contains("WARN") && log.contains("got worse") && log.contains("f00"),
+            "{log}"
+        );
+        assert!(log.contains("20.0 → 20.4 (worse)"), "{log}");
+
+        let (before, better) = baselined_pairs(1, true);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &better);
+        let (result, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        result.expect("allowed");
+        assert!(
+            log.contains("INFO") && log.contains("got better") && !log.contains("WARN"),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn a_function_as_recorded_is_not_logged_and_the_log_is_capped() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let (before, same) = baselined_pairs(1, false);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &before);
+        let (_, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        assert!(
+            !log.contains("got worse") && !log.contains("got better"),
+            "{log}"
+        );
+        drop(same);
+
+        let (before, worse) = baselined_pairs(12, false);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &worse);
+        let (_, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        assert_eq!(log.matches("got worse").count(), MAX_RISK_WARNINGS, "{log}");
+        assert!(log.contains("2 more baselined function(s) moved"), "{log}");
+    }
+
+    #[test]
+    fn leaving_out_only_good_news_is_not_a_warning() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let (before, better) = baselined_pairs(12, true);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &better);
+        let (result, log) =
+            crate::github::testing::logged(|| finish_with(&args, Some(&baseline), &g, &|_| {}));
+        result.expect("allowed");
+        assert_eq!(
+            log.matches("got better").count(),
+            MAX_RISK_WARNINGS,
+            "{log}"
+        );
+        assert!(log.contains("2 more baselined function(s) moved"), "{log}");
+        assert!(!log.contains("WARN"), "good news is not a warning: {log}");
+    }
+
+    #[test]
+    fn the_summary_file_lists_the_baselined_functions_that_moved() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        let (before, worse) = baselined_pairs(1, false);
+        let baseline = Baseline::from_functions(&before, args.rules);
+        let g = gate(&args, Some(&baseline), &worse);
+        finish_with(&args, Some(&baseline), &g, &|_| {}).expect("allowed");
+        let md = fs::read_to_string(&path).expect("written");
+        assert!(md.contains("### jci-coverage gate: passes"), "{md}");
+        assert!(md.contains("#### Baselined functions that moved"), "{md}");
+        assert!(md.contains("| 20 (same) | 20.0 → 20.4 (worse) |"), "{md}");
     }
 
     #[test]

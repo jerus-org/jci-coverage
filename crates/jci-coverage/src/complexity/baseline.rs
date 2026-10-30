@@ -12,6 +12,11 @@
 //! runs) without failing a function accepted for the other; once it reaches the
 //! maximum it is judged against the recorded value.
 //!
+//! Every baselined function whose scores differ from the recorded ones is
+//! reported by [`Baseline::movements`], without failing the gate: a degradation
+//! within what the baseline accepts is a prompt to rework the function, and an
+//! improvement shows where the baseline can be recorded again to hold the gain.
+//!
 //! A function is identified by its file and its name, not its line, which moves
 //! with every edit above it. Functions that share a name in one file (and
 //! closures, which have none) share one entry holding their highest scores, so
@@ -41,7 +46,7 @@ use anyhow::{Result, anyhow, bail};
 
 use crate::complexity::{
     counter::Rules,
-    metrics::{FunctionMetrics, Risk},
+    metrics::{FunctionMetrics, Risk, Thresholds, risky},
 };
 
 const MAGIC: &[u8; 4] = b"JCIB";
@@ -83,6 +88,82 @@ pub(crate) enum Standing {
         crap: bool,
         recorded: Recorded,
     },
+}
+
+/// Which way a score has gone from the one recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Direction {
+    Worse,
+    Better,
+}
+
+/// A baselined function whose scores differ from the recorded ones: reported,
+/// never failed, since the gate judges only a limit the function is over.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Movement<'a> {
+    /// The function; of several with one name in a file, the most complex.
+    pub(crate) function: &'a FunctionMetrics,
+    /// What it was recorded with.
+    pub(crate) recorded: Recorded,
+    /// Its highest scores now.
+    pub(crate) now: Recorded,
+    /// `None` when the score is as recorded, or either value is unknown.
+    pub(crate) complexity: Option<Direction>,
+    pub(crate) crap: Option<Direction>,
+}
+
+impl Movement<'_> {
+    /// Any score worse than recorded, whatever else improved.
+    pub(crate) fn degraded(&self) -> bool {
+        [self.complexity, self.crap].contains(&Some(Direction::Worse))
+    }
+
+    /// Some score better than recorded and none worse.
+    pub(crate) fn improved(&self) -> bool {
+        !self.degraded() && [self.complexity, self.crap].contains(&Some(Direction::Better))
+    }
+
+    /// The complexity as recorded and now, and which way it went.
+    pub(crate) fn complexity_text(&self) -> String {
+        moved_text(
+            Some(self.now.complexity.to_string()),
+            Some(self.recorded.complexity.to_string()),
+            self.complexity,
+        )
+    }
+
+    /// The CRAP as recorded and now, and which way it went. It is shown as it is
+    /// compared, in tenths rounded up, so a movement never reads as `29.2 → 29.2`.
+    pub(crate) fn crap_text(&self) -> String {
+        let tenth = |c: f64| format!("{c:.1}");
+        moved_text(
+            self.now.crap.map(tenth),
+            self.recorded.crap.map(tenth),
+            self.crap,
+        )
+    }
+}
+
+/// A score moved: `then → now (worse)` or `(better)`, `now (same)`, `n/a` when
+/// there is none now, `now, none recorded` when none was recorded.
+fn moved_text(now: Option<String>, then: Option<String>, direction: Option<Direction>) -> String {
+    match (now, then, direction) {
+        (None, _, _) => "n/a".to_string(),
+        (Some(now), None, _) => format!("{now}, none recorded"),
+        (Some(now), Some(_), None) => format!("{now} (same)"),
+        (Some(now), Some(then), Some(Direction::Worse)) => format!("{then} → {now} (worse)"),
+        (Some(now), Some(then), Some(Direction::Better)) => format!("{then} → {now} (better)"),
+    }
+}
+
+fn direction<T: PartialOrd>(now: T, then: T) -> Option<Direction> {
+    if now > then {
+        Some(Direction::Worse)
+    } else if now < then {
+        Some(Direction::Better)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -351,6 +432,113 @@ impl Baseline {
     /// in the scores it is over a limit in.
     pub(crate) fn allows(&self, risk: &Risk<'_>) -> bool {
         self.standing(risk) == Standing::Allowed
+    }
+
+    /// The baselined functions whose scores have moved from the recorded ones,
+    /// degradations first and the biggest change first. It covers every baselined
+    /// function still in the code, whether or not it is now over a limit, but not
+    /// the ones failing the gate, which are reported as failures.
+    ///
+    /// Functions that share a name in one file share an entry, which holds the
+    /// highest scores of those over a limit when it was recorded. So the highest
+    /// scores are compared of those over a limit now; of a name with none over, of
+    /// all of them. A shared-name function under the limits never moves the entry.
+    /// Tests are left out unless the gate counts them.
+    pub(crate) fn movements<'a>(
+        &self,
+        functions: &'a [FunctionMetrics],
+        limits: &Thresholds,
+        failing: &[Risk<'_>],
+    ) -> Vec<Movement<'a>> {
+        let over: Vec<&'a FunctionMetrics> = risky(functions, limits)
+            .iter()
+            .map(|r| r.function)
+            .collect();
+        let over_keys: HashSet<_> = over.iter().map(|f| key(f)).collect();
+        let rest = functions
+            .iter()
+            .filter(|f| limits.include_tests || !f.is_test)
+            .filter(|f| !over_keys.contains(&key(f)));
+
+        let mut highest: BTreeMap<(String, String), (&'a FunctionMetrics, u32, Option<f64>)> =
+            BTreeMap::new();
+        for f in over.iter().copied().chain(rest) {
+            let k = key(f);
+            if !self.entries.contains_key(&k) {
+                continue;
+            }
+            highest
+                .entry(k)
+                .and_modify(|(shown, complexity, crap)| {
+                    if f.complexity > *complexity {
+                        *shown = f;
+                    }
+                    *complexity = (*complexity).max(f.complexity);
+                    *crap = match (*crap, f.crap) {
+                        (Some(x), Some(y)) => Some(x.max(y)),
+                        (x, y) => x.or(y),
+                    };
+                })
+                .or_insert((f, f.complexity, f.crap));
+        }
+        let failing: HashSet<_> = failing.iter().map(|r| key(r.function)).collect();
+        let mut moves: Vec<(Movement<'a>, (u32, u64))> = highest
+            .into_iter()
+            .filter(|(k, _)| !failing.contains(k))
+            .filter_map(|(k, (function, complexity, crap))| {
+                let a = self.entries.get(&k)?;
+                let crap_tenths = crap.map(tenths);
+                let crap_direction = match (crap_tenths, a.crap) {
+                    (Some(now), Some(then)) => direction(now, then),
+                    _ => None,
+                };
+                let complexity_direction = direction(complexity, a.complexity);
+                if complexity_direction.is_none() && crap_direction.is_none() {
+                    return None;
+                }
+                let movement = Movement {
+                    function,
+                    recorded: Recorded {
+                        complexity: a.complexity,
+                        crap: a.crap.map(|t| t as f64 / 10.0),
+                    },
+                    now: Recorded {
+                        complexity,
+                        crap: crap_tenths.map(|t| t as f64 / 10.0),
+                    },
+                    complexity: complexity_direction,
+                    crap: crap_direction,
+                };
+                // How far it moved, for ordering, in the direction that puts it
+                // in its group: a degraded function by how much got worse, not
+                // netted against what got better.
+                let group = if movement.degraded() {
+                    Direction::Worse
+                } else {
+                    Direction::Better
+                };
+                let size = (
+                    if complexity_direction == Some(group) {
+                        complexity.abs_diff(a.complexity)
+                    } else {
+                        0
+                    },
+                    match (crap_direction == Some(group), crap_tenths, a.crap) {
+                        (true, Some(now), Some(then)) => now.abs_diff(then),
+                        _ => 0,
+                    },
+                );
+                Some((movement, size))
+            })
+            .collect();
+        moves.sort_by(|(a, size_a), (b, size_b)| {
+            b.degraded()
+                .cmp(&a.degraded())
+                .then(size_b.cmp(size_a))
+                .then_with(|| a.function.file.cmp(&b.function.file))
+                .then_with(|| a.function.name.cmp(&b.function.name))
+        });
+        moves.into_iter().map(|(m, _)| m).collect()
     }
 
     /// How many entries match none of the functions currently over a maximum:
@@ -825,6 +1013,283 @@ mod tests {
             !b.allows(&over(&known, false, true)),
             "over the CRAP limit, and none was accepted"
         );
+    }
+
+    /// The limits the tests judge against: complexity 15 and CRAP 30.
+    fn limits(include_tests: bool) -> Thresholds {
+        Thresholds {
+            complexity: 15,
+            crap: 30.0,
+            include_tests,
+        }
+    }
+
+    fn moved<'a>(b: &Baseline, functions: &'a [FunctionMetrics]) -> Vec<Movement<'a>> {
+        b.movements(functions, &limits(false), &[])
+    }
+
+    #[test]
+    fn a_baselined_function_that_moved_says_which_way_each_score_went() {
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+
+        let worse_crap = [func("src/a.rs", "parse", 29, Some(29.4))];
+        let m = moved(&b, &worse_crap);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].complexity, None, "complexity is as recorded");
+        assert_eq!(m[0].crap, Some(Direction::Worse));
+        assert_eq!(m[0].recorded.complexity, 29);
+        assert_eq!(m[0].recorded.crap, Some(29.2));
+        assert_eq!(m[0].now.crap, Some(29.4));
+        assert!(m[0].degraded() && !m[0].improved());
+
+        let better = [func("src/a.rs", "parse", 20, Some(20.1))];
+        let m = moved(&b, &better);
+        assert_eq!(m[0].complexity, Some(Direction::Better));
+        assert_eq!(m[0].crap, Some(Direction::Better));
+        assert!(m[0].improved() && !m[0].degraded());
+
+        let mixed = [func("src/a.rs", "parse", 31, Some(25.0))];
+        let m = moved(&b, &mixed);
+        assert_eq!(m[0].complexity, Some(Direction::Worse));
+        assert_eq!(m[0].crap, Some(Direction::Better));
+        assert!(
+            m[0].degraded() && !m[0].improved(),
+            "any worse score is a degradation"
+        );
+    }
+
+    #[test]
+    fn nothing_is_reported_for_a_function_as_recorded_or_not_in_the_baseline() {
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        assert!(moved(&b, &[func("src/a.rs", "parse", 29, Some(29.2))]).is_empty());
+        assert!(
+            moved(&b, &[func("src/a.rs", "parse", 29, Some(29.15))]).is_empty(),
+            "CRAP is compared as the baseline keeps it, in tenths rounded up"
+        );
+        assert!(moved(&b, &[func("src/a.rs", "other", 40, Some(90.0))]).is_empty());
+        assert!(moved(&b, &[func("src/b.rs", "parse", 40, Some(90.0))]).is_empty());
+        assert!(moved(&b, &[]).is_empty(), "the function is gone");
+    }
+
+    #[test]
+    fn a_function_that_dropped_under_its_limits_still_reports_its_improvement() {
+        // Movements look at every baselined function, not only those over a limit.
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        let now = [func("src/a.rs", "parse", 3, Some(3.0))];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1);
+        assert!(m[0].improved());
+    }
+
+    #[test]
+    fn unknown_coverage_reports_no_crap_movement() {
+        let b = baseline(&[
+            func("src/a.rs", "f", 10, Some(12.0)),
+            func("src/a.rs", "g", 10, None),
+        ]);
+        let now = [
+            func("src/a.rs", "f", 10, None),
+            func("src/a.rs", "g", 10, Some(11.0)),
+        ];
+        let m = moved(&b, &now);
+        assert!(m.is_empty(), "no CRAP now, or none recorded: {m:?}");
+    }
+
+    #[test]
+    fn same_name_functions_are_compared_by_their_highest_scores() {
+        let b = baseline(&[
+            func("src/a.rs", "new", 29, Some(29.2)),
+            func("src/a.rs", "new", 5, Some(35.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "new", 30, Some(35.0)),
+            func("src/a.rs", "new", 5, Some(10.0)),
+        ];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1, "one entry, one movement");
+        assert_eq!(m[0].complexity, Some(Direction::Worse));
+        assert_eq!(m[0].crap, None, "35.0 is still the highest CRAP");
+        assert_eq!(
+            m[0].function.complexity, 30,
+            "the most complex one is named"
+        );
+    }
+
+    #[test]
+    fn same_name_functions_over_a_limit_are_compared_by_their_highest_scores() {
+        let b = baseline(&[
+            func("src/a.rs", "new", 29, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(35.0)),
+        ]);
+        // Both are over a limit now: complexity 31 and CRAP 36.0 are the highest.
+        let now = [
+            func("src/a.rs", "new", 31, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(36.0)),
+        ];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1, "one entry, one movement");
+        assert_eq!(m[0].now.complexity, 31);
+        assert_eq!(m[0].now.crap, Some(36.0));
+        assert_eq!(m[0].complexity, Some(Direction::Worse));
+        assert_eq!(m[0].crap, Some(Direction::Worse));
+        assert_eq!(m[0].function.complexity, 31, "the most complex is named");
+    }
+
+    #[test]
+    fn same_name_functions_all_under_the_limits_are_compared_by_their_highest_scores() {
+        // None is over a limit now, so the entry is stale: its highest scores now
+        // are what improved.
+        let b = baseline(&[
+            func("src/a.rs", "new", 29, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(35.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "new", 8, Some(9.0)),
+            func("src/a.rs", "new", 12, Some(12.5)),
+        ];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].now.complexity, 12);
+        assert_eq!(m[0].now.crap, Some(12.5));
+        assert!(m[0].improved());
+    }
+
+    #[test]
+    fn a_crap_that_was_not_recorded_is_shown_as_such_beside_a_complexity_that_moved() {
+        let b = baseline(&[func("src/a.rs", "g", 20, None)]);
+        let now = [func("src/a.rs", "g", 21, Some(25.0))];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].crap, None, "no recorded CRAP to compare with");
+        assert_eq!(m[0].complexity_text(), "20 → 21 (worse)");
+        assert_eq!(m[0].crap_text(), "25.0, none recorded");
+    }
+
+    #[test]
+    fn test_functions_are_left_out_unless_the_gate_counts_them() {
+        let b = baseline(&[func("src/a.rs", "t", 20, Some(20.0))]);
+        let mut test_fn = func("src/a.rs", "t", 25, Some(25.0));
+        test_fn.is_test = true;
+        let fns = [test_fn];
+        assert!(b.movements(&fns, &limits(false), &[]).is_empty());
+        assert_eq!(b.movements(&fns, &limits(true), &[]).len(), 1);
+    }
+
+    #[test]
+    fn a_function_that_fails_the_gate_is_not_reported_again() {
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        let now = func("src/a.rs", "parse", 31, Some(29.2));
+        let failing = [over(&now, true, false)];
+        assert!(
+            b.movements(std::slice::from_ref(&now), &limits(false), &failing)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn movements_list_degradations_first_then_the_biggest_change() {
+        let b = baseline(&[
+            func("src/a.rs", "better_a_lot", 30, Some(30.0)),
+            func("src/a.rs", "better_a_little", 30, Some(30.0)),
+            func("src/a.rs", "worse_a_little", 30, Some(30.0)),
+            func("src/a.rs", "worse_a_lot", 30, Some(30.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "better_a_lot", 10, Some(10.0)),
+            func("src/a.rs", "better_a_little", 29, Some(29.0)),
+            func("src/a.rs", "worse_a_little", 31, Some(31.0)),
+            func("src/a.rs", "worse_a_lot", 35, Some(35.0)),
+        ];
+        let names: Vec<_> = moved(&b, &now)
+            .iter()
+            .map(|m| m.function.name.clone())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "worse_a_lot",
+                "worse_a_little",
+                "better_a_lot",
+                "better_a_little"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_same_name_function_that_would_not_be_recorded_does_not_move_the_entry() {
+        // Only the functions over a limit are recorded: A (29, 10.0). B is under
+        // both limits, so a CRAP of 25.0 on it is not a movement of the entry.
+        let a = func("src/a.rs", "new", 29, Some(10.0));
+        let b_fn = func("src/a.rs", "new", 5, Some(25.0));
+        let b = baseline(std::slice::from_ref(&a));
+        let now = [a, b_fn];
+        assert!(moved(&b, &now).is_empty(), "{:?}", moved(&b, &now));
+    }
+
+    #[test]
+    fn the_crap_shown_is_the_one_compared() {
+        // Compared in tenths rounded up, as the baseline keeps it, so 29.21 is
+        // 29.3 and worse than 29.2; it must not be shown as 29.2.
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        let now = [func("src/a.rs", "parse", 29, Some(29.21))];
+        let m = moved(&b, &now);
+        assert_eq!(m[0].crap, Some(Direction::Worse));
+        assert_eq!(m[0].now.crap, Some(29.3));
+    }
+
+    #[test]
+    fn a_small_degradation_ranks_by_what_got_worse_not_by_what_got_better() {
+        // `mixed` is one more complex but 50 less CRAP; `plain` is five more
+        // complex. Both are degraded; the larger degradation comes first.
+        let b = baseline(&[
+            func("src/a.rs", "mixed", 20, Some(80.0)),
+            func("src/a.rs", "plain", 20, Some(20.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "mixed", 21, Some(30.0)),
+            func("src/a.rs", "plain", 25, Some(25.0)),
+        ];
+        let names: Vec<_> = moved(&b, &now)
+            .iter()
+            .map(|m| m.function.name.clone())
+            .collect();
+        assert_eq!(names, ["plain", "mixed"]);
+    }
+
+    #[test]
+    fn what_got_better_does_not_count_towards_how_much_a_function_degraded() {
+        // Both are one more complex. `offset` also has 50 less CRAP; `plain` has a
+        // little more. Netting would put `offset` first; only what got worse counts.
+        let b = baseline(&[
+            func("src/a.rs", "offset", 20, Some(80.0)),
+            func("src/a.rs", "plain", 20, Some(20.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "offset", 21, Some(30.0)),
+            func("src/a.rs", "plain", 21, Some(20.1)),
+        ];
+        let names: Vec<_> = moved(&b, &now)
+            .iter()
+            .map(|m| m.function.name.clone())
+            .collect();
+        assert_eq!(names, ["plain", "offset"]);
+
+        // And a complexity that got better does not count for a function
+        // degraded only in its CRAP: 10 fewer complexity, 0.2 more CRAP, against
+        // one more complexity.
+        let b = baseline(&[
+            func("src/a.rs", "crap_only", 30, Some(30.0)),
+            func("src/a.rs", "complexity_up", 20, Some(20.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "crap_only", 20, Some(30.2)),
+            func("src/a.rs", "complexity_up", 21, Some(21.0)),
+        ];
+        let names: Vec<_> = moved(&b, &now)
+            .iter()
+            .map(|m| m.function.name.clone())
+            .collect();
+        assert_eq!(names, ["complexity_up", "crap_only"]);
     }
 
     #[test]
