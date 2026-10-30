@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- report baselined functions that moved(pr [#83])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.16(pr [#81])
@@ -261,6 +265,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#78]: https://github.com/jerus-org/jci-coverage/pull/78
 [#81]: https://github.com/jerus-org/jci-coverage/pull/81
 [#82]: https://github.com/jerus-org/jci-coverage/pull/82
+[#83]: https://github.com/jerus-org/jci-coverage/pull/83
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...HEAD
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
