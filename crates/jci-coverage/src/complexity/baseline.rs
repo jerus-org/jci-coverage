@@ -1116,6 +1116,56 @@ mod tests {
     }
 
     #[test]
+    fn same_name_functions_over_a_limit_are_compared_by_their_highest_scores() {
+        let b = baseline(&[
+            func("src/a.rs", "new", 29, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(35.0)),
+        ]);
+        // Both are over a limit now: complexity 31 and CRAP 36.0 are the highest.
+        let now = [
+            func("src/a.rs", "new", 31, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(36.0)),
+        ];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1, "one entry, one movement");
+        assert_eq!(m[0].now.complexity, 31);
+        assert_eq!(m[0].now.crap, Some(36.0));
+        assert_eq!(m[0].complexity, Some(Direction::Worse));
+        assert_eq!(m[0].crap, Some(Direction::Worse));
+        assert_eq!(m[0].function.complexity, 31, "the most complex is named");
+    }
+
+    #[test]
+    fn same_name_functions_all_under_the_limits_are_compared_by_their_highest_scores() {
+        // None is over a limit now, so the entry is stale: its highest scores now
+        // are what improved.
+        let b = baseline(&[
+            func("src/a.rs", "new", 29, Some(29.2)),
+            func("src/a.rs", "new", 20, Some(35.0)),
+        ]);
+        let now = [
+            func("src/a.rs", "new", 8, Some(9.0)),
+            func("src/a.rs", "new", 12, Some(12.5)),
+        ];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].now.complexity, 12);
+        assert_eq!(m[0].now.crap, Some(12.5));
+        assert!(m[0].improved());
+    }
+
+    #[test]
+    fn a_crap_that_was_not_recorded_is_shown_as_such_beside_a_complexity_that_moved() {
+        let b = baseline(&[func("src/a.rs", "g", 20, None)]);
+        let now = [func("src/a.rs", "g", 21, Some(25.0))];
+        let m = moved(&b, &now);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].crap, None, "no recorded CRAP to compare with");
+        assert_eq!(m[0].complexity_text(), "20 → 21 (worse)");
+        assert_eq!(m[0].crap_text(), "25.0, none recorded");
+    }
+
+    #[test]
     fn test_functions_are_left_out_unless_the_gate_counts_them() {
         let b = baseline(&[func("src/a.rs", "t", 20, Some(20.0))]);
         let mut test_fn = func("src/a.rs", "t", 25, Some(25.0));
