@@ -162,10 +162,14 @@ combined with `--write-baseline`, and a failure to post is a warning that does n
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not
 fail), commit the file, and pass it back with `--baseline`. A baselined function then fails
-only if it gets worse, with higher complexity or CRAP than recorded, and is still warned
-about; a new function over the maximum fails. A function is identified by its file and name,
-not its line, so functions of one name in one file (and closures) share an entry holding
-their highest scores.
+only if it gets worse in a score that is at or over its maximum: a function at or over
+`--max-complexity` alone fails for higher complexity than recorded, one at or over `--max-crap`
+alone for higher CRAP, and one at or over both for either. A score that is still under its
+own maximum is not judged, so a CRAP that moves from 29.2 to 29.4 with the maximum at 30 does
+not fail a function accepted for its complexity, while one that reaches 30 is at the maximum
+and worse than recorded, and does. A baselined function is still warned about; a new function
+at or over the maximum fails. A function is identified by its file and name, not its line, so
+functions of one name in one file (and closures) share an entry holding their highest scores.
 
 Without a value both options use `.jci-coverage-baseline` in the directory `jci-coverage`
 runs from. By convention that is the repository root, committed beside the workspace

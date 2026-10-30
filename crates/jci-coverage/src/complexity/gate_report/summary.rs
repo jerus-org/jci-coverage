@@ -54,7 +54,7 @@ fn code(text: &str) -> String {
 
 /// The "Function" cell: the name, and below it where it is.
 fn function_cell(r: &Failure<'_>) -> String {
-    let f = r.function;
+    let f = r.risk.function;
     let name = code(&clip(&display_name(f), MAX_CELL));
     let place = code(&format!("{}:{}", clip(&f.file, MAX_CELL), f.line));
     format!("{name}<br>{place}")
@@ -96,7 +96,7 @@ pub(crate) fn failing(
     for r in failures.iter().take(max_rows) {
         let mut cells = vec![function_cell(r), over_label(r)];
         if let Some(b) = baseline {
-            cells.push(against_baseline(r.function, b));
+            cells.push(against_baseline(r, b));
         }
         cells.push(fix(r, limits));
         out += &format!("| {} |\n", cells.join(" | "));
@@ -387,6 +387,36 @@ mod tests {
         assert!(out.contains("not in the baseline"), "{out}");
         let without = failing(&risks, &LIMITS, None, 25);
         assert!(!without.contains("Baseline"), "{without}");
+    }
+
+    #[test]
+    fn the_baseline_cell_names_only_the_score_the_function_is_over() {
+        // Over only the complexity limit: complexity 20 to 21, and its CRAP
+        // moved too but is under the CRAP limit.
+        let before = func("src/a.rs", "slow", 20, 51, 48);
+        let more_complex = func("src/a.rs", "slow", 21, 51, 47);
+        // Over only the CRAP limit: uncovered, complexity 5 to 6.
+        let cold_before = func("src/a.rs", "cold", 5, 26, 0);
+        let cold_now = func("src/a.rs", "cold", 6, 26, 0);
+        let baseline = Baseline::from_functions([&before, &cold_before], Rules::Rca);
+        let risks = [
+            risk(&more_complex, true, false),
+            risk(&cold_now, false, true),
+        ];
+        let out = failing(&risks, &LIMITS, Some(&baseline), 25);
+        let rows = rows(&out);
+        assert!(
+            rows[0].contains("worse than the baseline: complexity 21 > 20 |"),
+            "{}",
+            rows[0]
+        );
+        assert!(!rows[0].contains("CRAP 2"), "{}", rows[0]);
+        assert!(
+            rows[1].contains("worse than the baseline: CRAP 42.0 > 30.0 |"),
+            "{}",
+            rows[1]
+        );
+        assert!(!rows[1].contains("complexity 6"), "{}", rows[1]);
     }
 
     #[test]

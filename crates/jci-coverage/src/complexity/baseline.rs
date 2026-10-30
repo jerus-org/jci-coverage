@@ -5,6 +5,13 @@
 //! a new function over the maximum or one that has got worse. Fix a baselined
 //! function and it drops out of the gate by itself.
 //!
+//! "Worse" is judged only in a score the function is at or over its maximum in:
+//! complexity if it is at or over `--max-complexity`, CRAP if it is at or over
+//! `--max-crap`, both if it is at or over both. A score still under its own
+//! maximum may move (CRAP follows coverage, which differs by a line between
+//! runs) without failing a function accepted for the other; once it reaches the
+//! maximum it is judged against the recorded value.
+//!
 //! A function is identified by its file and its name, not its line, which moves
 //! with every edit above it. Functions that share a name in one file (and
 //! closures, which have none) share one entry holding their highest scores, so
@@ -32,7 +39,10 @@ use std::collections::{BTreeMap, HashSet};
 
 use anyhow::{Result, anyhow, bail};
 
-use crate::complexity::{counter::Rules, metrics::FunctionMetrics};
+use crate::complexity::{
+    counter::Rules,
+    metrics::{FunctionMetrics, Risk},
+};
 
 const MAGIC: &[u8; 4] = b"JCIB";
 const VERSION: u8 = 1;
@@ -302,19 +312,28 @@ impl Baseline {
         Ok(Self { rules, entries })
     }
 
-    /// Where `f` stands against the baseline, and, if it is worse, in what.
-    pub(crate) fn standing(&self, f: &FunctionMetrics) -> Standing {
+    /// Where the function stands against the baseline, and, if it is worse, in
+    /// what.
+    ///
+    /// Only a score the function is at or over its limit in is judged: a function
+    /// at or over the complexity limit alone is not worse for a CRAP that moved
+    /// while still under its limit, and the reverse. A score that has reached its
+    /// limit is compared with the value recorded, so a CRAP recorded at 29.2
+    /// under a limit of 30 is worse at 30.2.
+    pub(crate) fn standing(&self, risk: &Risk<'_>) -> Standing {
+        let f = risk.function;
         let Some(a) = self.entries.get(&key(f)) else {
             return Standing::New;
         };
-        let complexity = f.complexity > a.complexity;
-        let crap = match (f.crap, a.crap) {
-            (Some(now), Some(then)) => tenths(now) > then,
-            // CRAP was never accepted for it, so a known one is new.
-            (Some(_), None) => true,
-            // Coverage data is missing now; complexity alone is judged.
-            (None, _) => false,
-        };
+        let complexity = risk.complexity && f.complexity > a.complexity;
+        let crap = risk.crap
+            && match (f.crap, a.crap) {
+                (Some(now), Some(then)) => tenths(now) > then,
+                // CRAP was never accepted for it, so a known one is new.
+                (Some(_), None) => true,
+                // Coverage data is missing now; complexity alone is judged.
+                (None, _) => false,
+            };
         if !complexity && !crap {
             return Standing::Allowed;
         }
@@ -328,9 +347,10 @@ impl Baseline {
         }
     }
 
-    /// Whether `f` is in the baseline and no worse than it was recorded.
-    pub(crate) fn allows(&self, f: &FunctionMetrics) -> bool {
-        self.standing(f) == Standing::Allowed
+    /// Whether the function is in the baseline and no worse than it was recorded
+    /// in the scores it is over a limit in.
+    pub(crate) fn allows(&self, risk: &Risk<'_>) -> bool {
+        self.standing(risk) == Standing::Allowed
     }
 
     /// How many entries match none of the functions currently over a maximum:
@@ -360,6 +380,20 @@ mod tests {
 
     fn baseline(functions: &[FunctionMetrics]) -> Baseline {
         Baseline::from_functions(functions, Rules::Rca)
+    }
+
+    /// `f` judged as over both limits, so both scores are compared.
+    fn both(f: &FunctionMetrics) -> Risk<'_> {
+        over(f, true, true)
+    }
+
+    /// `f` judged as over the limits flagged.
+    fn over(f: &FunctionMetrics, complexity: bool, crap: bool) -> Risk<'_> {
+        Risk {
+            function: f,
+            complexity,
+            crap,
+        }
     }
 
     /// A body with a valid checksum, so only its structure is under test.
@@ -538,20 +572,23 @@ mod tests {
     fn a_function_no_worse_than_its_entry_is_allowed() {
         let b = baseline(&[func("src/a.rs", "f", 15, Some(30.04))]);
         assert!(
-            b.allows(&func("src/a.rs", "f", 15, Some(30.04))),
+            b.allows(&both(&func("src/a.rs", "f", 15, Some(30.04)))),
             "as recorded"
         );
-        assert!(b.allows(&func("src/a.rs", "f", 9, Some(2.0))), "better");
         assert!(
-            b.allows(&func("src/a.rs", "f", 15, None)),
+            b.allows(&both(&func("src/a.rs", "f", 9, Some(2.0)))),
+            "better"
+        );
+        assert!(
+            b.allows(&both(&func("src/a.rs", "f", 15, None))),
             "coverage now unknown"
         );
         assert!(
-            !b.allows(&func("src/a.rs", "f", 16, Some(30.0))),
+            !b.allows(&both(&func("src/a.rs", "f", 16, Some(30.0)))),
             "more complex"
         );
         assert!(
-            !b.allows(&func("src/a.rs", "f", 15, Some(31.0))),
+            !b.allows(&both(&func("src/a.rs", "f", 15, Some(31.0)))),
             "worse CRAP"
         );
     }
@@ -561,7 +598,7 @@ mod tests {
         for crap in [29.2, 39.2, 0.1, 0.3, 18.0, 41.26, 1e6 + 0.05] {
             let f = func("src/a.rs", "f", 10, Some(crap));
             let read = Baseline::decode(&baseline(std::slice::from_ref(&f)).encode()).expect("ok");
-            assert!(read.allows(&f), "{crap}");
+            assert!(read.allows(&both(&f)), "{crap}");
         }
     }
 
@@ -569,19 +606,19 @@ mod tests {
     fn standing_says_which_scores_are_worse_than_recorded() {
         let b = baseline(&[func("src/a.rs", "f", 29, Some(29.2))]);
         assert_eq!(
-            b.standing(&func("src/a.rs", "f", 29, Some(29.2))),
+            b.standing(&both(&func("src/a.rs", "f", 29, Some(29.2)))),
             Standing::Allowed
         );
         assert_eq!(
-            b.standing(&func("src/a.rs", "f", 20, None)),
+            b.standing(&both(&func("src/a.rs", "f", 20, None))),
             Standing::Allowed
         );
         assert_eq!(
-            b.standing(&func("src/a.rs", "other", 1, None)),
+            b.standing(&both(&func("src/a.rs", "other", 1, None))),
             Standing::New
         );
         assert_eq!(
-            b.standing(&func("src/b.rs", "f", 1, None)),
+            b.standing(&both(&func("src/b.rs", "f", 1, None))),
             Standing::New,
             "other file"
         );
@@ -591,7 +628,7 @@ mod tests {
             crap: Some(29.2),
         };
         assert_eq!(
-            b.standing(&func("src/a.rs", "f", 31, Some(29.2))),
+            b.standing(&both(&func("src/a.rs", "f", 31, Some(29.2)))),
             Standing::Worse {
                 complexity: true,
                 crap: false,
@@ -599,7 +636,7 @@ mod tests {
             }
         );
         assert_eq!(
-            b.standing(&func("src/a.rs", "f", 29, Some(40.0))),
+            b.standing(&both(&func("src/a.rs", "f", 29, Some(40.0)))),
             Standing::Worse {
                 complexity: false,
                 crap: true,
@@ -607,7 +644,7 @@ mod tests {
             }
         );
         assert_eq!(
-            b.standing(&func("src/a.rs", "f", 30, Some(40.0))),
+            b.standing(&both(&func("src/a.rs", "f", 30, Some(40.0)))),
             Standing::Worse {
                 complexity: true,
                 crap: true,
@@ -620,7 +657,7 @@ mod tests {
     fn a_crap_that_was_never_recorded_is_worse_once_it_is_known() {
         let b = baseline(&[func("src/a.rs", "g", 7, None)]);
         assert_eq!(
-            b.standing(&func("src/a.rs", "g", 7, Some(9.0))),
+            b.standing(&both(&func("src/a.rs", "g", 7, Some(9.0)))),
             Standing::Worse {
                 complexity: false,
                 crap: true,
@@ -631,7 +668,7 @@ mod tests {
             }
         );
         assert_eq!(
-            b.standing(&func("src/a.rs", "g", 7, None)),
+            b.standing(&both(&func("src/a.rs", "g", 7, None))),
             Standing::Allowed
         );
     }
@@ -652,8 +689,8 @@ mod tests {
             func("src/a.rs", "nope", 1, None),
         ] {
             assert_eq!(
-                b.allows(&probe),
-                b.standing(&probe) == Standing::Allowed,
+                b.allows(&both(&probe)),
+                b.standing(&both(&probe)) == Standing::Allowed,
                 "{probe:?}"
             );
         }
@@ -663,11 +700,11 @@ mod tests {
     fn a_function_not_in_the_baseline_is_not_allowed() {
         let b = baseline(&[func("src/a.rs", "f", 15, Some(30.0))]);
         assert!(
-            !b.allows(&func("src/a.rs", "g", 1, Some(1.0))),
+            !b.allows(&both(&func("src/a.rs", "g", 1, Some(1.0)))),
             "other name"
         );
         assert!(
-            !b.allows(&func("src/b.rs", "f", 1, Some(1.0))),
+            !b.allows(&both(&func("src/b.rs", "f", 1, Some(1.0)))),
             "other file"
         );
     }
@@ -676,24 +713,124 @@ mod tests {
     fn an_entry_recorded_without_a_known_crap_does_not_allow_one_that_is_known_now() {
         let b = baseline(&[func("src/a.rs", "f", 15, None)]);
         assert!(
-            !b.allows(&func("src/a.rs", "f", 15, Some(500.0))),
+            !b.allows(&both(&func("src/a.rs", "f", 15, Some(500.0)))),
             "new CRAP"
         );
-        assert!(b.allows(&func("src/a.rs", "f", 15, None)), "still unknown");
-        assert!(!b.allows(&func("src/a.rs", "f", 16, None)), "more complex");
+        assert!(
+            b.allows(&both(&func("src/a.rs", "f", 15, None))),
+            "still unknown"
+        );
+        assert!(
+            !b.allows(&both(&func("src/a.rs", "f", 16, None))),
+            "more complex"
+        );
     }
 
     #[test]
     fn a_function_whose_coverage_is_unknown_now_is_judged_on_complexity_alone() {
         let b = baseline(&[func("src/a.rs", "f", 15, Some(30.0))]);
-        assert!(b.allows(&func("src/a.rs", "f", 15, None)));
-        assert!(!b.allows(&func("src/a.rs", "f", 16, None)));
+        assert!(b.allows(&both(&func("src/a.rs", "f", 15, None))));
+        assert!(!b.allows(&both(&func("src/a.rs", "f", 16, None))));
+    }
+
+    #[test]
+    fn a_function_over_only_on_complexity_is_judged_on_complexity() {
+        // parse: complexity 29 is over the limit; CRAP 29.2 is under it.
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        let drifted = func("src/a.rs", "parse", 29, Some(29.4));
+        assert_eq!(
+            b.standing(&over(&drifted, true, false)),
+            Standing::Allowed,
+            "CRAP moved but is not over its limit"
+        );
+        assert!(b.allows(&over(&drifted, true, false)));
+        let more_complex = func("src/a.rs", "parse", 30, Some(29.4));
+        assert_eq!(
+            b.standing(&over(&more_complex, true, false)),
+            Standing::Worse {
+                complexity: true,
+                crap: false,
+                recorded: Recorded {
+                    complexity: 29,
+                    crap: Some(29.2)
+                }
+            },
+            "only the score over its limit is named"
+        );
+    }
+
+    #[test]
+    fn a_function_over_only_on_crap_is_judged_on_crap() {
+        // post_multipart: CRAP 30.0 is at the limit; complexity 5 is far under.
+        let b = baseline(&[func("src/a.rs", "post", 5, Some(30.0))]);
+        let more_complex = func("src/a.rs", "post", 6, Some(30.0));
+        assert_eq!(
+            b.standing(&over(&more_complex, false, true)),
+            Standing::Allowed,
+            "complexity moved but is not over its limit"
+        );
+        let worse = func("src/a.rs", "post", 5, Some(30.2));
+        assert_eq!(
+            b.standing(&over(&worse, false, true)),
+            Standing::Worse {
+                complexity: false,
+                crap: true,
+                recorded: Recorded {
+                    complexity: 5,
+                    crap: Some(30.0)
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn crossing_a_limit_is_judged_against_the_recorded_value() {
+        // CRAP 29.2 was recorded under a limit of 30; 30.2 is over it, and worse.
+        let b = baseline(&[func("src/a.rs", "parse", 29, Some(29.2))]);
+        let crossed = func("src/a.rs", "parse", 29, Some(30.2));
+        assert_eq!(
+            b.standing(&over(&crossed, true, true)),
+            Standing::Worse {
+                complexity: false,
+                crap: true,
+                recorded: Recorded {
+                    complexity: 29,
+                    crap: Some(29.2)
+                }
+            }
+        );
+        assert!(!b.allows(&over(&crossed, true, true)));
+    }
+
+    #[test]
+    fn a_function_over_both_limits_is_judged_on_both() {
+        let b = baseline(&[func("src/a.rs", "rewrite", 39, Some(39.2))]);
+        let more_complex = func("src/a.rs", "rewrite", 40, Some(39.2));
+        let less_covered = func("src/a.rs", "rewrite", 39, Some(39.5));
+        let same = func("src/a.rs", "rewrite", 39, Some(39.2));
+        assert!(!b.allows(&over(&more_complex, true, true)));
+        assert!(!b.allows(&over(&less_covered, true, true)));
+        assert!(b.allows(&over(&same, true, true)));
+    }
+
+    #[test]
+    fn a_crap_never_recorded_is_only_held_against_a_function_over_the_crap_limit() {
+        let b = baseline(&[func("src/a.rs", "g", 7, None)]);
+        let known = func("src/a.rs", "g", 7, Some(9.0));
+        assert!(
+            b.allows(&over(&known, true, false)),
+            "not over the CRAP limit"
+        );
+        assert!(
+            !b.allows(&over(&known, false, true)),
+            "over the CRAP limit, and none was accepted"
+        );
     }
 
     #[test]
     fn path_separators_do_not_matter() {
         let b = baseline(&[func("crates\\x\\src\\a.rs", "f", 15, Some(30.0))]);
-        assert!(b.allows(&func("crates/x/src/a.rs", "f", 15, Some(30.0))));
+        assert!(b.allows(&both(&func("crates/x/src/a.rs", "f", 15, Some(30.0)))));
         let recorded = baseline(&[func("crates/x/src/a.rs", "f", 15, Some(30.0))]);
         assert_eq!(b.encode(), recorded.encode());
     }
@@ -706,15 +843,15 @@ mod tests {
             func("src/a.rs", "new", 5, Some(33.0)),
         ]);
         assert_eq!(b.len(), 1);
-        assert!(b.allows(&func("src/a.rs", "new", 18, Some(33.0))));
-        assert!(!b.allows(&func("src/a.rs", "new", 19, Some(1.0))));
+        assert!(b.allows(&both(&func("src/a.rs", "new", 18, Some(33.0)))));
+        assert!(!b.allows(&both(&func("src/a.rs", "new", 19, Some(1.0)))));
     }
 
     #[test]
     fn closures_are_recorded_under_one_name_per_file() {
         let b = baseline(&[func("src/a.rs", "", 11, Some(12.0))]);
-        assert!(b.allows(&func("src/a.rs", "", 11, Some(12.0))));
-        assert!(b.allows(&func("src/a.rs", "<closure>", 11, Some(12.0))));
+        assert!(b.allows(&both(&func("src/a.rs", "", 11, Some(12.0)))));
+        assert!(b.allows(&both(&func("src/a.rs", "<closure>", 11, Some(12.0)))));
     }
 
     #[test]
