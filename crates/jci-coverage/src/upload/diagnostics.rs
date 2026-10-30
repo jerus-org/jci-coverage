@@ -223,6 +223,31 @@ fn class_filename(e: &quick_xml::events::BytesStart<'_>) -> Result<Option<String
     Ok(None)
 }
 
+/// The report's first non-blank `<source>` text, found as its events are read.
+#[derive(Default)]
+struct SourceRoot {
+    in_source: bool,
+    root: Option<String>,
+}
+
+impl SourceRoot {
+    fn track(&mut self, event: &quick_xml::events::Event<'_>) {
+        use quick_xml::events::Event;
+
+        match event {
+            Event::Start(e) if e.name().as_ref() == "source" => self.in_source = true,
+            Event::End(e) if e.name().as_ref() == "source" => self.in_source = false,
+            Event::Text(t) if self.in_source && self.root.is_none() => {
+                let text = t.as_ref().trim();
+                if !text.is_empty() {
+                    self.root = Some(text.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Count the `<class filename>` attributes of a Cobertura report and how many
 /// are under `base_dir`, resolving relative ones against the report's first
 /// `<source>`. A malformed report ends the scan early and says why in
@@ -232,37 +257,39 @@ fn summarize_cobertura(content: &str, base_dir: &str) -> ReportSummary {
 
     let mut summary = ReportSummary::empty();
     let mut reader = Reader::from_str(content);
-    let mut root: Option<String> = None;
-    let mut in_source = false;
+    let mut source = SourceRoot::default();
     loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) if e.name().as_ref() == "source" => in_source = true,
-            Ok(Event::End(e)) if e.name().as_ref() == "source" => in_source = false,
-            Ok(Event::Text(t)) if in_source && root.is_none() => {
-                let text = t.as_ref().trim().to_string();
-                if !text.is_empty() {
-                    root = Some(text);
-                }
-            }
-            Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == "class" => {
-                match class_filename(&e) {
-                    Ok(Some(path)) => summary.add(&path, root.as_deref(), base_dir),
-                    Ok(None) => {}
-                    Err(err) => {
-                        summary.scan_error = Some(err);
-                        break;
-                    }
-                }
-            }
+        let event = match reader.read_event() {
             Ok(Event::Eof) => break,
-            Ok(_) => {}
+            Ok(event) => event,
             Err(err) => {
                 summary.scan_error = Some(err.to_string());
                 break;
             }
+        };
+        source.track(&event);
+        if let Event::Start(e) | Event::Empty(e) = &event
+            && e.name().as_ref() == "class"
+            && let Err(err) = add_class(&mut summary, e, source.root.as_deref(), base_dir)
+        {
+            summary.scan_error = Some(err);
+            break;
         }
     }
     summary
+}
+
+/// Count the file a `<class>` names, if it names one.
+fn add_class(
+    summary: &mut ReportSummary,
+    class: &quick_xml::events::BytesStart<'_>,
+    root: Option<&str>,
+    base_dir: &str,
+) -> Result<(), String> {
+    if let Some(path) = class_filename(class)? {
+        summary.add(&path, root, base_dir);
+    }
+    Ok(())
 }
 
 /// Count the `SF:` records of an lcov report and how many are under `base_dir`.
@@ -556,6 +583,50 @@ mod tests {
         let xml = r#"<coverage><class filename="a&bogus;b.rs"/></coverage>"#;
         let s = summarize_report(xml, "/work");
         assert_eq!(s.source_files, 0);
+        assert!(s.scan_error.is_some(), "{s:?}");
+    }
+
+    #[test]
+    fn the_first_non_blank_source_is_the_root_for_relative_classes() {
+        let xml = r#"<coverage><sources><source>  </source><source> /work/proj </source>
+<source>/elsewhere</source></sources><class filename="src/a.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work/proj");
+        assert_eq!(
+            s.under_base_dir, 1,
+            "a blank <source> is skipped, the first real one wins and is trimmed"
+        );
+    }
+
+    #[test]
+    fn a_class_before_the_source_has_no_root_to_resolve_against() {
+        let xml = r#"<coverage><class filename="src/a.rs"/>
+<sources><source>/work/proj</source></sources><class filename="src/b.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work/proj");
+        assert_eq!((s.source_files, s.under_base_dir), (2, 1));
+    }
+
+    #[test]
+    fn text_outside_a_source_is_not_taken_as_the_root() {
+        let xml = r#"<coverage>/work/proj<sources><source/></sources>
+<class filename="src/a.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work/proj");
+        assert_eq!(s.under_base_dir, 0);
+    }
+
+    #[test]
+    fn text_after_the_source_closes_is_not_taken_as_the_root() {
+        let xml = r#"<coverage><sources><source></source>/work/proj</sources>
+<class filename="src/a.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work/proj");
+        assert_eq!(s.under_base_dir, 0);
+    }
+
+    #[test]
+    fn the_scan_stops_at_a_class_with_bad_attributes() {
+        let xml = r#"<coverage><class filename="a.rs"/><class bad filename="b.rs"/>
+<class filename="c.rs"/></coverage>"#;
+        let s = summarize_report(xml, "/work");
+        assert_eq!(s.source_files, 1, "classes after the error are not counted");
         assert!(s.scan_error.is_some(), "{s:?}");
     }
 
