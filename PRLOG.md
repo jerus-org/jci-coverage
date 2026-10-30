@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- refactor(upload)-split summarize_cobertura(pr [#85])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.17(pr [#84])
@@ -273,6 +277,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#82]: https://github.com/jerus-org/jci-coverage/pull/82
 [#83]: https://github.com/jerus-org/jci-coverage/pull/83
 [#84]: https://github.com/jerus-org/jci-coverage/pull/84
+[#85]: https://github.com/jerus-org/jci-coverage/pull/85
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...HEAD
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
