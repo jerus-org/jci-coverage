@@ -112,10 +112,7 @@ fn moved_section(moves: &[Movement<'_>], max_rows: usize) -> String {
         );
     }
     if moves.len() > max_rows {
-        out += &format!(
-            "\n_{} more not shown; see the full report in the CI log._\n",
-            moves.len() - max_rows
-        );
+        out += &format!("\n_{} more not listed._\n", moves.len() - max_rows);
     }
     out
 }
@@ -609,7 +606,11 @@ mod tests {
         let out = passing(&LIMITS, Some(30), 25, &moves, &[]);
         assert_eq!(rows(&out).len(), 25, "{out}");
         assert!(out.contains("30 degraded"), "the count is of all: {out}");
-        assert!(out.contains("_5 more not shown"), "{out}");
+        assert!(out.contains("_5 more not listed._"), "{out}");
+        assert!(
+            !out.contains("full report"),
+            "the log lists only ten moved functions, so it is not the full list: {out}"
+        );
     }
 
     #[test]
