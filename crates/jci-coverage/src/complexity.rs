@@ -42,7 +42,7 @@ use clap::Args;
 
 use crate::github;
 
-use baseline::{Baseline, Movement};
+use baseline::{Baseline, Movement, kept_crap_text};
 pub use counter::Rules;
 use metrics::{FunctionMetrics, Thresholds};
 use plan::{Analyses, Options, Plan, Summary};
@@ -132,10 +132,11 @@ pub struct ComplexityArgs {
     /// recorded in a score that is at or over its maximum (a CRAP that moves
     /// while under `--max-crap` does not fail a function accepted for its
     /// complexity). It is still warned about, and one whose scores moved from the
-    /// recorded ones is reported (worse or better) without failing. Without a
-    /// value it reads `.jci-coverage-baseline` in the directory this runs from,
-    /// by convention the repository root. Make the file with `--write-baseline`;
-    /// it is a binary file for this tool, not meant to be edited.
+    /// recorded ones is reported (worse or better) without failing; the others
+    /// are listed as recorded. Without a value it reads `.jci-coverage-baseline`
+    /// in the directory this runs from, by convention the repository root. Make
+    /// the file with `--write-baseline`; it is a binary file for this tool, not
+    /// meant to be edited.
     #[arg(
         long,
         value_name = "PATH",
@@ -604,7 +605,13 @@ fn publish_summary(
     let passing = gate.failing.is_empty();
     let markdown = if passing {
         let allowed = baseline.map(|_| gate.over.len());
-        gate_report::passing_summary(&limits, allowed, gate_report::MAX_ROWS, &gate.moves)
+        gate_report::passing_summary(
+            &limits,
+            allowed,
+            gate_report::MAX_ROWS,
+            &gate.moves,
+            &gate.unchanged,
+        )
     } else {
         gate_report::failing_summary(
             &gate.failing,
@@ -612,6 +619,7 @@ fn publish_summary(
             baseline,
             gate_report::MAX_ROWS,
             &gate.moves,
+            &gate.unchanged,
         )
     };
     if let Some(path) = &args.summary_file {
@@ -625,12 +633,14 @@ fn publish_summary(
     }
 }
 
-/// The functions over a maximum, those of them that fail the gate, and the
-/// baselined functions whose scores moved without failing it.
+/// The functions over a maximum, those of them that fail the gate, the
+/// baselined functions whose scores moved without failing it, and the rest of
+/// the baselined ones, which are as recorded.
 struct Gate<'a> {
     over: Vec<metrics::Risk<'a>>,
     failing: Vec<metrics::Risk<'a>>,
     moves: Vec<Movement<'a>>,
+    unchanged: Vec<metrics::Risk<'a>>,
 }
 
 fn gate<'a>(
@@ -654,11 +664,51 @@ fn gate<'a>(
     let moves = baseline.map_or_else(Vec::new, |b| {
         b.movements(functions, &args.max_thresholds(), &failing)
     });
+    // What the baseline lets through and has not moved, worst first. A function
+    // sharing its name with one that moved is part of that movement.
+    let unchanged = if baseline.is_some() {
+        over.iter()
+            .filter(|r| !failing.contains(r))
+            .filter(|r| {
+                !moves.iter().any(|m| {
+                    m.function.file == r.function.file && m.function.name == r.function.name
+                })
+            })
+            .copied()
+            .collect()
+    } else {
+        Vec::new()
+    };
     Gate {
         over,
         failing,
         moves,
+        unchanged,
     }
+}
+
+/// The lines that name the baselined functions that are as recorded, capped
+/// like the other warnings.
+fn unchanged_lines(unchanged: &[metrics::Risk<'_>]) -> Vec<String> {
+    let mut lines: Vec<String> = unchanged
+        .iter()
+        .take(MAX_RISK_WARNINGS)
+        .map(|r| {
+            let f = r.function;
+            let crap = f.crap.map_or_else(|| "n/a".to_string(), kept_crap_text);
+            format!(
+                "  as recorded: {} (complexity {}, CRAP {crap}) {}:{}",
+                f.name, f.complexity, f.file, f.line
+            )
+        })
+        .collect();
+    if unchanged.len() > MAX_RISK_WARNINGS {
+        lines.push(format!(
+            "  {} more as recorded, not listed",
+            unchanged.len() - MAX_RISK_WARNINGS
+        ));
+    }
+    lines
 }
 
 /// Log the baselined functions whose scores moved: a warning for each that got
@@ -713,6 +763,9 @@ fn finish_with(
     if let Some(b) = baseline {
         let still_over = over.iter().map(|r| r.function);
         if let Some(line) = baseline_summary(over.len() - failing.len(), b.unused(still_over)) {
+            println!("{line}");
+        }
+        for line in unchanged_lines(&gate.unchanged) {
             println!("{line}");
         }
         log_moves(&gate.moves);
@@ -1458,6 +1511,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
             failing: over.clone(),
             over,
             moves: Vec::new(),
+            unchanged: Vec::new(),
         };
         let err = finish(&args, None, &gate).unwrap_err().to_string();
         assert!(err.starts_with("8 function(s) fail the gate"), "{err}");
@@ -1872,6 +1926,97 @@ fn pick(x: Option<i32>) -> Option<i32> {
 
         let g = gate(&args, None, &drifted);
         assert!(g.moves.is_empty(), "no baseline, nothing baselined");
+    }
+
+    /// `name` in `src/a.rs`, complexity 29 over 51 lines with `covered` covered.
+    fn named(name: &str, complexity: u32, covered: usize) -> FunctionMetrics {
+        FunctionMetrics {
+            name: name.into(),
+            ..parse_like(complexity, covered)
+        }
+    }
+
+    #[test]
+    fn the_gate_lists_the_baselined_functions_that_are_as_recorded() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let recorded = [
+            named("a", 29, 48),
+            named("b", 39, 48),
+            named("c", 20, 51),
+            named("d", 31, 48),
+        ];
+        let baseline = Baseline::from_functions(&recorded, args.rules);
+        let now = [
+            named("a", 29, 48),
+            named("b", 39, 48),
+            named("c", 20, 50), // CRAP drifted: moved, so reported there
+            named("d", 32, 48), // more complex: fails
+        ];
+        let g = gate(&args, Some(&baseline), &now);
+        let names = |risks: &[metrics::Risk<'_>]| -> Vec<String> {
+            risks.iter().map(|r| r.function.name.clone()).collect()
+        };
+        assert_eq!(names(&g.failing), ["d"]);
+        assert_eq!(g.moves.len(), 1);
+        assert_eq!(
+            names(&g.unchanged),
+            ["b", "a"],
+            "as recorded only, worst first: not the failing or the moved ones"
+        );
+        let g = gate(&args, None, &now);
+        assert!(g.unchanged.is_empty(), "no baseline, nothing baselined");
+        // Recording a baseline accepts everything, but none is in use yet.
+        args.write_baseline = Some(PathBuf::from("recorded.bin"));
+        let g = gate(&args, None, &now);
+        assert!(g.failing.is_empty() && !g.over.is_empty());
+        assert!(g.unchanged.is_empty(), "recording is not baselining");
+    }
+
+    #[test]
+    fn a_function_sharing_a_name_with_one_that_moved_is_part_of_that_movement() {
+        let (_dir, mut args) = setup();
+        args.max_complexity = 15;
+        args.max_crap = 30.0;
+        let mut other_line = named("a", 29, 48);
+        other_line.line = 40;
+        let recorded = [named("a", 29, 48), other_line.clone()];
+        let baseline = Baseline::from_functions(&recorded, args.rules);
+        let now = [named("a", 29, 47), other_line];
+        let g = gate(&args, Some(&baseline), &now);
+        assert_eq!(g.moves.len(), 1);
+        assert!(g.unchanged.is_empty(), "{:?}", g.unchanged);
+    }
+
+    #[test]
+    fn the_unchanged_functions_are_logged_with_their_scores_and_capped() {
+        let one = [metrics::Risk {
+            function: &named("parse", 29, 48),
+            complexity: true,
+            crap: false,
+        }];
+        assert_eq!(
+            unchanged_lines(&one),
+            ["  as recorded: parse (complexity 29, CRAP 29.2) src/a.rs:1"]
+        );
+        assert!(unchanged_lines(&[]).is_empty());
+
+        let many: Vec<_> = (0..MAX_RISK_WARNINGS + 3)
+            .map(|i| named(&format!("f{i:02}"), 29, 48))
+            .collect();
+        let risks: Vec<_> = many
+            .iter()
+            .map(|function| metrics::Risk {
+                function,
+                complexity: true,
+                crap: false,
+            })
+            .collect();
+        let lines = unchanged_lines(&risks);
+        assert_eq!(lines.len(), MAX_RISK_WARNINGS + 1);
+        assert_eq!(lines[MAX_RISK_WARNINGS], "  3 more as recorded, not listed");
+        assert!(lines[MAX_RISK_WARNINGS - 1].contains("f09"), "{lines:?}");
     }
 
     #[test]

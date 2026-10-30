@@ -184,6 +184,12 @@ fn tenths(crap: f64) -> u64 {
     (crap * 10.0).ceil() as u64
 }
 
+/// A CRAP score as the baseline keeps and compares it, in tenths rounded up,
+/// for showing a function that is as recorded.
+pub(crate) fn kept_crap_text(crap: f64) -> String {
+    format!("{:.1}", tenths(crap) as f64 / 10.0)
+}
+
 fn rules_tag(rules: Rules) -> u8 {
     match rules {
         Rules::Rca => 0,

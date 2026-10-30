@@ -4,7 +4,8 @@
 //! full resolution text. This is the same analysis shortened for a comment that
 //! people read on the pull request: the headline counts, one compact row per
 //! failing function (capped, so the comment stays small), the baselined functions
-//! whose scores have moved, the resolution options in a line, and a pointer to
+//! whose scores have moved, a collapsed list of those that have not, the
+//! resolution options in a line, and a pointer to
 //! the CI log that has the full report.
 //!
 //! The first line is a hidden marker, so a later run can find the comment it
@@ -15,7 +16,7 @@
 
 use super::{Failure, against_baseline, display_name, fix, headline, over_label};
 use crate::complexity::{
-    baseline::{Baseline, Movement},
+    baseline::{Baseline, Movement, kept_crap_text},
     metrics::{FunctionMetrics, Risk, Thresholds},
 };
 
@@ -111,12 +112,43 @@ fn moved_section(moves: &[Movement<'_>], max_rows: usize) -> String {
         );
     }
     if moves.len() > max_rows {
-        out += &format!(
-            "\n_{} more not shown; see the full report in the CI log._\n",
-            moves.len() - max_rows
-        );
+        out += &format!("\n_{} more not listed._\n", moves.len() - max_rows);
     }
     out
+}
+
+/// The baselined functions over a limit whose scores are as recorded, in a
+/// collapsed table: they are not news, but the reader can see what the
+/// baseline lets through. Those that moved have their own table, so they are
+/// not repeated here.
+fn unchanged_section(unchanged: &[Risk<'_>], max_rows: usize) -> String {
+    if unchanged.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "\n<details>\n<summary>{} baselined function(s) unchanged</summary>\n\n\
+        As recorded in the baseline; the score at or over its limit is in bold.\n\n\
+        | Function | Complexity | CRAP |\n|---|---|---|\n",
+        unchanged.len()
+    );
+    for r in unchanged.iter().take(max_rows) {
+        let f = r.function;
+        let crap = f.crap.map_or_else(|| "n/a".to_string(), kept_crap_text);
+        out += &format!(
+            "| {} | {} | {} |\n",
+            function_cell(f),
+            bold_if(f.complexity.to_string(), r.complexity),
+            bold_if(crap, r.crap),
+        );
+    }
+    if unchanged.len() > max_rows {
+        out += &format!("\n_{} more not listed._\n", unchanged.len() - max_rows);
+    }
+    out + "\n</details>\n"
+}
+
+fn bold_if(text: String, over: bool) -> String {
+    if over { format!("**{text}**") } else { text }
 }
 
 /// The summary of a failing gate.
@@ -126,6 +158,7 @@ pub(crate) fn failing(
     baseline: Option<&Baseline>,
     max_rows: usize,
     moves: &[Movement<'_>],
+    unchanged: &[Risk<'_>],
 ) -> String {
     let failures: Vec<Failure<'_>> = failing.iter().map(|r| Failure::new(r, limits)).collect();
 
@@ -151,6 +184,7 @@ pub(crate) fn failing(
         out += &format!("\n_{more} more not shown; see the full report in the CI log._\n");
     }
     out += &moved_section(moves, max_rows);
+    out += &unchanged_section(unchanged, max_rows);
     out += &format!("\n{}\n", resolution(limits));
     out
 }
@@ -162,6 +196,7 @@ pub(crate) fn passing(
     allowed: Option<usize>,
     max_rows: usize,
     moves: &[Movement<'_>],
+    unchanged: &[Risk<'_>],
 ) -> String {
     let mut on = Vec::new();
     if limits.complexity > 0 {
@@ -178,8 +213,9 @@ pub(crate) fn passing(
         None => format!("No function is at or over the limits ({on})."),
     };
     format!(
-        "{MARKER}\n### jci-coverage gate: passes\n\n{body}\n{}",
-        moved_section(moves, max_rows)
+        "{MARKER}\n### jci-coverage gate: passes\n\n{body}\n{}{}",
+        moved_section(moves, max_rows),
+        unchanged_section(unchanged, max_rows)
     )
 }
 
@@ -235,9 +271,9 @@ mod tests {
     #[test]
     fn every_summary_starts_with_the_marker_on_its_own_line() {
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let fail = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[]);
+        let fail = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
         assert_eq!(fail.lines().next(), Some(MARKER), "{fail}");
-        let pass = passing(&LIMITS, None, 25, &[]);
+        let pass = passing(&LIMITS, None, 25, &[], &[]);
         assert_eq!(pass.lines().next(), Some(MARKER), "{pass}");
         assert_eq!(MARKER, "<!-- jci-coverage:gate -->");
     }
@@ -247,7 +283,7 @@ mod tests {
         let a = func("crates/x/src/a.rs", "rewrite", 39, 75, 71);
         let b = func("crates/x/src/b.rs", "post_multipart", 5, 26, 0);
         let risks = [risk(&a, true, true), risk(&b, false, true)];
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         assert!(out.contains("### jci-coverage gate: fails"), "{out}");
         assert!(
             out.contains(
@@ -270,7 +306,7 @@ mod tests {
             risk(&b, false, true),
             risk(&c, true, false),
         ];
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         let rows = rows(&out);
         assert_eq!(
             rows[0],
@@ -292,7 +328,7 @@ mod tests {
             .map(|n| func("src/a.rs", &format!("f{n:02}"), 16 + n, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         assert_eq!(rows(&out).len(), 25, "{out}");
         assert!(
             out.contains("`f24`") && !out.contains("`f25`"),
@@ -314,7 +350,7 @@ mod tests {
             .map(|n| func("src/a.rs", &format!("f{n:02}"), 16 + n, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         assert_eq!(rows(&out).len(), 25);
         assert!(!out.contains("not shown"), "{out}");
     }
@@ -333,7 +369,7 @@ mod tests {
             risk(&lines, true, false),
             risk(&slash, true, false),
         ];
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         let rows = rows(&out);
         assert_eq!(rows.len(), 5, "every row is one line:\n{out}");
         assert!(rows[0].starts_with("| `<closure>`<br>"), "{}", rows[0]);
@@ -367,7 +403,7 @@ mod tests {
             .map(|n| func(&format!("{long}{n}.rs"), &format!("{long}{n}"), 20, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[]);
+        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
         assert!(
             out.chars().count() < 20_000,
             "{} characters",
@@ -377,12 +413,28 @@ mod tests {
     }
 
     #[test]
+    fn the_unchanged_list_keeps_the_whole_comment_small() {
+        let long = "x".repeat(10_000);
+        let all: Vec<FunctionMetrics> = (0..60)
+            .map(|n| func(&format!("{long}{n}.rs"), &format!("{long}{n}"), 20, 10, 10))
+            .collect();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, true)).collect();
+        let out = failing(&risks[..30], &LIMITS, None, 25, &[], &risks[30..]);
+        assert!(
+            out.chars().count() < 30_000,
+            "{} characters",
+            out.chars().count()
+        );
+        assert!(out.contains("_5 more not listed._"), "{out}");
+    }
+
+    #[test]
     fn the_summary_never_carries_a_link() {
         // The log may not be readable by everyone who can read the pull request,
         // so a link to it would only disclose where it is.
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let fail = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[]);
-        let pass = passing(&LIMITS, Some(3), 25, &[]);
+        let fail = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[], &[]);
+        let pass = passing(&LIMITS, Some(3), 25, &[], &[]);
         for out in [&fail, &pass] {
             assert!(!out.contains("http") && !out.contains("]("), "{out}");
         }
@@ -391,7 +443,7 @@ mod tests {
     #[test]
     fn the_resolution_names_the_options_and_only_those_that_apply() {
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let both = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[]);
+        let both = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[], &[]);
         let tail = both
             .split("**To resolve:**")
             .nth(1)
@@ -409,7 +461,14 @@ mod tests {
             tail.contains("The CI log has the full report and the exact command."),
             "{tail}"
         );
-        let only = failing(&[risk(&f, true, false)], &limits(15, 0.0), None, 25, &[]);
+        let only = failing(
+            &[risk(&f, true, false)],
+            &limits(15, 0.0),
+            None,
+            25,
+            &[],
+            &[],
+        );
         let tail = only
             .split("**To resolve:**")
             .nth(1)
@@ -428,7 +487,7 @@ mod tests {
         let fresh = func("src/a.rs", "fresh", 20, 40, 40);
         let baseline = Baseline::from_functions([&before], Rules::Rca);
         let risks = [risk(&worse, true, false), risk(&fresh, true, false)];
-        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[]);
+        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[], &[]);
         assert!(
             out.contains("| Function | Over | Baseline | Fix |"),
             "{out}"
@@ -439,7 +498,7 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("not in the baseline"), "{out}");
-        let without = failing(&risks, &LIMITS, None, 25, &[]);
+        let without = failing(&risks, &LIMITS, None, 25, &[], &[]);
         assert!(!without.contains("Baseline"), "{without}");
     }
 
@@ -457,7 +516,7 @@ mod tests {
             risk(&more_complex, true, false),
             risk(&cold_now, false, true),
         ];
-        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[]);
+        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[], &[]);
         let rows = rows(&out);
         assert!(
             rows[0].contains("worse than the baseline: complexity 21 > 20 |"),
@@ -488,7 +547,7 @@ mod tests {
             func("src/a.rs", "decode", 12, 30, 30), // complexity 16 to 12
         ];
         let moves = moves_of(&before, &now);
-        let out = passing(&LIMITS, Some(2), 25, &moves);
+        let out = passing(&LIMITS, Some(2), 25, &moves, &[]);
         assert!(out.starts_with(MARKER), "{out}");
         assert!(out.contains("### jci-coverage gate: passes"), "{out}");
         assert!(out.contains("#### Baselined functions that moved"), "{out}");
@@ -513,10 +572,10 @@ mod tests {
 
     #[test]
     fn nothing_moved_means_no_section() {
-        let out = passing(&LIMITS, Some(2), 25, &[]);
+        let out = passing(&LIMITS, Some(2), 25, &[], &[]);
         assert!(!out.contains("moved"), "{out}");
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let out = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[]);
+        let out = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
         assert!(!out.contains("moved"), "{out}");
     }
 
@@ -526,7 +585,7 @@ mod tests {
         let now = [func("src/a.rs", "parse", 29, 51, 47)];
         let moves = moves_of(&before, &now);
         let bad = func("src/a.rs", "bad", 40, 10, 10);
-        let out = failing(&[risk(&bad, true, false)], &LIMITS, None, 25, &moves);
+        let out = failing(&[risk(&bad, true, false)], &LIMITS, None, 25, &moves, &[]);
         let moved = out
             .find("Baselined functions that moved")
             .expect("a section");
@@ -544,10 +603,14 @@ mod tests {
             .map(|n| func("src/a.rs", &format!("f{n:02}"), 21, 10, 10))
             .collect();
         let moves = moves_of(&before, &now);
-        let out = passing(&LIMITS, Some(30), 25, &moves);
+        let out = passing(&LIMITS, Some(30), 25, &moves, &[]);
         assert_eq!(rows(&out).len(), 25, "{out}");
         assert!(out.contains("30 degraded"), "the count is of all: {out}");
-        assert!(out.contains("_5 more not shown"), "{out}");
+        assert!(out.contains("_5 more not listed._"), "{out}");
+        assert!(
+            !out.contains("full report"),
+            "the log lists only ten moved functions, so it is not the full list: {out}"
+        );
     }
 
     #[test]
@@ -557,13 +620,13 @@ mod tests {
         unknown.crap = None;
         let now = [unknown];
         let moves = moves_of(&before, &now);
-        let out = passing(&LIMITS, None, 25, &moves);
+        let out = passing(&LIMITS, None, 25, &moves, &[]);
         assert!(out.contains("20 → 21 (worse) | n/a |"), "{out}");
     }
 
     #[test]
     fn a_passing_gate_says_so_with_the_limits_that_were_on() {
-        let out = passing(&LIMITS, None, 25, &[]);
+        let out = passing(&LIMITS, None, 25, &[], &[]);
         assert!(out.contains("### jci-coverage gate: passes"), "{out}");
         assert!(
             out.contains("No function is at or over the limits (complexity 15, CRAP 30)."),
@@ -571,7 +634,7 @@ mod tests {
         );
         assert!(!out.contains("baseline"), "{out}");
 
-        let complexity_only = passing(&limits(15, 0.0), None, 25, &[]);
+        let complexity_only = passing(&limits(15, 0.0), None, 25, &[], &[]);
         assert!(
             complexity_only.contains("(complexity 15)."),
             "{complexity_only}"
@@ -583,7 +646,7 @@ mod tests {
     fn a_pass_with_a_baseline_does_not_contradict_itself() {
         // Functions over a limit exist (the baseline allows them), so the first
         // sentence must not claim that none is.
-        let out = passing(&LIMITS, Some(6), 25, &[]);
+        let out = passing(&LIMITS, Some(6), 25, &[], &[]);
         assert!(
             out.contains(
                 "No function fails the limits (complexity 15, CRAP 30); 6 function(s) over a limit are allowed by the baseline."
@@ -591,10 +654,110 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("at or over the limits"), "{out}");
-        let none_allowed = passing(&LIMITS, Some(0), 25, &[]);
+        let none_allowed = passing(&LIMITS, Some(0), 25, &[], &[]);
         assert!(
             none_allowed.contains("No function is at or over the limits"),
             "{none_allowed}"
         );
+    }
+
+    #[test]
+    fn unchanged_baselined_functions_are_listed_in_a_collapsed_table() {
+        let a = func("crates/x/src/a.rs", "rewrite", 39, 75, 71); // CRAP 39.23, kept as 39.3
+        let b = func("crates/x/src/b.rs", "post_multipart", 5, 26, 0); // CRAP 30.0
+        let unchanged = [risk(&a, true, true), risk(&b, false, true)];
+        let out = passing(&LIMITS, Some(2), 25, &[], &unchanged);
+        assert!(
+            out.contains("<details>\n<summary>2 baselined function(s) unchanged</summary>\n\n"),
+            "a blank line after the summary, or the table is not rendered: {out}"
+        );
+        assert!(out.trim_end().ends_with("</details>"), "{out}");
+        assert!(out.contains("| Function | Complexity | CRAP |"), "{out}");
+        assert_eq!(rows(&out).len(), 2, "{out}");
+        assert!(
+            out.contains("| `rewrite`<br>`crates/x/src/a.rs:10` | **39** | **39.3** |"),
+            "over both limits: both bold: {out}"
+        );
+        assert!(
+            out.contains("| `post_multipart`<br>`crates/x/src/b.rs:10` | 5 | **30.0** |"),
+            "over the CRAP limit only: only the CRAP is bold: {out}"
+        );
+        let complexity_only = func("src/c.rs", "parse", 29, 51, 48);
+        let out = passing(
+            &LIMITS,
+            Some(1),
+            25,
+            &[],
+            &[risk(&complexity_only, true, false)],
+        );
+        assert!(out.contains("| **29** | 29.2 |"), "{out}");
+    }
+
+    #[test]
+    fn the_unchanged_list_is_in_the_failing_summary_before_the_resolution() {
+        let bad = func("src/a.rs", "bad", 20, 10, 10);
+        let ok = func("src/b.rs", "ok", 29, 51, 48);
+        let out = failing(
+            &[risk(&bad, true, false)],
+            &LIMITS,
+            None,
+            25,
+            &[],
+            &[risk(&ok, true, false)],
+        );
+        let list = out
+            .find("<summary>1 baselined function(s) unchanged")
+            .expect(&out);
+        assert!(list > out.find("| `bad`").expect(&out), "{out}");
+        assert!(list < out.find("**To resolve:**").expect(&out), "{out}");
+    }
+
+    #[test]
+    fn there_is_no_unchanged_section_when_nothing_is_unchanged() {
+        let pass = passing(&LIMITS, Some(3), 25, &[], &[]);
+        assert!(!pass.contains("<details>"), "{pass}");
+        let f = func("src/a.rs", "f", 20, 10, 10);
+        let fail = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
+        assert!(!fail.contains("<details>"), "{fail}");
+    }
+
+    #[test]
+    fn the_unchanged_list_does_not_change_the_headline() {
+        let f = func("src/a.rs", "f", 29, 51, 48);
+        let with = passing(&LIMITS, Some(1), 25, &[], &[risk(&f, true, false)]);
+        let without = passing(&LIMITS, Some(1), 25, &[], &[]);
+        let headline = "No function fails the limits (complexity 15, CRAP 30); 1 function(s) over a limit are allowed by the baseline.";
+        assert!(with.contains(headline) && without.contains(headline));
+    }
+
+    #[test]
+    fn the_unchanged_list_is_capped_and_says_how_many_are_left() {
+        let funcs: Vec<_> = (0..5)
+            .map(|i| func("src/a.rs", &format!("f{i}"), 29, 51, 48))
+            .collect();
+        let risks: Vec<_> = funcs.iter().map(|f| risk(f, true, false)).collect();
+        let out = passing(&LIMITS, Some(5), 3, &[], &risks);
+        assert!(out.contains("5 baselined function(s) unchanged"), "{out}");
+        assert_eq!(rows(&out).len(), 3, "{out}");
+        assert!(out.contains("_2 more not listed._"), "{out}");
+        let all = passing(&LIMITS, Some(5), 5, &[], &risks);
+        assert!(!all.contains("more not listed"), "{all}");
+    }
+
+    #[test]
+    fn an_unchanged_function_with_unknown_coverage_shows_no_crap() {
+        let mut f = func("src/a.rs", "f", 29, 0, 0);
+        f.crap = None;
+        let out = passing(&LIMITS, Some(1), 25, &[], &[risk(&f, true, false)]);
+        assert!(out.contains("| **29** | n/a |"), "{out}");
+    }
+
+    #[test]
+    fn an_unchanged_crap_is_shown_as_the_baseline_keeps_it() {
+        // CRAP 29.205 is kept, and compared, as 29.3.
+        let mut f = func("src/a.rs", "f", 29, 51, 48);
+        f.crap = Some(29.205);
+        let out = passing(&LIMITS, Some(1), 25, &[], &[risk(&f, true, false)]);
+        assert!(out.contains("| **29** | 29.3 |"), "{out}");
     }
 }
