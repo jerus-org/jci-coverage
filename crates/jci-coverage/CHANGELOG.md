@@ -5,9 +5,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.18] - 2026-10-30
+
+Summary: Added[1], Changed[1], Fixed[1], Testing[1]
+
+### Added
+
+ - feat(complexity): list the baselined functions
+
+### Fixed
+
+ - fix(complexity): drop the false pointer from the moved table
+
+### Changed
+
+ - refactor(upload): split summarize_cobertura
+
 ## [0.0.17] - 2026-10-30
 
-Summary: Added[1], Fixed[2], Testing[2]
+Summary: Added[1], Chore[1], Fixed[2], Testing[2]
 
 ### Added
 
@@ -202,7 +218,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...HEAD
+[0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/jerus-org/jci-coverage/compare/v0.0.13...v0.0.14
