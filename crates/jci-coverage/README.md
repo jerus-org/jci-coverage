@@ -184,8 +184,8 @@ gate is reported as a failure and not again here.
 The baselined functions that are as recorded are listed too, so it is clear what the baseline
 lets through: the log names each (up to ten) after the baseline line, and the `--summary-file`
 and the pull request comment gain a collapsed "baselined function(s) unchanged" table with the
-scores, the one at or over its maximum in bold, worst first. A function that moved is in its
-own table and not repeated there.
+scores, the one at or over its maximum in bold, worst first, capped like the other tables (the
+heading has the full count). A function that moved is in its own table and not repeated there.
 
 Without a value both options use `.jci-coverage-baseline` in the directory `jci-coverage`
 runs from. By convention that is the repository root, committed beside the workspace

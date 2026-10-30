@@ -133,9 +133,10 @@ pub struct ComplexityArgs {
     /// while under `--max-crap` does not fail a function accepted for its
     /// complexity). It is still warned about, and one whose scores moved from the
     /// recorded ones is reported (worse or better) without failing; the others
-    /// are listed as recorded. Without a value it reads `.jci-coverage-baseline` in the directory this runs from,
-    /// by convention the repository root. Make the file with `--write-baseline`;
-    /// it is a binary file for this tool, not meant to be edited.
+    /// are listed as recorded. Without a value it reads `.jci-coverage-baseline`
+    /// in the directory this runs from, by convention the repository root. Make
+    /// the file with `--write-baseline`; it is a binary file for this tool, not
+    /// meant to be edited.
     #[arg(
         long,
         value_name = "PATH",

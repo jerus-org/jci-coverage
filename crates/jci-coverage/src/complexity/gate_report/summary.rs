@@ -416,6 +416,22 @@ mod tests {
     }
 
     #[test]
+    fn the_unchanged_list_keeps_the_whole_comment_small() {
+        let long = "x".repeat(10_000);
+        let all: Vec<FunctionMetrics> = (0..60)
+            .map(|n| func(&format!("{long}{n}.rs"), &format!("{long}{n}"), 20, 10, 10))
+            .collect();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, true)).collect();
+        let out = failing(&risks[..30], &LIMITS, None, 25, &[], &risks[30..]);
+        assert!(
+            out.chars().count() < 30_000,
+            "{} characters",
+            out.chars().count()
+        );
+        assert!(out.contains("_5 more not listed._"), "{out}");
+    }
+
+    #[test]
     fn the_summary_never_carries_a_link() {
         // The log may not be readable by everyone who can read the pull request,
         // so a link to it would only disclose where it is.
