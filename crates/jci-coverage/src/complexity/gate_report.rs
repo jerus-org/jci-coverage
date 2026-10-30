@@ -54,9 +54,9 @@ pub(crate) fn crap_fix(f: &FunctionMetrics, max_crap: f64) -> CrapFix {
 
 /// A failing function, with what is worked out about its CRAP once.
 struct Failure<'a> {
-    function: &'a FunctionMetrics,
-    complexity: bool,
-    crap: bool,
+    /// The function and the limits it is over: the same view the gate and the
+    /// baseline judged it on.
+    risk: Risk<'a>,
     /// What fixes its CRAP; `Some` exactly when it fails the CRAP limit.
     fix: Option<CrapFix>,
 }
@@ -64,9 +64,7 @@ struct Failure<'a> {
 impl<'a> Failure<'a> {
     fn new(risk: &Risk<'a>, limits: &Thresholds) -> Self {
         Self {
-            function: risk.function,
-            complexity: risk.complexity,
-            crap: risk.crap,
+            risk: *risk,
             fix: risk.crap.then(|| crap_fix(risk.function, limits.crap)),
         }
     }
@@ -104,11 +102,11 @@ fn coverage_after_reducing(f: &FunctionMetrics, limits: &Thresholds) -> Option<(
 
 /// The "Fix" cell: what would bring a failing function back under the limits.
 fn fix(r: &Failure<'_>, limits: &Thresholds) -> String {
-    let f = r.function;
-    if r.complexity {
+    let f = r.risk.function;
+    if r.risk.complexity {
         let mut text = format!("reduce complexity below {}", limits.complexity);
         // Simplifying lowers CRAP but may not be enough if it is also untested.
-        if r.crap
+        if r.risk.crap
             && let Some((more, covered)) = coverage_after_reducing(f, limits)
         {
             text += &format!(", then cover {}", more_lines(more, covered, f.lines));
@@ -143,13 +141,8 @@ fn covered_cell(f: &FunctionMetrics) -> String {
 /// in which score it is worse. Only the scores it is over a limit in are judged,
 /// as the gate judged them.
 fn against_baseline(failure: &Failure<'_>, baseline: &Baseline) -> String {
-    let f = failure.function;
-    let risk = Risk {
-        function: f,
-        complexity: failure.complexity,
-        crap: failure.crap,
-    };
-    match baseline.standing(&risk) {
+    let f = failure.risk.function;
+    match baseline.standing(&failure.risk) {
         Standing::New => "not in the baseline".to_string(),
         Standing::Allowed => "allowed by the baseline".to_string(),
         Standing::Worse {
@@ -263,11 +256,11 @@ fn resolution(limits: &Thresholds, with_baseline: bool, record: &Record) -> Stri
 /// many of the CRAP failures tests alone can fix.
 fn headline(failures: &[Failure<'_>], limits: &Thresholds) -> String {
     let (complexity_on, crap_on) = (limits.complexity > 0, limits.crap > 0.0);
-    let by_complexity = failures.iter().filter(|r| r.complexity).count();
-    let by_crap = failures.iter().filter(|r| r.crap).count();
+    let by_complexity = failures.iter().filter(|r| r.risk.complexity).count();
+    let by_crap = failures.iter().filter(|r| r.risk.crap).count();
     let tests_fix = failures
         .iter()
-        .filter(|r| r.crap && !r.complexity)
+        .filter(|r| r.risk.crap && !r.risk.complexity)
         .filter(|r| matches!(r.fix, Some(CrapFix::MoreCoverage { .. })))
         .count();
     let mut causes = Vec::new();
@@ -297,7 +290,7 @@ fn headline(failures: &[Failure<'_>], limits: &Thresholds) -> String {
 /// testing gets under the limit.
 fn over_label(r: &Failure<'_>) -> String {
     let mut over: Vec<&str> = Vec::new();
-    if r.complexity {
+    if r.risk.complexity {
         over.push("complexity");
     }
     match r.fix {
@@ -350,7 +343,7 @@ pub(crate) fn render(
     let rows: Vec<Vec<String>> = failures
         .iter()
         .map(|r| {
-            let f = r.function;
+            let f = r.risk.function;
             let mut row = vec![
                 display_name(f),
                 format!("{}:{}", f.file, f.line),
@@ -800,6 +793,43 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("CRAP 29.4 >"), "{out}");
+    }
+
+    #[test]
+    fn a_complexity_that_moved_under_its_limit_is_not_named_for_a_crap_failure() {
+        // Over only the CRAP limit: its complexity rose too (5 to 6) but is far
+        // under the complexity limit, so only the CRAP is named.
+        let before = func("post", 5, 26, 0, Some(30.0));
+        let now = func("post", 6, 26, 0, Some(42.0));
+        let baseline = Baseline::from_functions([&before], crate::complexity::counter::Rules::Rca);
+        let out = render(
+            &[risk(&now, false, true)],
+            &LIMITS,
+            Some(&baseline),
+            &record(),
+        );
+        assert!(
+            out.contains("worse than the baseline: CRAP 42.0 > 30.0"),
+            "{out}"
+        );
+        assert!(!out.contains("complexity 6 >"), "{out}");
+    }
+
+    #[test]
+    fn a_function_over_both_limits_names_both_scores_when_both_are_worse() {
+        let before = func("rewrite", 39, 75, 71, Some(39.2));
+        let now = func("rewrite", 40, 75, 70, Some(40.9));
+        let baseline = Baseline::from_functions([&before], crate::complexity::counter::Rules::Rca);
+        let out = render(
+            &[risk(&now, true, true)],
+            &LIMITS,
+            Some(&baseline),
+            &record(),
+        );
+        assert!(
+            out.contains("worse than the baseline: complexity 40 > 39; CRAP 40.9 > 39.2"),
+            "{out}"
+        );
     }
 
     #[test]

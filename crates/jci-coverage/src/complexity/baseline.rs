@@ -5,12 +5,12 @@
 //! a new function over the maximum or one that has got worse. Fix a baselined
 //! function and it drops out of the gate by itself.
 //!
-//! "Worse" is judged only in a score the function is over its maximum in:
-//! complexity if it is over `--max-complexity`, CRAP if it is over `--max-crap`,
-//! both if it is over both. A score still under its own maximum may move (CRAP
-//! follows coverage, which differs by a line between runs) without failing a
-//! function accepted for the other; once it crosses the maximum it is judged
-//! against the recorded value.
+//! "Worse" is judged only in a score the function is at or over its maximum in:
+//! complexity if it is at or over `--max-complexity`, CRAP if it is at or over
+//! `--max-crap`, both if it is at or over both. A score still under its own
+//! maximum may move (CRAP follows coverage, which differs by a line between
+//! runs) without failing a function accepted for the other; once it reaches the
+//! maximum it is judged against the recorded value.
 //!
 //! A function is identified by its file and its name, not its line, which moves
 //! with every edit above it. Functions that share a name in one file (and
@@ -315,11 +315,11 @@ impl Baseline {
     /// Where the function stands against the baseline, and, if it is worse, in
     /// what.
     ///
-    /// Only a score the function is over its limit in is judged: a function over
-    /// the complexity limit alone is not worse for a CRAP that moved while still
-    /// under its limit, and the reverse. A score that has crossed its limit is
-    /// compared with the value recorded, so a CRAP recorded at 29.2 under a limit
-    /// of 30 is worse at 30.2.
+    /// Only a score the function is at or over its limit in is judged: a function
+    /// at or over the complexity limit alone is not worse for a CRAP that moved
+    /// while still under its limit, and the reverse. A score that has reached its
+    /// limit is compared with the value recorded, so a CRAP recorded at 29.2
+    /// under a limit of 30 is worse at 30.2.
     pub(crate) fn standing(&self, risk: &Risk<'_>) -> Standing {
         let f = risk.function;
         let Some(a) = self.entries.get(&key(f)) else {

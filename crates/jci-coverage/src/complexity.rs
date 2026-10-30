@@ -129,8 +129,8 @@ pub struct ComplexityArgs {
     /// Let the functions listed in this file stay over a maximum.
     ///
     /// A function in the baseline fails only if it has got worse than it was
-    /// recorded in a score that is over its maximum (a CRAP that moves while
-    /// under `--max-crap` does not fail a function accepted for its
+    /// recorded in a score that is at or over its maximum (a CRAP that moves
+    /// while under `--max-crap` does not fail a function accepted for its
     /// complexity). It is still warned about. Without a value it reads
     /// `.jci-coverage-baseline` in the directory this runs from, by convention
     /// the repository root. Make the file with `--write-baseline`; it is a
