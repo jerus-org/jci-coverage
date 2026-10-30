@@ -181,6 +181,12 @@ functions that moved" table, the degraded ones first. Every movement is reported
 that differs by a line between runs shows as a small CRAP change. A function that fails the
 gate is reported as a failure and not again here.
 
+The baselined functions that are as recorded are listed too, so it is clear what the baseline
+lets through: the log names each (up to ten) after the baseline line, and the `--summary-file`
+and the pull request comment gain a collapsed "baselined function(s) unchanged" table with the
+scores, the one at or over its maximum in bold, worst first. A function that moved is in its
+own table and not repeated there.
+
 Without a value both options use `.jci-coverage-baseline` in the directory `jci-coverage`
 runs from. By convention that is the repository root, committed beside the workspace
 `Cargo.toml`: the file paths in the report, and so in the baseline, are relative to the
