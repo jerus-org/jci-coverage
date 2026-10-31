@@ -402,6 +402,9 @@ fn nothing_matched(s: &Summary) -> Option<&'static str> {
 /// How many risky functions are logged one by one; the rest are counted.
 const MAX_RISK_WARNINGS: usize = 10;
 
+/// How many methods with no matching function are logged one by one.
+const MAX_UNMATCHED_WARNINGS: usize = 10;
+
 /// The summary line for the risky functions, naming only the checks that ran.
 fn format_risks(risks: &[metrics::Risk<'_>], args: &ComplexityArgs) -> Option<String> {
     let mut parts = Vec::new();
@@ -827,7 +830,7 @@ fn log_unmatched(summary: &Summary) {
     if let Some(hint) = nothing_matched(summary) {
         tracing::warn!("{hint}");
     }
-    for m in summary.unmatched.iter().take(10) {
+    for m in summary.unmatched.iter().take(MAX_UNMATCHED_WARNINGS) {
         tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
     }
 }
@@ -864,20 +867,21 @@ fn log_risks(args: &ComplexityArgs, functions: &[FunctionMetrics], failing: &[me
     }
 }
 
-/// Print what the run did: the summary, the risky-function counts and where
-/// the annotated report went.
-fn print_outcome(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionMetrics]) {
-    print!("{}", format_summary(summary));
+/// What the run did, for the terminal: the summary, the risky-function counts
+/// and where the annotated report went.
+fn outcome_text(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionMetrics]) -> String {
+    let mut out = format_summary(summary);
     let risks = metrics::risky(functions, &args.thresholds());
     if let Some(line) = format_risks(&risks, args) {
-        println!("{line}");
+        out += &format!("{line}\n");
     }
     let target = args.output.as_deref().unwrap_or(&args.file);
     if args.dry_run {
-        println!("(dry run) would write {}", target.display());
+        out += &format!("(dry run) would write {}\n", target.display());
     } else {
-        println!("wrote {}", target.display());
+        out += &format!("wrote {}\n", target.display());
     }
+    out
 }
 
 /// Run the `complexity` subcommand.
@@ -895,7 +899,7 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     log_unmatched(&summary);
     let verdict = gate(args, baseline.as_ref(), &functions);
     log_risks(args, &functions, &verdict.failing);
-    print_outcome(args, &summary, &functions);
+    print!("{}", outcome_text(args, &summary, &functions));
     finish(args, baseline.as_ref(), &verdict)
 }
 
@@ -2411,5 +2415,49 @@ fn pick(x: Option<i32>) -> Option<i32> {
         let (_dir, args) = project(2, 2, 0);
         let (_, log) = logged(&args);
         assert!(!log.contains("no method matched"), "{log}");
+    }
+
+    #[test]
+    fn the_outcome_has_the_summary_the_risk_counts_and_where_the_report_went() {
+        let (_dir, mut args) = setup();
+        args.warn_complexity = 4;
+        let outcome = execute(&args).expect("runs");
+        let text = outcome_text(&args, &outcome.summary, &outcome.functions);
+        let summary = format_summary(&outcome.summary);
+        assert!(text.starts_with(&summary), "{text}");
+        let lines: Vec<_> = text[summary.len()..].lines().collect();
+        assert_eq!(
+            lines,
+            vec![
+                "  1 function(s) at or over complexity 4, 0 at or over CRAP 30".to_string(),
+                format!("wrote {}", args.file.display()),
+            ],
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn the_outcome_names_the_output_file_and_a_dry_run() {
+        let (dir, mut args) = setup();
+        args.warn_complexity = 0;
+        args.warn_crap = 0.0;
+        args.output = Some(dir.path().join("annotated.xml"));
+        let outcome = execute(&args).expect("runs");
+        let text = outcome_text(&args, &outcome.summary, &outcome.functions);
+        assert!(text.ends_with("annotated.xml\n"), "{text}");
+        assert!(text.contains("wrote "), "{text}");
+        assert!(
+            !text.contains("at or over"),
+            "no check ran, no risk line: {text}"
+        );
+        args.dry_run = true;
+        let text = outcome_text(&args, &outcome.summary, &outcome.functions);
+        assert!(
+            text.lines().last().is_some_and(
+                |l| l.starts_with("(dry run) would write ") && l.ends_with("annotated.xml")
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("\nwrote "), "{text}");
     }
 }
