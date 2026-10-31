@@ -770,22 +770,31 @@ mod tests {
     #[test]
     fn a_missing_attribute_is_named_in_the_error() {
         let class = parse("<coverage><package><class/></package></coverage>").unwrap_err();
-        assert!(class.to_string().contains("filename"), "{class}");
+        assert!(
+            class.to_string().contains("<class> has no `filename`"),
+            "{class}"
+        );
         let method = parse(
             r#"<coverage><package><class filename="a.rs"><method/></class></package></coverage>"#,
         )
         .unwrap_err();
-        assert!(method.to_string().contains("name"), "{method}");
+        assert!(
+            method.to_string().contains("<method> has no `name`"),
+            "{method}"
+        );
         let in_method = parse(
             r#"<coverage><package><class filename="a.rs"><method name="x::f"><line hits="1"/></method></class></package></coverage>"#,
         )
         .unwrap_err();
-        assert!(in_method.to_string().contains("number"), "{in_method}");
+        assert!(
+            in_method.to_string().contains("has no `number`"),
+            "{in_method}"
+        );
         let in_class = parse(
             r#"<coverage><package><class filename="a.rs"><line number="1"/></class></package></coverage>"#,
         )
         .unwrap_err();
-        assert!(in_class.to_string().contains("hits"), "{in_class}");
+        assert!(in_class.to_string().contains("has no `hits`"), "{in_class}");
     }
 
     #[test]
