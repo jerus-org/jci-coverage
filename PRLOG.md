@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - refactor(complexity)-split the complexity run(pr [#94])
 - refactor(upload)-test and split the HTTP post(pr [#95])
 - refactor(complexity)-split the baseline decode(pr [#96])
+- refactor(complexity)-split the Cobertura rewrite(pr [#97])
 
 ### Fixed
 
@@ -307,6 +308,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#94]: https://github.com/jerus-org/jci-coverage/pull/94
 [#95]: https://github.com/jerus-org/jci-coverage/pull/95
 [#96]: https://github.com/jerus-org/jci-coverage/pull/96
+[#97]: https://github.com/jerus-org/jci-coverage/pull/97
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
