@@ -274,6 +274,52 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// The file names, which must be in strictly increasing order.
+fn read_files(r: &mut Reader<'_>) -> Result<Vec<String>> {
+    let mut files: Vec<String> = Vec::new();
+    for _ in 0..r.varint()? {
+        let file = r.string()?;
+        if files.last().is_some_and(|last| *last >= file) {
+            bail!("files are not in order");
+        }
+        files.push(file);
+    }
+    Ok(files)
+}
+
+/// One entry: the file it names by index, its function name and its scores.
+fn read_entry(r: &mut Reader<'_>, files: &[String]) -> Result<((String, String), Allowance)> {
+    let index = r.varint()?;
+    let file = usize::try_from(index)
+        .ok()
+        .and_then(|i| files.get(i))
+        .ok_or_else(|| anyhow!("an entry names file {index}, which does not exist"))?;
+    let name = r.string()?;
+    let complexity =
+        u32::try_from(r.varint()?).map_err(|_| anyhow!("a complexity is too large"))?;
+    let crap = r.varint()?.checked_sub(1);
+    Ok(((file.clone(), name), Allowance { complexity, crap }))
+}
+
+/// The entries, which must be in strictly increasing order of file and name.
+fn read_entries(
+    r: &mut Reader<'_>,
+    files: &[String],
+) -> Result<BTreeMap<(String, String), Allowance>> {
+    let mut entries = BTreeMap::new();
+    for _ in 0..r.varint()? {
+        let (entry, allowance) = read_entry(r, files)?;
+        if entries
+            .last_key_value()
+            .is_some_and(|(last, _)| *last >= entry)
+        {
+            bail!("entries are not in order");
+        }
+        entries.insert(entry, allowance);
+    }
+    Ok(entries)
+}
+
 impl Baseline {
     /// A baseline allowing exactly these functions as they are, scored with
     /// `rules`.
@@ -365,34 +411,8 @@ impl Baseline {
         let mut r = Reader {
             buf: &body[HEADER_LEN..],
         };
-        let mut files: Vec<String> = Vec::new();
-        for _ in 0..r.varint()? {
-            let file = r.string()?;
-            if files.last().is_some_and(|last| *last >= file) {
-                bail!("files are not in order");
-            }
-            files.push(file);
-        }
-        let mut entries: BTreeMap<(String, String), Allowance> = BTreeMap::new();
-        for _ in 0..r.varint()? {
-            let index = r.varint()?;
-            let file = usize::try_from(index)
-                .ok()
-                .and_then(|i| files.get(i))
-                .ok_or_else(|| anyhow!("an entry names file {index}, which does not exist"))?;
-            let name = r.string()?;
-            let complexity =
-                u32::try_from(r.varint()?).map_err(|_| anyhow!("a complexity is too large"))?;
-            let crap = r.varint()?.checked_sub(1);
-            let entry = (file.clone(), name);
-            if entries
-                .last_key_value()
-                .is_some_and(|(last, _)| *last >= entry)
-            {
-                bail!("entries are not in order");
-            }
-            entries.insert(entry, Allowance { complexity, crap });
-        }
+        let files = read_files(&mut r)?;
+        let entries = read_entries(&mut r, &files)?;
         if !r.is_empty() {
             bail!("there is data after the last entry");
         }
@@ -760,6 +780,63 @@ mod tests {
         v.extend([0, 0]);
         let err = Baseline::decode(&seal(v)).unwrap_err().to_string();
         assert!(err.contains("unknown rule set 9"), "{err}");
+    }
+
+    /// The entries a hand-built body decodes to, as (file, name, complexity, crap).
+    fn decoded(body: &[u8]) -> Vec<(String, String, u32, Option<u64>)> {
+        let mut v = header(0);
+        v.extend_from_slice(body);
+        let b = Baseline::decode(&seal(v)).expect("decodes");
+        b.entries
+            .iter()
+            .map(|((file, name), a)| (file.clone(), name.clone(), a.complexity, a.crap))
+            .collect()
+    }
+
+    #[test]
+    fn an_entry_takes_the_file_its_index_names() {
+        // Files "a" and "b"; three entries: (a, x), (b, y), (b, z).
+        let body = [
+            2, 1, b'a', 1, b'b', // two files
+            3,    // three entries
+            0, 1, b'x', 7, 0, // file 0, "x", complexity 7, no CRAP
+            1, 1, b'y', 8, 1, // file 1, "y", complexity 8, CRAP stored as 1 (0 tenths)
+            1, 1, b'z', 9, 43, // file 1, "z", complexity 9, CRAP stored as 43 (42 tenths)
+        ];
+        assert_eq!(
+            decoded(&body),
+            vec![
+                ("a".into(), "x".into(), 7, None),
+                ("b".into(), "y".into(), 8, Some(0)),
+                ("b".into(), "z".into(), 9, Some(42)),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_same_file_twice_is_refused_like_files_out_of_order() {
+        let mut v = header(0);
+        v.extend_from_slice(&[2, 1, b'a', 1, b'a', 0]);
+        let err = Baseline::decode(&seal(v)).unwrap_err().to_string();
+        assert!(
+            err.starts_with("baseline is malformed: ") && err.contains("files are not in order"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_entry_in_a_later_file_may_have_an_earlier_name() {
+        // (a, z) then (b, a): in order, because the file decides first.
+        let body = [2, 1, b'a', 1, b'b', 2, 0, 1, b'z', 1, 0, 1, 1, b'a', 1, 0];
+        assert_eq!(decoded(&body).len(), 2);
+    }
+
+    #[test]
+    fn a_body_that_ends_before_its_entries_is_refused() {
+        let mut v = header(0);
+        v.extend_from_slice(&[1, 1, b'a', 1]);
+        let err = Baseline::decode(&seal(v)).unwrap_err().to_string();
+        assert!(err.contains("middle of a value"), "{err}");
     }
 
     #[test]
