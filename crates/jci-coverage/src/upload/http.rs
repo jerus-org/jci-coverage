@@ -129,31 +129,13 @@ impl SystemClient {
             .context("failed to build HTTP client")?;
         Ok(Self { client })
     }
-}
 
-impl UploadClient for SystemClient {
-    fn post_multipart(
+    /// POST `form` to `endpoint` and read the whole response.
+    fn send(
         &self,
         endpoint: &str,
-        fields: &[(String, String)],
-        file_field: &str,
-        file_path: &Path,
+        form: reqwest::blocking::multipart::Form,
     ) -> Result<RawResponse> {
-        let mut form = reqwest::blocking::multipart::Form::new();
-        for (key, value) in fields {
-            form = form.text(key.clone(), value.clone());
-        }
-        // reqwest names the multipart part after the file's own name.
-        tracing::debug!(
-            form_field = file_field,
-            filename = ?file_path.file_name(),
-            path = %file_path.display(),
-            "attaching report file"
-        );
-        form = form
-            .file(file_field.to_string(), file_path)
-            .with_context(|| format!("failed to attach {}", file_path.display()))?;
-
         let response = self
             .client
             .post(endpoint)
@@ -165,6 +147,41 @@ impl UploadClient for SystemClient {
             .text()
             .with_context(|| format!("failed to read response body from {endpoint}"))?;
         Ok(RawResponse { status, body })
+    }
+}
+
+/// The multipart form: each field as text, in order, then the report file
+/// under `file_field`.
+fn build_form(
+    fields: &[(String, String)],
+    file_field: &str,
+    file_path: &Path,
+) -> Result<reqwest::blocking::multipart::Form> {
+    let mut form = reqwest::blocking::multipart::Form::new();
+    for (key, value) in fields {
+        form = form.text(key.clone(), value.clone());
+    }
+    // reqwest names the multipart part after the file's own name.
+    tracing::debug!(
+        form_field = file_field,
+        filename = ?file_path.file_name(),
+        path = %file_path.display(),
+        "attaching report file"
+    );
+    form.file(file_field.to_string(), file_path)
+        .with_context(|| format!("failed to attach {}", file_path.display()))
+}
+
+impl UploadClient for SystemClient {
+    fn post_multipart(
+        &self,
+        endpoint: &str,
+        fields: &[(String, String)],
+        file_field: &str,
+        file_path: &Path,
+    ) -> Result<RawResponse> {
+        let form = build_form(fields, file_field, file_path)?;
+        self.send(endpoint, form)
     }
 }
 
@@ -341,5 +358,131 @@ mod tests {
         let msg = format!("{err:#}");
         assert!(msg.contains("primary connection refused"), "{msg}");
         assert!(msg.contains("fallback connection refused"), "{msg}");
+    }
+
+    /// A client that ignores the proxy environment: these tests talk to a
+    /// server on the loopback address, which a proxy could not reach.
+    fn local_client() -> SystemClient {
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .expect("client");
+        SystemClient { client }
+    }
+
+    /// A small report file in a temp dir.
+    fn report_file(content: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("report.xml");
+        std::fs::write(&path, content).expect("write");
+        (dir, path)
+    }
+
+    fn fields() -> Vec<(String, String)> {
+        vec![
+            ("token".to_string(), "t0k".to_string()),
+            ("branch".to_string(), "feat/x".to_string()),
+        ]
+    }
+
+    #[test]
+    fn the_system_client_posts_the_fields_then_the_file_as_multipart() {
+        let (_dir, path) = report_file("<coverage/>");
+        let (base, server) = crate::github::testing::serve(vec![("200 OK", "queued".to_string())]);
+        let response = local_client()
+            .post_multipart(&format!("{base}/ingress"), &fields(), "clover", &path)
+            .expect("posts");
+        assert_eq!(
+            (response.status.as_u16(), response.body.as_str()),
+            (200, "queued")
+        );
+
+        let requests = server.join().expect("server");
+        let request = &requests[0];
+        assert!(request.starts_with("POST /ingress "), "{request}");
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("content-type: multipart/form-data; boundary="),
+            "{request}"
+        );
+        let token = request.find("name=\"token\"").expect("token part");
+        let branch = request.find("name=\"branch\"").expect("branch part");
+        let file = request
+            .find("name=\"clover\"; filename=\"report.xml\"")
+            .expect("file part");
+        assert!(
+            token < branch && branch < file,
+            "fields in order, file last: {request}"
+        );
+        assert!(
+            request.contains("t0k") && request.contains("feat/x"),
+            "{request}"
+        );
+        assert!(
+            request.contains("<coverage/>"),
+            "the file's content: {request}"
+        );
+    }
+
+    #[test]
+    fn the_system_client_returns_an_unsuccessful_status_as_a_response() {
+        let (_dir, path) = report_file("x");
+        let (base, server) =
+            crate::github::testing::serve(vec![("500 Internal Server Error", "nope".to_string())]);
+        let response = local_client()
+            .post_multipart(&base, &fields(), "clover", &path)
+            .expect("an HTTP error status is a response, not an error");
+        assert_eq!(
+            (response.status.as_u16(), response.body.as_str()),
+            (500, "nope")
+        );
+        server.join().expect("server");
+    }
+
+    #[test]
+    fn the_system_client_names_a_file_it_cannot_attach() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("absent.xml");
+        let err = local_client()
+            .post_multipart("http://127.0.0.1:9", &fields(), "clover", &missing)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains(&format!("failed to attach {}", missing.display())),
+            "{err:#}"
+        );
+    }
+
+    #[test]
+    fn the_system_client_names_an_endpoint_it_cannot_reach() {
+        let (_dir, path) = report_file("x");
+        let free = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let base = format!("http://{}", free.local_addr().expect("addr"));
+        drop(free);
+        let err = local_client()
+            .post_multipart(&base, &fields(), "clover", &path)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains(&format!("request to {base} failed")),
+            "{err:#}"
+        );
+    }
+
+    #[test]
+    fn the_system_client_names_an_endpoint_whose_body_it_cannot_read() {
+        let (_dir, path) = report_file("x");
+        // Promises 100 bytes, sends 5, and closes the connection.
+        let (base, server) = crate::github::testing::serve_raw(vec![
+            "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort".to_string(),
+        ]);
+        let err = local_client()
+            .post_multipart(&base, &fields(), "clover", &path)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains(&format!("failed to read response body from {base}")),
+            "{err:#}"
+        );
+        server.join().expect("server");
     }
 }
