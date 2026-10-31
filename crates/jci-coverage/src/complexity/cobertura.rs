@@ -265,9 +265,9 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
     Ok(parser.report)
 }
 
-/// Write `edit` into `xml`.
-pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
-    let report = parse(xml)?;
+/// Fail unless `edit` has one edit for each method of `report`, and a roll-up,
+/// if it has one, that fits its classes and packages.
+fn check_edit(report: &Report, edit: &Edit) -> Result<()> {
     if edit.methods.len() != report.methods.len() {
         bail!(
             "{} method edits for a report with {} methods",
@@ -280,110 +280,207 @@ pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
     {
         bail!("the roll-up does not match the report's classes and packages");
     }
+    Ok(())
+}
 
-    let mut reader = Reader::from_str(xml);
-    let mut writer = Writer::new(Vec::new());
-    // Whitespace is held back one event so that dropping a method can take its
-    // indentation with it.
-    let mut pending: Option<BytesText<'static>> = None;
-    let (mut package, mut class, mut next_method) = (0usize, 0usize, 0usize);
-    let mut root_done = false;
-    // Hits to write into the first `<line>` of the method being copied.
-    let mut line_hits: Option<u64> = None;
+/// What the rewrite does with an element on its way through.
+enum Rewrite {
+    /// Write it as it came.
+    Keep,
+    /// Write this in its place.
+    Replace(Event<'static>),
+    /// Write nothing: the element is gone.
+    Drop,
+}
 
-    loop {
-        let event = reader.read_event().context("malformed XML")?.into_owned();
+/// `tag` as the same kind of element as the one it replaces.
+fn same_kind(start: bool, tag: BytesStart<'static>) -> Event<'static> {
+    if start {
+        Event::Start(tag)
+    } else {
+        Event::Empty(tag)
+    }
+}
 
-        if let Event::Text(t) = &event
-            && t.as_ref().bytes().all(|b| b.is_ascii_whitespace())
-        {
-            if let Some(held) = pending.replace(t.clone()) {
-                writer.write_event(Event::Text(held))?;
-            }
-            continue;
+/// A [`rewrite`] in progress: the edit, what is written so far, and where the
+/// reader is in the report.
+struct Rewriter<'a> {
+    edit: &'a Edit,
+    writer: Writer<Vec<u8>>,
+    /// Whitespace is held back one event so that dropping a method can take its
+    /// indentation with it.
+    pending: Option<BytesText<'static>>,
+    package: usize,
+    class: usize,
+    next_method: usize,
+    root_done: bool,
+    /// Hits to write into the first `<line>` of the method being copied.
+    line_hits: Option<u64>,
+}
+
+impl<'a> Rewriter<'a> {
+    fn new(edit: &'a Edit) -> Self {
+        Self {
+            edit,
+            writer: Writer::new(Vec::new()),
+            pending: None,
+            package: 0,
+            class: 0,
+            next_method: 0,
+            root_done: false,
+            line_hits: None,
         }
-
-        let out = match &event {
-            Event::Start(e) | Event::Empty(e) if is(e, "method") => {
-                let method_edit = &edit.methods[next_method];
-                next_method += 1;
-                match method_edit {
-                    MethodEdit::Drop => {
-                        pending = None;
-                        if matches!(event, Event::Start(_)) {
-                            reader
-                                .read_to_end(e.name())
-                                .context("malformed XML inside a dropped method")?;
-                        }
-                        continue;
-                    }
-                    MethodEdit::Set { complexity, hits } => {
-                        let mut set = vec![("complexity", complexity.to_string())];
-                        // An empty element has no `<line>` to carry the hits.
-                        line_hits = hits.filter(|_| matches!(event, Event::Start(_)));
-                        if let Some(h) = hits {
-                            set.push(("line-rate", u8::from(*h > 0).to_string()));
-                        }
-                        let rebuilt = with_attributes(e, &set)?;
-                        Some(if matches!(event, Event::Start(_)) {
-                            Event::Start(rebuilt)
-                        } else {
-                            Event::Empty(rebuilt)
-                        })
-                    }
-                }
-            }
-            Event::Start(e) | Event::Empty(e) if is(e, "line") && line_hits.is_some() => {
-                let rebuilt =
-                    with_attributes(e, &[("hits", line_hits.take().unwrap_or(0).to_string())])?;
-                Some(if matches!(event, Event::Start(_)) {
-                    Event::Start(rebuilt)
-                } else {
-                    Event::Empty(rebuilt)
-                })
-            }
-            Event::Start(e) | Event::Empty(e) => {
-                let rollup = edit.rollup.as_ref();
-                let total = if is(e, "coverage") && !root_done {
-                    root_done = true;
-                    rollup.map(|r| r.root)
-                } else if is(e, "package") {
-                    package += 1;
-                    rollup.map(|r| r.packages[package - 1])
-                } else if is(e, "class") {
-                    class += 1;
-                    rollup.map(|r| r.classes[class - 1])
-                } else {
-                    None
-                };
-                total
-                    .map(|t| with_attributes(e, &[("complexity", t.to_string())]))
-                    .transpose()?
-                    .map(|rebuilt| {
-                        if matches!(event, Event::Start(_)) {
-                            Event::Start(rebuilt)
-                        } else {
-                            Event::Empty(rebuilt)
-                        }
-                    })
-            }
-            Event::End(e) if e.name().as_ref() == "method" => {
-                line_hits = None;
-                None
-            }
-            _ => None,
-        };
-
-        if let Some(held) = pending.take() {
-            writer.write_event(Event::Text(held))?;
-        }
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        writer.write_event(out.unwrap_or(event))?;
     }
 
-    String::from_utf8(writer.into_inner()).context("the rewritten report is not UTF-8")
+    /// Hold `text` back, writing the whitespace held before it.
+    fn hold(&mut self, text: BytesText<'static>) -> Result<()> {
+        if let Some(held) = self.pending.replace(text) {
+            self.writer.write_event(Event::Text(held))?;
+        }
+        Ok(())
+    }
+
+    /// Write the whitespace held back, if any.
+    fn flush(&mut self) -> Result<()> {
+        if let Some(held) = self.pending.take() {
+            self.writer.write_event(Event::Text(held))?;
+        }
+        Ok(())
+    }
+
+    /// The next `<method>`: dropped, or given its complexity (and hits).
+    fn method(
+        &mut self,
+        reader: &mut Reader<&[u8]>,
+        e: &BytesStart<'static>,
+        start: bool,
+    ) -> Result<Rewrite> {
+        let edit = self.edit;
+        let method_edit = &edit.methods[self.next_method];
+        self.next_method += 1;
+        match method_edit {
+            MethodEdit::Drop => {
+                self.pending = None;
+                if start {
+                    reader
+                        .read_to_end(e.name())
+                        .context("malformed XML inside a dropped method")?;
+                }
+                Ok(Rewrite::Drop)
+            }
+            MethodEdit::Set { complexity, hits } => {
+                let mut set = vec![("complexity", complexity.to_string())];
+                // An empty element has no `<line>` to carry the hits.
+                self.line_hits = hits.filter(|_| start);
+                if let Some(h) = hits {
+                    set.push(("line-rate", u8::from(*h > 0).to_string()));
+                }
+                Ok(Rewrite::Replace(same_kind(
+                    start,
+                    with_attributes(e, &set)?,
+                )))
+            }
+        }
+    }
+
+    /// The first `<line>` of a method that has hits to write.
+    fn line(&mut self, e: &BytesStart<'static>, start: bool) -> Result<Rewrite> {
+        let hits = self.line_hits.take().unwrap_or(0);
+        let tag = with_attributes(e, &[("hits", hits.to_string())])?;
+        Ok(Rewrite::Replace(same_kind(start, tag)))
+    }
+
+    /// The root, a package or a class: given its roll-up total, if there is one.
+    fn container(&mut self, e: &BytesStart<'static>, start: bool) -> Result<Rewrite> {
+        let rollup = self.edit.rollup.as_ref();
+        let total = if is(e, "coverage") && !self.root_done {
+            self.root_done = true;
+            rollup.map(|r| r.root)
+        } else if is(e, "package") {
+            self.package += 1;
+            rollup.map(|r| r.packages[self.package - 1])
+        } else if is(e, "class") {
+            self.class += 1;
+            rollup.map(|r| r.classes[self.class - 1])
+        } else {
+            None
+        };
+        let Some(total) = total else {
+            return Ok(Rewrite::Keep);
+        };
+        let tag = with_attributes(e, &[("complexity", total.to_string())])?;
+        Ok(Rewrite::Replace(same_kind(start, tag)))
+    }
+
+    /// What to do with `event`.
+    fn element(&mut self, reader: &mut Reader<&[u8]>, event: &Event<'static>) -> Result<Rewrite> {
+        match event {
+            Event::Start(e) | Event::Empty(e) => {
+                let start = matches!(event, Event::Start(_));
+                if is(e, "method") {
+                    self.method(reader, e, start)
+                } else if is(e, "line") && self.line_hits.is_some() {
+                    self.line(e, start)
+                } else {
+                    self.container(e, start)
+                }
+            }
+            Event::End(e) if e.name().as_ref() == "method" => {
+                self.line_hits = None;
+                Ok(Rewrite::Keep)
+            }
+            _ => Ok(Rewrite::Keep),
+        }
+    }
+
+    /// Hold `event` back if it is whitespace, and say so.
+    fn hold_whitespace(&mut self, event: &Event<'static>) -> Result<bool> {
+        if let Event::Text(t) = event
+            && t.as_ref().bytes().all(|b| b.is_ascii_whitespace())
+        {
+            self.hold(t.clone())?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Write `event`, or what `out` says to write in its place, after the
+    /// whitespace held back. A dropped element writes nothing, and its
+    /// indentation is already gone.
+    fn emit(&mut self, out: Rewrite, event: Event<'static>) -> Result<()> {
+        let written = match out {
+            Rewrite::Drop => return Ok(()),
+            Rewrite::Replace(rebuilt) => rebuilt,
+            Rewrite::Keep => event,
+        };
+        self.flush()?;
+        self.writer.write_event(written)?;
+        Ok(())
+    }
+
+    /// Copy the report through, editing it on the way.
+    fn run(mut self, mut reader: Reader<&[u8]>) -> Result<Vec<u8>> {
+        loop {
+            let event = reader.read_event().context("malformed XML")?.into_owned();
+            if matches!(event, Event::Eof) {
+                self.flush()?;
+                break;
+            }
+            if self.hold_whitespace(&event)? {
+                continue;
+            }
+            let out = self.element(&mut reader, &event)?;
+            self.emit(out, event)?;
+        }
+        Ok(self.writer.into_inner())
+    }
+}
+
+/// Write `edit` into `xml`.
+pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
+    check_edit(&parse(xml)?, edit)?;
+    let bytes = Rewriter::new(edit).run(Reader::from_str(xml))?;
+    String::from_utf8(bytes).context("the rewritten report is not UTF-8")
 }
 
 #[cfg(test)]
@@ -834,5 +931,153 @@ mod tests {
             vec![("a.rs", 0, 0), ("b.rs", 0, 1), ("c.rs", 1, 0)]
         );
         assert_eq!(r.package_count, 2);
+    }
+
+    /// One package, one class, and the methods given, with a class line.
+    fn tiny(methods: &str, lines: &str) -> String {
+        format!(
+            r#"<coverage><packages><package><classes><class filename="a.rs"><methods>{methods}</methods><lines>{lines}</lines></class></classes></package></packages></coverage>"#
+        )
+    }
+
+    fn set(complexity: u32, hits: Option<u64>) -> MethodEdit {
+        MethodEdit::Set { complexity, hits }
+    }
+
+    #[test]
+    fn a_rollup_of_the_wrong_size_is_refused_and_the_counts_are_named() {
+        let mut edit = keep(4);
+        edit.rollup = Some(Rollup {
+            classes: vec![1, 2],
+            packages: vec![1, 2],
+            root: 0,
+        });
+        let err = rewrite(SAMPLE, &edit).unwrap_err().to_string();
+        assert!(err.contains("roll-up does not match"), "{err}");
+        edit.rollup = Some(Rollup {
+            classes: vec![1, 2, 3],
+            packages: vec![1],
+            root: 0,
+        });
+        let err = rewrite(SAMPLE, &edit).unwrap_err().to_string();
+        assert!(err.contains("roll-up does not match"), "{err}");
+        let err = rewrite(SAMPLE, &keep(3)).unwrap_err().to_string();
+        assert!(
+            err.contains("3 method edits for a report with 4 methods"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_empty_method_gets_its_complexity_and_line_rate_but_no_line() {
+        let xml = tiny(r#"<method name="x::f"/>"#, r#"<line hits="1" number="1"/>"#);
+        let edit = Edit {
+            methods: vec![set(3, Some(5))],
+            rollup: None,
+        };
+        let out = rewrite(&xml, &edit).expect("rewrites");
+        assert!(
+            out.contains(r#"<method name="x::f" complexity="3" line-rate="1"/>"#),
+            "{out}"
+        );
+        assert!(out.contains(r#"<line hits="1" number="1"/>"#), "{out}");
+    }
+
+    #[test]
+    fn dropping_an_empty_method_takes_its_indentation_and_no_more() {
+        let xml = "<coverage><packages><package><classes><class filename=\"a.rs\"><methods>\n    <method name=\"x::a\"/>\n    <method name=\"x::b\"/>\n  </methods><lines/></class></classes></package></packages></coverage>";
+        let edit = Edit {
+            methods: vec![MethodEdit::Drop, set(2, None)],
+            rollup: None,
+        };
+        let out = rewrite(xml, &edit).expect("rewrites");
+        assert_eq!(
+            out,
+            "<coverage><packages><package><classes><class filename=\"a.rs\"><methods>\n    <method name=\"x::b\" complexity=\"2\"/>\n  </methods><lines/></class></classes></package></packages></coverage>"
+        );
+    }
+
+    #[test]
+    fn only_the_first_line_of_a_method_gets_the_hits() {
+        let xml = tiny(
+            r#"<method name="x::f"><lines><line hits="1" number="3"/><line hits="2" number="4"/></lines></method>"#,
+            r#"<line hits="1" number="3"/>"#,
+        );
+        let edit = Edit {
+            methods: vec![set(1, Some(9))],
+            rollup: None,
+        };
+        let out = rewrite(&xml, &edit).expect("rewrites");
+        assert!(
+            out.contains(r#"<line hits="9" number="3"/><line hits="2" number="4"/>"#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"</methods><lines><line hits="1" number="3"/>"#),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn comments_cdata_and_processing_instructions_pass_through_untouched() {
+        let xml = "<?xml version=\"1.0\"?><!-- keep me --><?pi data?><coverage><![CDATA[a < b]]> text </coverage>";
+        let out = rewrite(xml, &keep(0)).expect("rewrites");
+        assert_eq!(out, xml);
+    }
+
+    #[test]
+    fn a_method_edit_is_taken_in_document_order_across_classes() {
+        let edit = Edit {
+            methods: vec![set(10, None), set(20, None), set(30, None), set(40, None)],
+            rollup: None,
+        };
+        let out = rewrite(SAMPLE, &edit).expect("rewrites");
+        let found: Vec<_> = out
+            .lines()
+            .filter(|l| l.trim_start().starts_with("<method "))
+            .filter_map(|l| {
+                let name = l.split("name=\"").nth(1)?.split('"').next()?;
+                let c = l.split(" complexity=\"").nth(1)?.split('"').next()?;
+                Some(format!("{name}={c}"))
+            })
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                "x::f::&lt;u8&gt;=10",
+                "x::f::&lt;u16&gt;=20",
+                "x::g=30",
+                "x::sub::a::h=40"
+            ]
+        );
+    }
+
+    #[test]
+    fn hits_for_a_method_with_no_line_do_not_reach_the_next_line() {
+        let xml = tiny(
+            r#"<method name="x::f"></method>"#,
+            r#"<line hits="1" number="1"/>"#,
+        );
+        let edit = Edit {
+            methods: vec![set(3, Some(5))],
+            rollup: None,
+        };
+        let out = rewrite(&xml, &edit).expect("rewrites");
+        assert!(out.contains(r#"complexity="3" line-rate="1">"#), "{out}");
+        assert!(out.contains(r#"<line hits="1" number="1"/>"#), "{out}");
+    }
+
+    #[test]
+    fn only_the_first_coverage_element_gets_the_root_total() {
+        let edit = Edit {
+            methods: Vec::new(),
+            rollup: Some(Rollup {
+                classes: Vec::new(),
+                packages: Vec::new(),
+                root: 5,
+            }),
+        };
+        let out = rewrite("<coverage><coverage/></coverage>", &edit).expect("rewrites");
+        assert_eq!(out, r#"<coverage complexity="5"><coverage/></coverage>"#);
     }
 }
