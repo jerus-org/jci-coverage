@@ -89,6 +89,22 @@ pub(crate) fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
 pub(crate) fn serve(
     answers: Vec<(&'static str, String)>,
 ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+    serve_raw(
+        answers
+            .into_iter()
+            .map(|(status_line, answer)| {
+                format!(
+                    "HTTP/1.1 {status_line}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                    answer.len()
+                )
+            })
+            .collect(),
+    )
+}
+
+/// Like [`serve`], but each reply is the whole raw HTTP response, so a test can
+/// send one that is wrong (a body shorter than its Content-Length).
+pub(crate) fn serve_raw(replies: Vec<String>) -> (String, std::thread::JoinHandle<Vec<String>>) {
     use std::{
         io::{Read, Write},
         net::TcpListener,
@@ -98,7 +114,7 @@ pub(crate) fn serve(
     let base = format!("http://{}", listener.local_addr().expect("addr"));
     let handle = std::thread::spawn(move || {
         let mut requests = Vec::new();
-        for (status_line, answer) in answers {
+        for reply in replies {
             let (mut stream, _) = listener.accept().expect("accept");
             let mut received = Vec::new();
             let mut chunk = [0u8; 4096];
@@ -121,10 +137,6 @@ pub(crate) fn serve(
                 }
                 assert!(n > 0, "the client hung up early");
             }
-            let reply = format!(
-                "HTTP/1.1 {status_line}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
-                answer.len()
-            );
             stream.write_all(reply.as_bytes()).expect("reply");
             requests.push(String::from_utf8_lossy(&received).to_string());
         }

@@ -129,6 +129,25 @@ impl SystemClient {
             .context("failed to build HTTP client")?;
         Ok(Self { client })
     }
+
+    /// POST `form` to `endpoint` and read the whole response.
+    fn send(
+        &self,
+        endpoint: &str,
+        form: reqwest::blocking::multipart::Form,
+    ) -> Result<RawResponse> {
+        let response = self
+            .client
+            .post(endpoint)
+            .multipart(form)
+            .send()
+            .with_context(|| format!("request to {endpoint} failed"))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .with_context(|| format!("failed to read response body from {endpoint}"))?;
+        Ok(RawResponse { status, body })
+    }
 }
 
 /// The multipart form: each field as text, in order, then the report file
@@ -151,27 +170,6 @@ fn build_form(
     );
     form.file(file_field.to_string(), file_path)
         .with_context(|| format!("failed to attach {}", file_path.display()))
-}
-
-impl SystemClient {
-    /// POST `form` to `endpoint` and read the whole response.
-    fn send(
-        &self,
-        endpoint: &str,
-        form: reqwest::blocking::multipart::Form,
-    ) -> Result<RawResponse> {
-        let response = self
-            .client
-            .post(endpoint)
-            .multipart(form)
-            .send()
-            .with_context(|| format!("request to {endpoint} failed"))?;
-        let status = response.status();
-        let body = response
-            .text()
-            .with_context(|| format!("failed to read response body from {endpoint}"))?;
-        Ok(RawResponse { status, body })
-    }
 }
 
 impl UploadClient for SystemClient {
@@ -362,6 +360,17 @@ mod tests {
         assert!(msg.contains("fallback connection refused"), "{msg}");
     }
 
+    /// A client that ignores the proxy environment: these tests talk to a
+    /// server on the loopback address, which a proxy could not reach.
+    fn local_client() -> SystemClient {
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .expect("client");
+        SystemClient { client }
+    }
+
     /// A small report file in a temp dir.
     fn report_file(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -381,8 +390,7 @@ mod tests {
     fn the_system_client_posts_the_fields_then_the_file_as_multipart() {
         let (_dir, path) = report_file("<coverage/>");
         let (base, server) = crate::github::testing::serve(vec![("200 OK", "queued".to_string())]);
-        let response = SystemClient::new()
-            .expect("client")
+        let response = local_client()
             .post_multipart(&format!("{base}/ingress"), &fields(), "clover", &path)
             .expect("posts");
         assert_eq!(
@@ -423,8 +431,7 @@ mod tests {
         let (_dir, path) = report_file("x");
         let (base, server) =
             crate::github::testing::serve(vec![("500 Internal Server Error", "nope".to_string())]);
-        let response = SystemClient::new()
-            .expect("client")
+        let response = local_client()
             .post_multipart(&base, &fields(), "clover", &path)
             .expect("an HTTP error status is a response, not an error");
         assert_eq!(
@@ -438,8 +445,7 @@ mod tests {
     fn the_system_client_names_a_file_it_cannot_attach() {
         let dir = tempfile::tempdir().expect("tempdir");
         let missing = dir.path().join("absent.xml");
-        let err = SystemClient::new()
-            .expect("client")
+        let err = local_client()
             .post_multipart("http://127.0.0.1:9", &fields(), "clover", &missing)
             .unwrap_err();
         assert!(
@@ -454,13 +460,29 @@ mod tests {
         let free = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let base = format!("http://{}", free.local_addr().expect("addr"));
         drop(free);
-        let err = SystemClient::new()
-            .expect("client")
+        let err = local_client()
             .post_multipart(&base, &fields(), "clover", &path)
             .unwrap_err();
         assert!(
             format!("{err:#}").contains(&format!("request to {base} failed")),
             "{err:#}"
         );
+    }
+
+    #[test]
+    fn the_system_client_names_an_endpoint_whose_body_it_cannot_read() {
+        let (_dir, path) = report_file("x");
+        // Promises 100 bytes, sends 5, and closes the connection.
+        let (base, server) = crate::github::testing::serve_raw(vec![
+            "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort".to_string(),
+        ]);
+        let err = local_client()
+            .post_multipart(&base, &fields(), "clover", &path)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains(&format!("failed to read response body from {base}")),
+            "{err:#}"
+        );
+        server.join().expect("server");
     }
 }
