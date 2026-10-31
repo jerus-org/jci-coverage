@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use anyhow::{Context, Result, bail};
 use quick_xml::{
     Reader, Writer, XmlVersion,
-    events::{BytesStart, BytesText, Event, attributes::Attribute},
+    events::{BytesEnd, BytesStart, BytesText, Event, attributes::Attribute},
 };
 
 /// A `<class>`: one source file.
@@ -151,73 +151,118 @@ fn with_attributes(e: &BytesStart<'_>, set: &[(&str, String)]) -> Result<BytesSt
     Ok(out)
 }
 
+/// A [`parse`] in progress: what has been read so far and where the reader is.
+#[derive(Default)]
+struct Parser {
+    report: Report,
+    depth: usize,
+    /// The method being read, until its end tag, and whether its line is read.
+    method: Option<(Method, bool)>,
+}
+
+impl Parser {
+    /// An element opens: `empty` for `<x/>`, which closes at once.
+    fn open(&mut self, e: &BytesStart<'_>, empty: bool) -> Result<()> {
+        self.element(e)?;
+        if empty && is(e, "method") {
+            self.finish_method();
+        } else if !empty {
+            self.depth += 1;
+        }
+        Ok(())
+    }
+
+    /// An element closes.
+    fn close(&mut self, e: &BytesEnd<'_>) {
+        self.depth = self.depth.saturating_sub(1);
+        if e.name().as_ref() == "method" {
+            self.finish_method();
+        }
+    }
+
+    fn element(&mut self, e: &BytesStart<'_>) -> Result<()> {
+        if is(e, "package") {
+            self.report.package_count += 1;
+            Ok(())
+        } else if is(e, "class") {
+            self.class(e)
+        } else if is(e, "method") {
+            self.method(e)
+        } else if is(e, "line") {
+            self.line(e)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn class(&mut self, e: &BytesStart<'_>) -> Result<()> {
+        if self.report.package_count == 0 {
+            bail!("malformed report: a <class> is not inside a <package>");
+        }
+        self.report.classes.push(Class {
+            filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
+            package: self.report.package_count - 1,
+            lines: Vec::new(),
+        });
+        Ok(())
+    }
+
+    fn method(&mut self, e: &BytesStart<'_>) -> Result<()> {
+        if self.report.classes.is_empty() {
+            bail!("malformed report: a <method> is not inside a <class>");
+        }
+        let method = Method {
+            class: self.report.classes.len() - 1,
+            name: attribute(e, "name")?.context("<method> has no `name`")?,
+            line: 0,
+            hits: 0,
+        };
+        self.method = Some((method, false));
+        Ok(())
+    }
+
+    /// A `<line>`: the start of the method being read, if its own is not read
+    /// yet, else a line of the class.
+    fn line(&mut self, e: &BytesStart<'_>) -> Result<()> {
+        if let Some((method, read)) = self.method.as_mut() {
+            if !*read {
+                method.line = number(e, "number")?;
+                method.hits = number(e, "hits")?;
+                *read = true;
+            }
+        } else if let Some(class) = self.report.classes.last_mut() {
+            class.lines.push((number(e, "number")?, number(e, "hits")?));
+        }
+        Ok(())
+    }
+
+    fn finish_method(&mut self) {
+        self.report
+            .methods
+            .extend(self.method.take().map(|(m, _)| m));
+    }
+}
+
 /// Read the classes and methods of a Cobertura report.
 pub(crate) fn parse(xml: &str) -> Result<Report> {
     let mut reader = Reader::from_str(xml);
-    let mut report = Report::default();
-    let mut depth = 0usize;
-    // The method being read, until its end tag, and whether its line is read.
-    let mut method: Option<(Method, bool)> = None;
-
+    let mut parser = Parser::default();
     loop {
-        let event = reader.read_event().context("malformed XML")?;
-        match &event {
-            Event::Start(e) | Event::Empty(e) => {
-                if is(e, "package") {
-                    report.package_count += 1;
-                } else if is(e, "class") {
-                    if report.package_count == 0 {
-                        bail!("malformed report: a <class> is not inside a <package>");
-                    }
-                    report.classes.push(Class {
-                        filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
-                        package: report.package_count - 1,
-                        lines: Vec::new(),
-                    });
-                } else if is(e, "method") {
-                    if report.classes.is_empty() {
-                        bail!("malformed report: a <method> is not inside a <class>");
-                    }
-                    method = Some((
-                        Method {
-                            class: report.classes.len() - 1,
-                            name: attribute(e, "name")?.context("<method> has no `name`")?,
-                            line: 0,
-                            hits: 0,
-                        },
-                        false,
-                    ));
-                } else if is(e, "line") {
-                    if let Some((m, read)) = method.as_mut() {
-                        if !*read {
-                            m.line = number(e, "number")?;
-                            m.hits = number(e, "hits")?;
-                            *read = true;
-                        }
-                    } else if let Some(class) = report.classes.last_mut() {
-                        class.lines.push((number(e, "number")?, number(e, "hits")?));
-                    }
-                }
-                if matches!(event, Event::Empty(_)) && is(e, "method") {
-                    report.methods.extend(method.take().map(|(m, _)| m));
-                } else if matches!(event, Event::Start(_)) {
-                    depth += 1;
-                }
-            }
-            Event::End(e) => {
-                depth = depth.saturating_sub(1);
-                if e.name().as_ref() == "method" {
-                    report.methods.extend(method.take().map(|(m, _)| m));
-                }
-            }
+        match reader.read_event().context("malformed XML")? {
+            Event::Start(e) => parser.open(&e, false)?,
+            Event::Empty(e) => parser.open(&e, true)?,
+            Event::End(e) => parser.close(&e),
             Event::Eof => break,
             _ => {}
         }
     }
-    if depth != 0 {
-        bail!("malformed XML: {depth} element(s) are never closed");
+    if parser.depth != 0 {
+        bail!(
+            "malformed XML: {} element(s) are never closed",
+            parser.depth
+        );
     }
-    Ok(report)
+    Ok(parser.report)
 }
 
 /// Write `edit` into `xml`.
@@ -691,5 +736,103 @@ mod tests {
         assert_eq!(r.classes[0].lines, vec![(3, 9), (4, 0), (5, 2)]);
         assert_eq!(r.classes[1].lines, vec![(1, 1)]);
         assert_eq!((r.methods[0].line, r.methods[0].hits), (3, 9));
+    }
+
+    #[test]
+    fn only_the_first_line_of_a_method_is_read() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::f"><lines><line number="3" hits="9"/><line number="4" hits="1"/></lines></method>
+</methods></class></classes></package></packages></coverage>"#;
+        let r = parse(xml).expect("parses");
+        assert_eq!((r.methods[0].line, r.methods[0].hits), (3, 9));
+        assert!(
+            r.classes[0].lines.is_empty(),
+            "a method's later lines are not the class's: {:?}",
+            r.classes[0].lines
+        );
+    }
+
+    #[test]
+    fn a_method_without_a_line_starts_at_zero_with_no_hits() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::empty"/>
+<method name="x::bare"></method>
+</methods></class></classes></package></packages></coverage>"#;
+        let r = parse(xml).expect("parses");
+        let methods: Vec<_> = r
+            .methods
+            .iter()
+            .map(|m| (m.name.as_str(), m.line, m.hits))
+            .collect();
+        assert_eq!(methods, vec![("x::empty", 0, 0), ("x::bare", 0, 0)]);
+    }
+
+    #[test]
+    fn a_missing_attribute_is_named_in_the_error() {
+        let class = parse("<coverage><package><class/></package></coverage>").unwrap_err();
+        assert!(
+            class.to_string().contains("<class> has no `filename`"),
+            "{class}"
+        );
+        let method = parse(
+            r#"<coverage><package><class filename="a.rs"><method/></class></package></coverage>"#,
+        )
+        .unwrap_err();
+        assert!(
+            method.to_string().contains("<method> has no `name`"),
+            "{method}"
+        );
+        let in_method = parse(
+            r#"<coverage><package><class filename="a.rs"><method name="x::f"><line hits="1"/></method></class></package></coverage>"#,
+        )
+        .unwrap_err();
+        assert!(
+            in_method.to_string().contains("has no `number`"),
+            "{in_method}"
+        );
+        let in_class = parse(
+            r#"<coverage><package><class filename="a.rs"><line number="1"/></class></package></coverage>"#,
+        )
+        .unwrap_err();
+        assert!(in_class.to_string().contains("has no `hits`"), "{in_class}");
+    }
+
+    #[test]
+    fn a_non_numeric_line_is_an_error() {
+        let xml = r#"<coverage><package><class filename="a.rs"><line number="x" hits="1"/></class></package></coverage>"#;
+        let err = parse(xml).unwrap_err();
+        assert!(err.to_string().contains("not a number"), "{err}");
+    }
+
+    #[test]
+    fn elements_left_open_are_counted_in_the_error() {
+        let err = parse("<coverage><packages>").unwrap_err();
+        assert!(err.to_string().contains("2 element(s)"), "{err}");
+        assert!(parse("<coverage><packages/></coverage>").is_ok());
+    }
+
+    #[test]
+    fn a_line_outside_any_class_or_method_is_ignored() {
+        let r = parse(r#"<coverage><line number="1" hits="1"/></coverage>"#).expect("parses");
+        assert!(r.classes.is_empty() && r.methods.is_empty());
+    }
+
+    #[test]
+    fn an_empty_class_is_counted_and_later_lines_belong_to_the_last_class() {
+        let xml = r#"<coverage><packages><package><classes>
+<class filename="a.rs"/>
+<class filename="b.rs"><lines><line number="2" hits="1"/></lines></class>
+</classes></package><package><classes><class filename="c.rs"/></classes></package></packages></coverage>"#;
+        let r = parse(xml).expect("parses");
+        let classes: Vec<_> = r
+            .classes
+            .iter()
+            .map(|c| (c.filename.as_str(), c.package, c.lines.len()))
+            .collect();
+        assert_eq!(
+            classes,
+            vec![("a.rs", 0, 0), ("b.rs", 0, 1), ("c.rs", 1, 0)]
+        );
+        assert_eq!(r.package_count, 2);
     }
 }
