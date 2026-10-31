@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - ci-cover the head of main from the prlog job(pr [#89])
+- refactor(complexity)-split the Cobertura parse(pr [#92])
 
 ### Fixed
 
@@ -297,6 +298,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#87]: https://github.com/jerus-org/jci-coverage/pull/87
 [#88]: https://github.com/jerus-org/jci-coverage/pull/88
 [#89]: https://github.com/jerus-org/jci-coverage/pull/89
+[#92]: https://github.com/jerus-org/jci-coverage/pull/92
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
