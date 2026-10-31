@@ -821,6 +821,65 @@ fn check_line(over: usize, allowed: Option<usize>) -> String {
     line
 }
 
+/// Warn about what the report could not be joined to the source: a hint when
+/// nothing matched at all, and the first few methods with no function.
+fn log_unmatched(summary: &Summary) {
+    if let Some(hint) = nothing_matched(summary) {
+        tracing::warn!("{hint}");
+    }
+    for m in summary.unmatched.iter().take(10) {
+        tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
+    }
+}
+
+/// Warn about one risky function, with its coverage when it has any.
+fn log_risk(f: &FunctionMetrics) {
+    match f.crap {
+        Some(crap) => tracing::warn!(
+            file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
+            crap = format!("{crap:.1}"), covered = f.covered, lines = f.lines,
+            "risky function"
+        ),
+        None => tracing::warn!(
+            file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
+            "risky function (no executable lines to measure coverage)"
+        ),
+    }
+}
+
+/// Warn about the functions over a warn threshold or a maximum, unless they are
+/// failing, so accepted and recorded functions stay visible. Capped, the rest
+/// counted.
+fn log_risks(args: &ComplexityArgs, functions: &[FunctionMetrics], failing: &[metrics::Risk<'_>]) {
+    let flagged = metrics::risky(functions, &args.thresholds().either(args.max_thresholds()));
+    let warned = warnings_only(&flagged, failing);
+    for r in warned.iter().take(MAX_RISK_WARNINGS) {
+        log_risk(r.function);
+    }
+    if warned.len() > MAX_RISK_WARNINGS {
+        tracing::warn!(
+            "{} more risky function(s) not listed",
+            warned.len() - MAX_RISK_WARNINGS
+        );
+    }
+}
+
+/// Print what the run did: the summary, the risky-function counts and where
+/// the annotated report went.
+fn print_outcome(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionMetrics]) {
+    print!("{}", format_summary(summary));
+    let risks = metrics::risky(functions, &args.thresholds());
+    if let Some(line) = format_risks(&risks, args) {
+        println!("{line}");
+    }
+    let target = args.output.as_deref().unwrap_or(&args.file);
+    if args.dry_run {
+        println!("(dry run) would write {}", target.display());
+    } else {
+        println!("wrote {}", target.display());
+    }
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
     check_baseline_args(args)?;
@@ -833,48 +892,10 @@ pub fn run(args: &ComplexityArgs) -> Result<()> {
     if args.check_only {
         return check(args, baseline.as_ref(), &functions);
     }
-    if let Some(hint) = nothing_matched(&summary) {
-        tracing::warn!("{hint}");
-    }
-    for m in summary.unmatched.iter().take(10) {
-        tracing::warn!(file = %m.file, line = m.line, method = %m.name, "no matching function in the source");
-    }
-    let risks = metrics::risky(&functions, &args.thresholds());
+    log_unmatched(&summary);
     let verdict = gate(args, baseline.as_ref(), &functions);
-    // Everything over a warn threshold or a maximum is warned about, unless it
-    // is failing, so accepted and recorded functions stay visible.
-    let flagged = metrics::risky(&functions, &args.thresholds().either(args.max_thresholds()));
-    let warned = warnings_only(&flagged, &verdict.failing);
-    for r in warned.iter().take(MAX_RISK_WARNINGS) {
-        let f = r.function;
-        match f.crap {
-            Some(crap) => tracing::warn!(
-                file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
-                crap = format!("{crap:.1}"), covered = f.covered, lines = f.lines,
-                "risky function"
-            ),
-            None => tracing::warn!(
-                file = %f.file, line = f.line, function = %f.name, complexity = f.complexity,
-                "risky function (no executable lines to measure coverage)"
-            ),
-        }
-    }
-    if warned.len() > MAX_RISK_WARNINGS {
-        tracing::warn!(
-            "{} more risky function(s) not listed",
-            warned.len() - MAX_RISK_WARNINGS
-        );
-    }
-    print!("{}", format_summary(&summary));
-    if let Some(line) = format_risks(&risks, args) {
-        println!("{line}");
-    }
-    let target = args.output.as_deref().unwrap_or(&args.file);
-    if args.dry_run {
-        println!("(dry run) would write {}", target.display());
-    } else {
-        println!("wrote {}", target.display());
-    }
+    log_risks(args, &functions, &verdict.failing);
+    print_outcome(args, &summary, &functions);
     finish(args, baseline.as_ref(), &verdict)
 }
 
@@ -2291,5 +2312,104 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert!(format!("{err:#}").contains("Rust"), "{err:#}");
         assert_eq!(fs::read_to_string(&args.file).expect("read"), python);
         drop(dir);
+    }
+
+    /// A project of `n` functions of complexity 3, one to a line, the first
+    /// `covered` of them with an executable line in the report, plus `ghosts`
+    /// report methods that the source does not have.
+    fn project(n: usize, covered: usize, ghosts: usize) -> (tempfile::TempDir, ComplexityArgs) {
+        let (dir, args) = setup();
+        let source: String = (0..n)
+            .map(|k| format!("fn f{k:02}(x: i32) -> i32 {{ if x > 0 {{ 1 }} else if x < 0 {{ 2 }} else {{ 3 }} }}\n"))
+            .collect();
+        fs::write(dir.path().join("src/lib.rs"), source).expect("write source");
+        let method = |name: String, line: usize| {
+            format!(
+                r#"<method name="x::{name}" signature="" complexity="0" line-rate="1" branch-rate="1"><lines><line hits="1" number="{line}" branch="false"/></lines></method>"#
+            )
+        };
+        let methods: String = (0..n)
+            .map(|k| method(format!("f{k:02}"), k + 1))
+            .chain((0..ghosts).map(|k| method(format!("ghost{k:02}"), 500 + k)))
+            .collect();
+        let lines: String = (0..covered)
+            .map(|k| format!(r#"<line hits="1" number="{}" branch="false"/>"#, k + 1))
+            .collect();
+        let xml = format!(
+            r#"<?xml version="1.0" ?><coverage complexity="0" line-rate="1" lines-covered="0" lines-valid="0"><sources><source>/work</source></sources><packages><package name="x" complexity="0"><classes><class complexity="0" filename="src/lib.rs" name="x.lib.rs"><methods>{methods}</methods><lines>{lines}</lines></class></classes></package></packages></coverage>"#
+        );
+        fs::write(&args.file, xml).expect("write report");
+        (dir, args)
+    }
+
+    #[test]
+    fn the_risky_function_warnings_are_capped_and_the_rest_counted() {
+        let (_dir, mut args) = project(12, 12, 0);
+        args.warn_complexity = 2;
+        let (result, log) = logged(&args);
+        result.expect("warnings never fail the run");
+        assert_eq!(
+            log.matches("risky function").count(),
+            MAX_RISK_WARNINGS + 1,
+            "{log}"
+        );
+        assert!(
+            log.contains(": 2 more risky function(s) not listed"),
+            "{log}"
+        );
+        let (_dir, mut args) = project(MAX_RISK_WARNINGS, MAX_RISK_WARNINGS, 0);
+        args.warn_complexity = 2;
+        let (_, log) = logged(&args);
+        assert_eq!(
+            log.matches("risky function").count(),
+            MAX_RISK_WARNINGS,
+            "{log}"
+        );
+        assert!(!log.contains("not listed"), "ten fit: {log}");
+    }
+
+    #[test]
+    fn a_risky_function_is_logged_with_its_coverage_or_without() {
+        let (_dir, mut args) = project(2, 1, 0);
+        args.warn_complexity = 2;
+        let (result, log) = logged(&args);
+        result.expect("warnings never fail the run");
+        let covered = log.lines().find(|l| l.contains("f00")).expect("f00");
+        assert!(
+            covered.contains("crap=\"3.0\"")
+                && covered.contains("covered=1")
+                && covered.contains("lines=1"),
+            "{covered}"
+        );
+        assert!(!covered.contains("no executable lines"), "{covered}");
+        let bare = log.lines().find(|l| l.contains("f01")).expect("f01");
+        assert!(
+            bare.contains("no executable lines to measure coverage"),
+            "{bare}"
+        );
+        assert!(!bare.contains("crap="), "{bare}");
+    }
+
+    #[test]
+    fn the_unmatched_methods_are_logged_up_to_ten() {
+        let (_dir, args) = project(1, 1, 12);
+        let (result, log) = logged(&args);
+        result.expect("unmatched methods are kept");
+        assert_eq!(
+            log.matches("no matching function in the source").count(),
+            10,
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn a_report_that_matches_no_function_says_so() {
+        let (_dir, args) = project(0, 0, 3);
+        let (result, log) = logged(&args);
+        result.expect("runs");
+        assert!(log.contains("no method matched a source function"), "{log}");
+        let (_dir, args) = project(2, 2, 0);
+        let (_, log) = logged(&args);
+        assert!(!log.contains("no method matched"), "{log}");
     }
 }
