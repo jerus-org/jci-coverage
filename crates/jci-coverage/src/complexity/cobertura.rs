@@ -433,8 +433,8 @@ impl<'a> Rewriter<'a> {
         }
     }
 
-    /// Hold `event` back if it is whitespace; true if it was.
-    fn whitespace(&mut self, event: &Event<'static>) -> Result<bool> {
+    /// Hold `event` back if it is whitespace, and say so.
+    fn hold_whitespace(&mut self, event: &Event<'static>) -> Result<bool> {
         if let Event::Text(t) = event
             && t.as_ref().bytes().all(|b| b.is_ascii_whitespace())
         {
@@ -448,14 +448,13 @@ impl<'a> Rewriter<'a> {
     /// whitespace held back. A dropped element writes nothing, and its
     /// indentation is already gone.
     fn emit(&mut self, out: Rewrite, event: Event<'static>) -> Result<()> {
-        if matches!(out, Rewrite::Drop) {
-            return Ok(());
-        }
+        let written = match out {
+            Rewrite::Drop => return Ok(()),
+            Rewrite::Replace(rebuilt) => rebuilt,
+            Rewrite::Keep => event,
+        };
         self.flush()?;
-        match out {
-            Rewrite::Replace(rebuilt) => self.writer.write_event(rebuilt)?,
-            _ => self.writer.write_event(event)?,
-        }
+        self.writer.write_event(written)?;
         Ok(())
     }
 
@@ -467,7 +466,7 @@ impl<'a> Rewriter<'a> {
                 self.flush()?;
                 break;
             }
-            if self.whitespace(&event)? {
+            if self.hold_whitespace(&event)? {
                 continue;
             }
             let out = self.element(&mut reader, &event)?;
