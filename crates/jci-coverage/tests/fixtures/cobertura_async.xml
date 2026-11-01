@@ -1,0 +1,121 @@
+<?xml version="1.0" ?>
+<!DOCTYPE coverage SYSTEM "https://cobertura.sourceforge.net/xml/coverage-04.dtd">
+<coverage branch-rate="0" branches-covered="0" branches-valid="0" complexity="0" line-rate="0.9259259259259259" lines-covered="25" lines-valid="27" version="2.0.3">
+    <sources>
+        <source>/work/asy</source>
+    </sources>
+    <packages>
+        <package line-rate="0.9259259259259259" branch-rate="0" name="src" complexity="0">
+            <classes>
+                <class branch-rate="0" complexity="0" filename="src/lib.rs" line-rate="0.9259259259259259" name="src.lib.rs">
+                    <methods>
+                        <method name="asy::run::&lt;asy::with_block::{closure#0}&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="24" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::run::&lt;asy::returns_block::{closure#0}&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="24" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::run::&lt;asy::plain::{closure#0}&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="24" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::with_block::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="14" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::with_block::{closure#0}::{closure#2}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="16" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::with_block::{closure#0}::{closure#1}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="2" number="15" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::with_block::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="13" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::returns_block::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="21" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::plain::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::with_block" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="13" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::returns_block" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="20" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::plain" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::t" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="35" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::run::noop" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="3" number="25" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asy::run::clone" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="26" branch="false"/>
+                            </lines>
+                        </method>
+                    </methods>
+                    <lines>
+                        <line branch="false" hits="1" number="5"/>
+                        <line branch="false" hits="1" number="6"/>
+                        <line branch="false" hits="1" number="7"/>
+                        <line branch="false" hits="0" number="9"/>
+                        <line branch="false" hits="1" number="11"/>
+                        <line branch="false" hits="1" number="13"/>
+                        <line branch="false" hits="1" number="14"/>
+                        <line branch="false" hits="2" number="15"/>
+                        <line branch="false" hits="1" number="16"/>
+                        <line branch="false" hits="1" number="17"/>
+                        <line branch="false" hits="1" number="18"/>
+                        <line branch="false" hits="1" number="20"/>
+                        <line branch="false" hits="1" number="21"/>
+                        <line branch="false" hits="1" number="22"/>
+                        <line branch="false" hits="3" number="24"/>
+                        <line branch="false" hits="3" number="25"/>
+                        <line branch="false" hits="0" number="26"/>
+                        <line branch="false" hits="3" number="28"/>
+                        <line branch="false" hits="3" number="29"/>
+                        <line branch="false" hits="3" number="30"/>
+                        <line branch="false" hits="3" number="31"/>
+                        <line branch="false" hits="3" number="32"/>
+                        <line branch="false" hits="1" number="35"/>
+                        <line branch="false" hits="1" number="36"/>
+                        <line branch="false" hits="1" number="37"/>
+                        <line branch="false" hits="1" number="38"/>
+                        <line branch="false" hits="1" number="39"/>
+                    </lines>
+                </class>
+            </classes>
+        </package>
+    </packages>
+</coverage>

@@ -5,6 +5,11 @@
 //! not the function around it, because `cargo llvm-cov` reports closures as
 //! separate methods and OtterWise sums every method it is given.
 //!
+//! An `async` block is a closure in the same sense, and numbered with the
+//! closures. An `async fn` is reported as two methods, the function and its
+//! generated future `f::{closure#0}`; the function keeps its decisions, and the
+//! closures and blocks inside it are numbered below that future.
+//!
 //! The [`Rules::Rca`] rule set follows `rust-code-analysis`, the established
 //! Rust implementation, so scores are comparable with other tools: one for
 //! each `if`, `for`, `while`, `loop`, match arm, match-arm guard, `?`, `&&`
@@ -74,12 +79,19 @@ pub(crate) struct Entry {
     pub(crate) name: String,
     /// Inside `#[cfg(test)]` code, or a `#[test]` function.
     pub(crate) is_test: bool,
+    /// An `async fn`. `cargo llvm-cov` reports its generated future as the
+    /// closure `f::{closure#0}` at the same line, beside the function itself;
+    /// the function entry keeps the complexity.
+    pub(crate) is_async: bool,
 }
 
 struct Frame {
     entry: Entry,
     /// Next `{closure#N}` index to hand to a closure directly inside this one.
     next_closure: u32,
+    /// The path closures directly inside this one extend: its own, except for
+    /// an `async fn`, whose body is the closure `{closure#0}` of the function.
+    base: Vec<u32>,
 }
 
 #[derive(Default)]
@@ -100,6 +112,7 @@ impl Walker {
         is_test: bool,
     ) {
         self.stack.push(Frame {
+            base: path.clone(),
             entry: Entry {
                 line,
                 end_line,
@@ -107,9 +120,41 @@ impl Walker {
                 counts: Counts::default(),
                 name,
                 is_test: is_test || self.test_depth > 0,
+                is_async: false,
             },
             next_closure: 0,
         });
+    }
+
+    /// Mark the function just entered as an `async fn`.
+    fn mark_async(&mut self) {
+        if let Some(frame) = self.stack.last_mut() {
+            frame.entry.is_async = true;
+            frame.base = vec![0];
+        }
+    }
+
+    /// A closure or an `async` block: its own space, numbered in source order
+    /// with the others directly inside the same function or closure.
+    fn closure_like(&mut self, lines: (usize, usize), walk: impl FnOnce(&mut Self)) {
+        let path = match self.stack.last_mut() {
+            Some(parent) => {
+                let index = parent.next_closure;
+                parent.next_closure += 1;
+                let mut path = parent.base.clone();
+                path.push(index);
+                path
+            }
+            None => {
+                let index = self.root_closures;
+                self.root_closures += 1;
+                vec![index]
+            }
+        };
+        let is_test = self.stack.last().is_some_and(|f| f.entry.is_test);
+        self.enter(lines, path, String::new(), is_test);
+        walk(self);
+        self.leave();
     }
 
     fn leave(&mut self) {
@@ -133,7 +178,7 @@ impl Walker {
     fn function(
         &mut self,
         attrs: &[syn::Attribute],
-        name: &syn::Ident,
+        sig: &syn::Signature,
         lines: (usize, usize),
         walk: impl FnOnce(&mut Self),
     ) {
@@ -141,9 +186,12 @@ impl Walker {
             w.enter(
                 lines,
                 Vec::new(),
-                name.to_string(),
+                sig.ident.to_string(),
                 attrs.iter().any(is_test_attr),
             );
+            if sig.asyncness.is_some() {
+                w.mark_async();
+            }
             walk(w);
             w.leave();
         });
@@ -215,14 +263,12 @@ impl<'ast> Visit<'ast> for Walker {
 
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
         let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-        self.function(&i.attrs, &i.sig.ident, lines, |w| {
-            syn::visit::visit_item_fn(w, i)
-        });
+        self.function(&i.attrs, &i.sig, lines, |w| syn::visit::visit_item_fn(w, i));
     }
 
     fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
         let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-        self.function(&i.attrs, &i.sig.ident, lines, |w| {
+        self.function(&i.attrs, &i.sig, lines, |w| {
             syn::visit::visit_impl_item_fn(w, i)
         });
     }
@@ -231,7 +277,7 @@ impl<'ast> Visit<'ast> for Walker {
         // A declaration without a body has nothing to count.
         if i.default.is_some() {
             let lines = (i.sig.fn_token.span().start().line, i.span().end().line);
-            self.function(&i.attrs, &i.sig.ident, lines, |w| {
+            self.function(&i.attrs, &i.sig, lines, |w| {
                 syn::visit::visit_trait_item_fn(w, i)
             });
         } else {
@@ -240,25 +286,13 @@ impl<'ast> Visit<'ast> for Walker {
     }
 
     fn visit_expr_closure(&mut self, c: &'ast syn::ExprClosure) {
-        let path = match self.stack.last_mut() {
-            Some(parent) => {
-                let index = parent.next_closure;
-                parent.next_closure += 1;
-                let mut path = parent.entry.path.clone();
-                path.push(index);
-                path
-            }
-            None => {
-                let index = self.root_closures;
-                self.root_closures += 1;
-                vec![index]
-            }
-        };
-        let is_test = self.stack.last().is_some_and(|f| f.entry.is_test);
         let lines = (c.span().start().line, c.span().end().line);
-        self.enter(lines, path, String::new(), is_test);
-        syn::visit::visit_expr_closure(self, c);
-        self.leave();
+        self.closure_like(lines, |w| syn::visit::visit_expr_closure(w, c));
+    }
+
+    fn visit_expr_async(&mut self, a: &'ast syn::ExprAsync) {
+        let lines = (a.span().start().line, a.span().end().line);
+        self.closure_like(lines, |w| syn::visit::visit_expr_async(w, a));
     }
 
     fn visit_expr_if(&mut self, e: &'ast syn::ExprIf) {
@@ -361,6 +395,81 @@ mod tests {
             .collect();
         assert_eq!(hits.len(), 1, "line {line} path {path:?} in {t:?}");
         hits[0].2
+    }
+
+    /// (line, closure path, complexity) of the entries, with the `async fn` flag.
+    fn async_table(source: &str) -> Vec<(usize, Vec<u32>, u32, bool)> {
+        analyze(source)
+            .expect("parses")
+            .into_iter()
+            .map(|e| {
+                (
+                    e.line,
+                    e.path.clone(),
+                    e.counts.complexity(Rules::Rca),
+                    e.is_async,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_async_block_is_its_own_space_numbered_with_the_closures() {
+        let src = "fn f(x: u32) {\n    let a = async { if x > 1 { 1 } else { 2 } };\n    let c = |v: u32| v;\n    let b = async move { x };\n    if x > 0 {}\n}\n";
+        let mut got = async_table(src);
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                (1, vec![], 2, false),  // f: its own `if`, not the block's
+                (2, vec![0], 2, false), // the first async block, in source order
+                (3, vec![1], 1, false), // the closure shares the numbering
+                (4, vec![2], 1, false), // the second async block
+            ]
+        );
+    }
+
+    #[test]
+    fn an_async_fn_keeps_its_decisions_and_is_flagged() {
+        let got = async_table(
+            "async fn f(x: u32) {\n    if x > 1 {}\n}\nfn g(x: u32) {\n    if x > 1 {}\n}\n",
+        );
+        assert_eq!(got, vec![(1, vec![], 2, true), (4, vec![], 2, false)]);
+    }
+
+    #[test]
+    fn closures_in_an_async_fn_are_numbered_below_its_body() {
+        let src = "async fn f(x: u32) {\n    let a = async { x };\n    let c = |v: u32| v;\n    let _ = (a, c);\n}\n";
+        let mut got = async_table(src);
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                (1, vec![], 1, true),
+                (2, vec![0, 0], 1, false), // `f::{closure#0}::{closure#0}`
+                (3, vec![0, 1], 1, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn async_methods_are_flagged_in_impls_and_traits() {
+        let src = "struct S;\nimpl S {\n    async fn m(&self) {}\n}\ntrait T {\n    async fn d(&self) {}\n    async fn n(&self);\n}\n";
+        let got = async_table(src);
+        assert_eq!(got, vec![(3, vec![], 1, true), (6, vec![], 1, true)]);
+    }
+
+    #[test]
+    fn a_block_in_an_async_block_nests_one_level_deeper() {
+        let mut got =
+            async_table("fn f() {\n    let _ = async {\n        let _ = async { 1 };\n    };\n}\n");
+        got.sort();
+        assert_eq!(
+            got.iter()
+                .map(|(l, p, _, _)| (*l, p.clone()))
+                .collect::<Vec<_>>(),
+            vec![(1, vec![]), (2, vec![0]), (3, vec![0, 0])]
+        );
     }
 
     /// Values produced by `rust-code-analysis` 0.0.25 (`rust-code-analysis-cli

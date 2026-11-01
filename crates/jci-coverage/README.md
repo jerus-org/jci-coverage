@@ -209,6 +209,11 @@ Limitations of reading source rather than compiled code:
 - A closure inside a macro's arguments (`assert!(v.iter().any(|x| ..))`) is reported by
   `cargo llvm-cov` but cannot be seen by the parser. It is left unmatched (`--unmatched
   keep|one|fail` chooses its value) and its decisions count towards the enclosing function.
+- An `async fn` is two methods in the report: the function and its generated future,
+  `f::{closure#0}`, at the same line. The function keeps the complexity and the future is
+  matched to it with none, so nothing is counted twice. An `async` block is a closure of
+  its own, numbered with the closures around it. An `async` closure (`async |x| ..`) is not
+  handled yet: its generated future is left unmatched.
 - Sources are read relative to `--source-root` (default `.`), not the report's `<sources>`.
   Run from the directory the report was built in, or pass `--source-root`; if nothing
   matches, a warning says so.
