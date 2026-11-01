@@ -6,9 +6,10 @@
 //! separate methods and OtterWise sums every method it is given.
 //!
 //! An `async` block is a closure in the same sense, and numbered with the
-//! closures. An `async fn` is reported as two methods, the function and its
-//! generated future `f::{closure#0}`; the function keeps its decisions, and the
-//! closures and blocks inside it are numbered below that future.
+//! closures. An `async fn` or `async |x| ..` closure is reported with its
+//! generated future as `{closure#0}` below it; the function or closure keeps
+//! its decisions, and the closures and blocks inside it are numbered below that
+//! future.
 //!
 //! The [`Rules::Rca`] rule set follows `rust-code-analysis`, the established
 //! Rust implementation, so scores are comparable with other tools: one for
@@ -79,9 +80,9 @@ pub(crate) struct Entry {
     pub(crate) name: String,
     /// Inside `#[cfg(test)]` code, or a `#[test]` function.
     pub(crate) is_test: bool,
-    /// An `async fn`. `cargo llvm-cov` reports its generated future as the
-    /// closure `f::{closure#0}` at the same line, beside the function itself;
-    /// the function entry keeps the complexity.
+    /// An `async fn` or `async |x| ..` closure. `cargo llvm-cov` reports its
+    /// generated future as the closure `{closure#0}` below it, at the same
+    /// line; this entry keeps the complexity.
     pub(crate) is_async: bool,
 }
 
@@ -126,17 +127,25 @@ impl Walker {
         });
     }
 
-    /// Mark the function just entered as an `async fn`.
+    /// Mark the function or closure just entered as `async`: what `cargo
+    /// llvm-cov` reports as its future is `{closure#0}` below it, and the
+    /// closures and blocks inside are numbered below that.
     fn mark_async(&mut self) {
         if let Some(frame) = self.stack.last_mut() {
             frame.entry.is_async = true;
-            frame.base = vec![0];
+            frame.base = frame.entry.path.clone();
+            frame.base.push(0);
         }
     }
 
     /// A closure or an `async` block: its own space, numbered in source order
     /// with the others directly inside the same function or closure.
-    fn closure_like(&mut self, lines: (usize, usize), walk: impl FnOnce(&mut Self)) {
+    fn closure_like(
+        &mut self,
+        lines: (usize, usize),
+        is_async: bool,
+        walk: impl FnOnce(&mut Self),
+    ) {
         let path = match self.stack.last_mut() {
             Some(parent) => {
                 let index = parent.next_closure;
@@ -153,6 +162,9 @@ impl Walker {
         };
         let is_test = self.stack.last().is_some_and(|f| f.entry.is_test);
         self.enter(lines, path, String::new(), is_test);
+        if is_async {
+            self.mark_async();
+        }
         walk(self);
         self.leave();
     }
@@ -287,12 +299,14 @@ impl<'ast> Visit<'ast> for Walker {
 
     fn visit_expr_closure(&mut self, c: &'ast syn::ExprClosure) {
         let lines = (c.span().start().line, c.span().end().line);
-        self.closure_like(lines, |w| syn::visit::visit_expr_closure(w, c));
+        self.closure_like(lines, c.asyncness.is_some(), |w| {
+            syn::visit::visit_expr_closure(w, c)
+        });
     }
 
     fn visit_expr_async(&mut self, a: &'ast syn::ExprAsync) {
         let lines = (a.span().start().line, a.span().end().line);
-        self.closure_like(lines, |w| syn::visit::visit_expr_async(w, a));
+        self.closure_like(lines, false, |w| syn::visit::visit_expr_async(w, a));
     }
 
     fn visit_expr_if(&mut self, e: &'ast syn::ExprIf) {
@@ -469,6 +483,58 @@ mod tests {
                 .map(|(l, p, _, _)| (*l, p.clone()))
                 .collect::<Vec<_>>(),
             vec![(1, vec![]), (2, vec![0]), (3, vec![0, 0])]
+        );
+    }
+
+    #[test]
+    fn an_async_closure_is_flagged_and_numbers_what_is_inside_below_its_future() {
+        let src = "fn f() {\n    let c = async |x: u32| {\n        let k = |w: u32| w;\n        let b = async { 1 };\n        if x > 1 {}\n    };\n}\n";
+        let mut got = async_table(src);
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                (1, vec![], 1, false),
+                (2, vec![0], 2, true),        // the closure keeps its own `if`
+                (3, vec![0, 0, 0], 1, false), // `f::{closure#0}::{closure#0}::{closure#0}`
+                (4, vec![0, 0, 1], 1, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_async_closure_takes_one_index_among_its_siblings() {
+        let src = "fn f() {\n    let a = async |x: u32| x;\n    let b = |y: u32| y;\n    let c = async move |z: u32| z;\n    let d = async { 7u32 };\n}\n";
+        let mut got = async_table(src);
+        got.sort();
+        assert_eq!(
+            got.iter()
+                .map(|(l, p, _, a)| (*l, p.clone(), *a))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, vec![], false),
+                (2, vec![0], true),
+                (3, vec![1], false),
+                (4, vec![2], true),
+                (5, vec![3], false),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_async_closure_in_an_async_closure_is_numbered_below_the_outer_future() {
+        let src = "fn f() {\n    let o = async |x: u32| {\n        let i = async |z: u32| z;\n    };\n}\n";
+        let mut got = async_table(src);
+        got.sort();
+        assert_eq!(
+            got.iter()
+                .map(|(l, p, _, a)| (*l, p.clone(), *a))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, vec![], false),
+                (2, vec![0], true),
+                (3, vec![0, 0, 0], true)
+            ]
         );
     }
 

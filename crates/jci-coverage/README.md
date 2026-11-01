@@ -212,8 +212,13 @@ Limitations of reading source rather than compiled code:
 - An `async fn` is two methods in the report: the function and its generated future,
   `f::{closure#0}`, at the same line. The function keeps the complexity and the future is
   matched to it with none, so nothing is counted twice. An `async` block is a closure of
-  its own, numbered with the closures around it. An `async` closure (`async |x| ..`) is not
-  handled yet: its generated future is left unmatched.
+  its own, numbered with the closures around it. An `async` closure (`async |x| ..`) is the
+  same: `cargo llvm-cov` reports it twice (the second time with no hits) and its future as
+  `{closure#0}` below it, with a generic argument such as `::<i16>` on the end of the name.
+  The closure keeps the complexity and the future adds none. With the default
+  `--duplicates merge` the two entries of the closure become one; `--duplicates keep` leaves
+  both, so an async closure then counts twice in OtterWise's sum, as a generic function
+  counts once per instantiation.
 - Sources are read relative to `--source-root` (default `.`), not the report's `<sources>`.
   Run from the directory the report was built in, or pass `--source-root`; if nothing
   matches, a warning says so.

@@ -1,0 +1,62 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+pub fn run<F: Future>(f: F) -> F::Output {
+    fn noop(_: *const ()) {}
+    fn clone(_: *const ()) -> RawWaker { RawWaker::new(std::ptr::null(), &VT) }
+    static VT: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
+    let w = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VT)) };
+    let mut cx = Context::from_waker(&w);
+    let mut f = std::pin::pin!(f);
+    loop { if let Poll::Ready(v) = f.as_mut().poll(&mut cx) { return v; } }
+}
+
+pub fn simple() -> u32 {
+    let c = async |x: u32| {
+        if x > 1 { x } else { 0 }
+    };
+    run(c(2)) + run(c(0))
+}
+
+pub fn inner_things() -> u32 {
+    let c = async |x: u32| {
+        let k = |v: u32| v + 1;
+        let b = async { k(x) };
+        b.await
+    };
+    run(c(1))
+}
+
+pub fn moved(y: u32) -> u32 {
+    let c = async move |x: u32| {
+        if x > y { x } else { y }
+    };
+    run(c(3))
+}
+
+pub async fn in_async_fn(y: u32) -> u32 {
+    let c = async |x: u32| {
+        if x > y { x } else { y }
+    };
+    c(5).await
+}
+
+pub fn nested() -> u32 {
+    let outer = async |x: u32| {
+        let inner = async |z: u32| {
+            if z > 1 { z } else { 0 }
+        };
+        inner(x).await
+    };
+    run(outer(4))
+}
+
+#[test]
+fn t() {
+    assert!(simple() > 0);
+    assert!(inner_things() > 0);
+    assert!(moved(1) > 0);
+    assert!(run(in_async_fn(1)) > 0);
+    assert!(nested() > 0);
+}
