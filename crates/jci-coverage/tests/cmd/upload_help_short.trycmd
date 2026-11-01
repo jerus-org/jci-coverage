@@ -11,6 +11,7 @@ Options:
       --repo-token <TOKEN>  Repository token
       --endpoint <URL>      Override the upload endpoint (primarily
                             for testing)
+      --allow-local         Upload even when not running in CircleCI
   -h, --help                Print help (see more with '--help')
 
 ```

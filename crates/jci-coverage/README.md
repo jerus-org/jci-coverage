@@ -23,7 +23,12 @@ Three independent subcommands, not one:
   files the report names and needs no other tool.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
-  whatever coverage report that project's own build already generates.
+  whatever coverage report that project's own build already generates. It must run in a
+  CircleCI job: OtterWise accepts an upload from anywhere but shows only those that carry a
+  CI identity, so outside CircleCI (`CIRCLECI` is not `true`) `upload` refuses, before any
+  network call, unless given `--allow-local`. With it the upload is sent without a CI
+  provider and a warning says it is unlikely to be shown. A CircleCI build that lacks
+  `CIRCLE_BUILD_NUM`, `CIRCLE_JOB` or (outside tag builds) `CIRCLE_BRANCH` is warned about.
 
 Kept separate so the CLI surface can grow additional upload targets (Codecov,
 Coveralls) later without reshaping coverage generation.

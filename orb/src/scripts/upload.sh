@@ -9,4 +9,5 @@ case "${GCO_LOG_LEVEL:-default}" in
 esac
 [[ ! "${GCO_REPO_TOKEN:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --repo-token "${GCO_REPO_TOKEN}"
 [[ ! "${GCO_ENDPOINT:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --endpoint "${GCO_ENDPOINT}"
+[[ "${GCO_ALLOW_LOCAL:-false}" = "true" ]] && set -- "$@" --allow-local
 "$@"

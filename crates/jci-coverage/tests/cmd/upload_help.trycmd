@@ -3,7 +3,9 @@ $ jci-coverage upload --help
 Standalone: takes a coverage file path and uploads it. Does not
 require `report`, Rust, or `cargo-llvm-cov` — the caller is
 responsible for the file existing at the given path in a format
-OtterWise accepts.
+OtterWise accepts. It must run in CircleCI: OtterWise shows only
+uploads that carry a CI identity, so elsewhere it refuses unless told
+to upload anyway (see the allow-local option).
 
 Usage: jci-coverage upload [OPTIONS] --file <PATH>
 
@@ -24,6 +26,14 @@ Options:
 
       --endpoint <URL>
           Override the upload endpoint (primarily for testing)
+
+      --allow-local
+          Upload even when not running in CircleCI.
+          
+          OtterWise shows only uploads that carry a CI identity: from
+          anywhere else it answers "Queued for processing" and the
+          result never appears. Without this flag `upload` refuses to
+          run outside CircleCI (`CIRCLECI` is not `true`).
 
   -h, --help
           Print help (see a summary with '-h')
