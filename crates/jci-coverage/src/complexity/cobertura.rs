@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use quick_xml::{
     Reader, Writer, XmlVersion,
     events::{BytesEnd, BytesStart, BytesText, Event, attributes::Attribute},
@@ -288,12 +288,16 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
     let mut parser = Parser::default();
     loop {
         match reader.read_event().context("malformed XML")? {
-            Event::Start(e) => parser.open(&e, false)?,
-            Event::Empty(e) => parser.open(&e, true)?,
-            Event::End(e) => parser.close(&e),
+            Event::Start(e) => parser.open(&e, false),
+            Event::Empty(e) => parser.open(&e, true),
+            Event::End(e) => {
+                parser.close(&e);
+                Ok(())
+            }
             Event::Eof => break,
-            _ => {}
+            _ => Ok(()),
         }
+        .map_err(|e| anyhow!("{e} (near byte {})", reader.buffer_position()))?;
     }
     if parser.depth != 0 {
         bail!(
@@ -1084,6 +1088,20 @@ mod tests {
 <lines><line number="9" hits="9"/></lines></classes></package>"#,
         );
         rejected(&xml, "a <line> is not inside a <class>");
+    }
+
+    #[test]
+    fn a_class_after_an_empty_package_is_rejected() {
+        let xml = in_report(r#"<package/><class filename="a.rs"/>"#);
+        rejected(&xml, "a <class> is not inside a <package>");
+    }
+
+    #[test]
+    fn a_malformed_report_error_says_where_in_the_report_it_stopped() {
+        let tag = r#"<line number="1" hits="1"/>"#;
+        let xml = in_report(&format!("<package>{tag}</package>"));
+        let end = xml.find(tag).expect("tag") + tag.len();
+        rejected(&xml, &format!("(near byte {end})"));
     }
 
     #[test]
