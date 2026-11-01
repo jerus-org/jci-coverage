@@ -1,0 +1,14 @@
+pub fn outer(x: u32) -> u32 {
+    fn inner(y: u32) -> u32 {
+        fn innermost(z: u32) -> u32 { z + 1 }
+        let c = |v: u32| { let d = |w: u32| w * 2; d(v) + 1 };
+        c(y) + innermost(y)
+    }
+    struct S;
+    impl S { fn m(&self, a: u32) -> u32 { let k = |q: u32| q + a; k(1) } }
+    let cl = |a: u32| { let nested = |b: u32| b + a; nested(a) };
+    inner(x) + cl(x) + S.m(x)
+}
+pub fn generic<T: Into<u32>>(t: T) -> u32 { let f = |v: u32| v + 1; f(t.into()) }
+#[test]
+fn t() { assert!(outer(1) > 0); assert!(generic(1u8) > 0); assert!(generic(1u16) > 0); }

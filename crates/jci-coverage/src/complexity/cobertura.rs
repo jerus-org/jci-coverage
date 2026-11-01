@@ -1111,4 +1111,25 @@ mod tests {
         let out = rewrite("<coverage><coverage/></coverage>", &edit).expect("rewrites");
         assert_eq!(out, r#"<coverage complexity="5"><coverage/></coverage>"#);
     }
+
+    /// A report `cargo llvm-cov` 0.9.1 wrote for `tests/fixtures/cobertura_nested_rust.rs.txt`:
+    /// nested functions, closures in closures and a method of a type declared inside a
+    /// function. Nesting shows only in the names; the `<method>` elements stay flat.
+    #[test]
+    fn a_real_report_of_nested_functions_and_closures_parses() {
+        let xml = include_str!("../../tests/fixtures/cobertura_nested_rust.xml");
+        let r = parse(xml).expect("a real report parses");
+        assert_eq!(r.classes.len(), 1);
+        let names: Vec<_> = r.methods.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names.len(), 14, "{names:?}");
+        for expected in [
+            "nest::outer",
+            "nest::outer::inner",
+            "nest::outer::inner::innermost",
+            "nest::outer::inner::{closure#0}::{closure#0}",
+            "<nest::outer::S>::m::{closure#0}",
+        ] {
+            assert!(names.contains(&expected), "{expected} in {names:?}");
+        }
+    }
 }
