@@ -156,6 +156,10 @@ fn with_attributes(e: &BytesStart<'_>, set: &[(&str, String)]) -> Result<BytesSt
 struct Parser {
     report: Report,
     depth: usize,
+    /// Whether the reader is between a `<package>` and its end tag.
+    in_package: bool,
+    /// Whether the reader is between a `<class>` and its end tag.
+    in_class: bool,
     /// The method being read, until its end tag, and whether its line is read.
     method: Option<(Method, bool)>,
 }
@@ -164,9 +168,9 @@ impl Parser {
     /// An element opens: `empty` for `<x/>`, which closes at once.
     fn open(&mut self, e: &BytesStart<'_>, empty: bool) -> Result<()> {
         self.element(e)?;
-        if empty && is(e, "method") {
-            self.finish_method();
-        } else if !empty {
+        if empty {
+            self.leave(e.name().as_ref());
+        } else {
             self.depth += 1;
         }
         Ok(())
@@ -175,15 +179,22 @@ impl Parser {
     /// An element closes.
     fn close(&mut self, e: &BytesEnd<'_>) {
         self.depth = self.depth.saturating_sub(1);
-        if e.name().as_ref() == "method" {
-            self.finish_method();
+        self.leave(e.name().as_ref());
+    }
+
+    /// The element called `name` is over, by its end tag or because it was empty.
+    fn leave(&mut self, name: &str) {
+        match name {
+            "method" => self.finish_method(),
+            "class" => self.in_class = false,
+            "package" => self.in_package = false,
+            _ => {}
         }
     }
 
     fn element(&mut self, e: &BytesStart<'_>) -> Result<()> {
         if is(e, "package") {
-            self.report.package_count += 1;
-            Ok(())
+            self.package()
         } else if is(e, "class") {
             self.class(e)
         } else if is(e, "method") {
@@ -195,8 +206,17 @@ impl Parser {
         }
     }
 
+    fn package(&mut self) -> Result<()> {
+        if self.in_package {
+            bail!("malformed report: a <package> is inside another <package>");
+        }
+        self.in_package = true;
+        self.report.package_count += 1;
+        Ok(())
+    }
+
     fn class(&mut self, e: &BytesStart<'_>) -> Result<()> {
-        if self.report.package_count == 0 {
+        if !self.in_package {
             bail!("malformed report: a <class> is not inside a <package>");
         }
         if let Some((open, _)) = &self.method {
@@ -205,6 +225,10 @@ impl Parser {
                 open.name
             );
         }
+        if self.in_class {
+            bail!("malformed report: a <class> is inside another <class>");
+        }
+        self.in_class = true;
         self.report.classes.push(Class {
             filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
             package: self.report.package_count - 1,
@@ -214,7 +238,7 @@ impl Parser {
     }
 
     fn method(&mut self, e: &BytesStart<'_>) -> Result<()> {
-        if self.report.classes.is_empty() {
+        if !self.in_class {
             bail!("malformed report: a <method> is not inside a <class>");
         }
         let name = attribute(e, "name")?.context("<method> has no `name`")?;
@@ -243,8 +267,10 @@ impl Parser {
                 method.hits = number(e, "hits")?;
                 *read = true;
             }
-        } else if let Some(class) = self.report.classes.last_mut() {
+        } else if let (true, Some(class)) = (self.in_class, self.report.classes.last_mut()) {
             class.lines.push((number(e, "number")?, number(e, "hits")?));
+        } else {
+            bail!("malformed report: a <line> is not inside a <class>");
         }
         Ok(())
     }
@@ -963,13 +989,15 @@ mod tests {
     }
 
     #[test]
-    fn a_line_outside_any_class_or_method_is_ignored() {
-        let r = parse(r#"<coverage><line number="1" hits="1"/></coverage>"#).expect("parses");
-        assert!(r.classes.is_empty() && r.methods.is_empty());
+    fn a_line_outside_any_class_or_method_is_rejected() {
+        rejected(
+            r#"<coverage><line number="1" hits="1"/></coverage>"#,
+            "a <line> is not inside a <class>",
+        );
     }
 
     #[test]
-    fn an_empty_class_is_counted_and_later_lines_belong_to_the_last_class() {
+    fn an_empty_class_is_counted_and_lines_belong_to_their_own_class() {
         let xml = r#"<coverage><packages><package><classes>
 <class filename="a.rs"/>
 <class filename="b.rs"><lines><line number="2" hits="1"/></lines></class>
@@ -985,6 +1013,88 @@ mod tests {
             vec![("a.rs", 0, 0), ("b.rs", 0, 1), ("c.rs", 1, 0)]
         );
         assert_eq!(r.package_count, 2);
+    }
+
+    /// Wrap `inner` in a report root, so each case states only the part that matters.
+    fn in_report(inner: &str) -> String {
+        format!("<coverage><packages>{inner}</packages></coverage>")
+    }
+
+    fn rejected(xml: &str, expected: &str) {
+        let err = parse(xml).unwrap_err();
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+
+    #[test]
+    fn a_class_after_its_package_closed_is_rejected() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"/></classes></package>
+<class filename="b.rs"/>"#,
+        );
+        rejected(&xml, "a <class> is not inside a <package>");
+    }
+
+    #[test]
+    fn a_class_inside_a_class_is_rejected() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"><class filename="b.rs"/></class></classes></package>"#,
+        );
+        rejected(&xml, "a <class> is inside another <class>");
+    }
+
+    #[test]
+    fn a_package_inside_a_package_is_rejected() {
+        let xml = in_report("<package><package/></package>");
+        rejected(&xml, "a <package> is inside another <package>");
+    }
+
+    #[test]
+    fn a_method_after_its_class_closed_is_rejected() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"></class><methods><method name="x::f"/></methods></classes></package>"#,
+        );
+        rejected(&xml, "a <method> is not inside a <class>");
+    }
+
+    #[test]
+    fn a_method_in_a_later_package_before_any_class_is_rejected() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"/></classes></package>
+<package><classes><method name="x::f"/></classes></package>"#,
+        );
+        rejected(&xml, "a <method> is not inside a <class>");
+    }
+
+    #[test]
+    fn a_line_outside_a_class_is_rejected() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"/></classes><lines><line number="1" hits="1"/></lines></package>"#,
+        );
+        rejected(&xml, "a <line> is not inside a <class>");
+        rejected(
+            &in_report(r#"<package><line number="1" hits="1"/></package>"#),
+            "a <line> is not inside a <class>",
+        );
+    }
+
+    #[test]
+    fn a_line_after_its_class_closed_is_not_added_to_that_class() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"><lines><line number="1" hits="1"/></lines></class>
+<lines><line number="9" hits="9"/></lines></classes></package>"#,
+        );
+        rejected(&xml, "a <line> is not inside a <class>");
+    }
+
+    #[test]
+    fn a_second_package_may_follow_a_closed_one() {
+        let xml = in_report(
+            r#"<package><classes><class filename="a.rs"/></classes></package>
+<package><classes><class filename="b.rs"><lines><line number="2" hits="1"/></lines></class></classes></package>"#,
+        );
+        let r = parse(&xml).expect("parses");
+        assert_eq!((r.classes[1].package, r.classes[1].lines.len()), (1, 1));
+        assert_eq!(r.classes[0].lines.len(), 0);
     }
 
     /// One package, one class, and the methods given, with a class line.
