@@ -1,0 +1,239 @@
+<?xml version="1.0" ?>
+<!DOCTYPE coverage SYSTEM "https://cobertura.sourceforge.net/xml/coverage-04.dtd">
+<coverage branch-rate="0" branches-covered="0" branches-valid="0" complexity="0" line-rate="0.98" lines-covered="49" lines-valid="50" version="2.0.3">
+    <sources>
+        <source>/work/asc2</source>
+    </sources>
+    <packages>
+        <package line-rate="0.98" branch-rate="0" name="src" complexity="0">
+            <classes>
+                <class branch-rate="0" complexity="0" filename="src/lib.rs" line-rate="0.98" name="src.lib.rs">
+                    <methods>
+                        <method name="asc2::nested::{closure#0}::{closure#0}::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="47" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::in_async_fn::{closure#0}::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="39" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="23" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::moved::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="32" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="46" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::simple::{closure#0}::{closure#0}::&lt;i16&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="2" number="16" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::&lt;asc2::inner_things::{closure#0}::{closure#0}&lt;i16&gt;&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::&lt;asc2::moved::{closure#0}::{closure#0}&lt;i16&gt;&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::&lt;asc2::nested::{closure#0}::{closure#0}&lt;i16&gt;&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::&lt;asc2::simple::{closure#0}::{closure#0}&lt;i16&gt;&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="2" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::&lt;asc2::in_async_fn::{closure#0}&gt;" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="5" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things::{closure#0}::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="24" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things::{closure#0}::{closure#0}::{closure#1}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="25" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested::{closure#0}::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="47" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::in_async_fn::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="39" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::in_async_fn::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="38" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="23" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::moved::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="32" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="46" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::simple::{closure#0}" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="2" number="16" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested::{closure#0}::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="47" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::in_async_fn::{closure#0}::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="39" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="23" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::moved::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="32" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="46" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::simple::{closure#0}" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="16" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::in_async_fn" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="38" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::inner_things" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="22" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::moved" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="31" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::nested" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="45" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::simple" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="15" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::t" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="1" number="56" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::noop" signature="" complexity="0" line-rate="1" branch-rate="1">
+                            <lines>
+                                <line hits="6" number="6" branch="false"/>
+                            </lines>
+                        </method>
+                        <method name="asc2::run::clone" signature="" complexity="0" line-rate="0" branch-rate="0">
+                            <lines>
+                                <line hits="0" number="7" branch="false"/>
+                            </lines>
+                        </method>
+                    </methods>
+                    <lines>
+                        <line branch="false" hits="6" number="5"/>
+                        <line branch="false" hits="6" number="6"/>
+                        <line branch="false" hits="0" number="7"/>
+                        <line branch="false" hits="6" number="9"/>
+                        <line branch="false" hits="6" number="10"/>
+                        <line branch="false" hits="6" number="11"/>
+                        <line branch="false" hits="6" number="12"/>
+                        <line branch="false" hits="6" number="13"/>
+                        <line branch="false" hits="1" number="15"/>
+                        <line branch="false" hits="4" number="16"/>
+                        <line branch="false" hits="2" number="17"/>
+                        <line branch="false" hits="4" number="18"/>
+                        <line branch="false" hits="1" number="19"/>
+                        <line branch="false" hits="1" number="20"/>
+                        <line branch="false" hits="1" number="22"/>
+                        <line branch="false" hits="2" number="23"/>
+                        <line branch="false" hits="1" number="24"/>
+                        <line branch="false" hits="1" number="25"/>
+                        <line branch="false" hits="1" number="26"/>
+                        <line branch="false" hits="2" number="27"/>
+                        <line branch="false" hits="1" number="28"/>
+                        <line branch="false" hits="1" number="29"/>
+                        <line branch="false" hits="1" number="31"/>
+                        <line branch="false" hits="2" number="32"/>
+                        <line branch="false" hits="1" number="33"/>
+                        <line branch="false" hits="2" number="34"/>
+                        <line branch="false" hits="1" number="35"/>
+                        <line branch="false" hits="1" number="36"/>
+                        <line branch="false" hits="1" number="38"/>
+                        <line branch="false" hits="2" number="39"/>
+                        <line branch="false" hits="1" number="40"/>
+                        <line branch="false" hits="2" number="41"/>
+                        <line branch="false" hits="1" number="42"/>
+                        <line branch="false" hits="1" number="43"/>
+                        <line branch="false" hits="1" number="45"/>
+                        <line branch="false" hits="2" number="46"/>
+                        <line branch="false" hits="2" number="47"/>
+                        <line branch="false" hits="1" number="48"/>
+                        <line branch="false" hits="2" number="49"/>
+                        <line branch="false" hits="1" number="50"/>
+                        <line branch="false" hits="2" number="51"/>
+                        <line branch="false" hits="1" number="52"/>
+                        <line branch="false" hits="1" number="53"/>
+                        <line branch="false" hits="1" number="56"/>
+                        <line branch="false" hits="1" number="57"/>
+                        <line branch="false" hits="1" number="58"/>
+                        <line branch="false" hits="1" number="59"/>
+                        <line branch="false" hits="1" number="60"/>
+                        <line branch="false" hits="1" number="61"/>
+                        <line branch="false" hits="1" number="62"/>
+                    </lines>
+                </class>
+            </classes>
+        </package>
+    </packages>
+</coverage>

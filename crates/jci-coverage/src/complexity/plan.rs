@@ -103,9 +103,12 @@ pub(crate) struct Plan {
 
 /// The `{closure#N}` indexes a method name ends with, outermost first, or
 /// `None` for a function. Only the end of the name counts: `{closure#N}` also
-/// appears inside the generic arguments of ordinary functions.
+/// appears inside the generic arguments of ordinary functions. A generic
+/// argument after the last closure is ignored, since the future of an
+/// `async |x| ..` closure is named `f::{closure#0}::{closure#0}::<i16>`.
 pub(crate) fn closure_path(name: &str) -> Option<Vec<u32>> {
-    let mut rest = name;
+    let name = strip_generics(name);
+    let mut rest = name.trim_end_matches("::");
     let mut path = Vec::new();
     while let Some(head) = rest.strip_suffix('}') {
         let Some(open) = head.rfind("::{closure#") else {
@@ -177,18 +180,33 @@ fn covering_closure<'a>(
         .max_by_key(|e| e.line)
 }
 
-/// Whether the method `name` at `line` is the future of an `async fn`:
-/// `cargo llvm-cov` reports it as `f::{closure#0}` beside `f`, at the same line.
-/// The function's entry keeps the complexity, so this one adds none.
+/// Whether the method `name` at `line` is the generated future of an `async fn`
+/// or `async |x| ..` closure: `{closure#0}` below it, at the same line. The
+/// function's or closure's own entry keeps the complexity, so this one adds none.
 fn is_async_future(entries: Option<&Vec<Entry>>, name: &str, line: u32) -> bool {
-    let Some(function) = name.strip_suffix("::{closure#0}") else {
+    let Some(path) = closure_path(name) else {
         return false;
     };
+    let Some((&0, owner)) = path.split_last() else {
+        return false;
+    };
+    let name = strip_generics(name);
+    let function = name
+        .trim_end_matches("::")
+        .strip_suffix("::{closure#0}")
+        .map_or("", function_name);
     entries.is_some_and(|entries| {
         entries.iter().any(|e| {
             e.is_async
-                && e.line == line as usize
-                && e.name == function_name(&strip_generics(function))
+                && e.path == owner
+                && if owner.is_empty() {
+                    // A function is always reported at its `fn` keyword line.
+                    e.line == line as usize && e.name == function
+                } else {
+                    // A closure is reported at its first counted line, which can be
+                    // later than the line it starts on, and so is its future.
+                    e.line <= line as usize && line as usize <= e.end_line
+                }
         })
     })
 }
@@ -823,5 +841,214 @@ fn f() {
             assert_eq!(p.summary.unmatched, Vec::new());
             assert_eq!(p.summary.total, want, "exclude_tests={exclude_tests}");
         }
+    }
+
+    #[test]
+    fn closure_path_ignores_a_trailing_generic_argument() {
+        // The future of an `async |x| ..` closure ends in the coroutine kind.
+        assert_eq!(
+            closure_path("a::f::{closure#0}::{closure#0}::<i16>"),
+            Some(vec![0, 0])
+        );
+        assert_eq!(
+            closure_path("a::f::{closure#1}::{closure#0}::<i8>"),
+            Some(vec![1, 0])
+        );
+        // An ordinary function whose generic arguments name a closure is still no closure.
+        assert_eq!(
+            closure_path("a::run::<a::f::{closure#0}::{closure#0}<i16>>"),
+            None
+        );
+    }
+
+    const CLOSURES_SRC: &str = include_str!("../../tests/fixtures/cobertura_async_closures.rs.txt");
+    const CLOSURES_REPORT: &str = include_str!("../../tests/fixtures/cobertura_async_closures.xml");
+
+    /// A real `cargo llvm-cov` report of async closures. An async closure `P` is
+    /// reported twice (the second time with no hits) and its future as
+    /// `P::{closure#0}::<i16>`; what is inside its body is numbered below the future.
+    fn closures_plan(duplicates: Duplicates) -> (Vec<(String, u32)>, Plan) {
+        let report = crate::complexity::cobertura::parse(CLOSURES_REPORT).expect("parses");
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(CLOSURES_SRC).expect("parses"),
+        )]);
+        let opts = Options {
+            duplicates,
+            ..opts()
+        };
+        let plan = plan(&report, &analyses, &opts);
+        let scored = report
+            .methods
+            .iter()
+            .zip(&plan.edit.methods)
+            .filter_map(|(m, e)| match e {
+                MethodEdit::Set { complexity, .. } => Some((m.name.clone(), *complexity)),
+                MethodEdit::Drop => None,
+            })
+            .collect();
+        (scored, plan)
+    }
+
+    #[test]
+    fn every_entry_of_a_real_report_of_async_closures_is_matched() {
+        let (_, plan) = closures_plan(Duplicates::Merge);
+        assert_eq!(plan.summary.unmatched, Vec::new());
+    }
+
+    #[test]
+    fn an_async_closure_keeps_its_complexity_and_its_future_adds_none() {
+        let (scored, _) = closures_plan(Duplicates::Merge);
+        let of = |name: &str| scored.iter().find(|(n, _)| n == name).expect(name).1;
+        assert_eq!(of("asc2::simple::{closure#0}"), 2, "its `if`");
+        assert_eq!(of("asc2::simple::{closure#0}::{closure#0}::<i16>"), 0);
+        // Inside the body: a plain closure and an `async` block, each their own.
+        assert_eq!(
+            of("asc2::inner_things::{closure#0}::{closure#0}::{closure#0}"),
+            1
+        );
+        assert_eq!(
+            of("asc2::inner_things::{closure#0}::{closure#0}::{closure#1}"),
+            1
+        );
+        // An async closure in an async closure, and in an async fn.
+        assert_eq!(of("asc2::nested::{closure#0}::{closure#0}::{closure#0}"), 2);
+        assert_eq!(of("asc2::in_async_fn::{closure#0}::{closure#0}"), 2);
+    }
+
+    #[test]
+    fn the_second_entry_of_an_async_closure_is_merged_with_the_first() {
+        let (scored, plan) = closures_plan(Duplicates::Merge);
+        let simple = scored
+            .iter()
+            .filter(|(n, _)| n == "asc2::simple::{closure#0}");
+        assert_eq!(simple.count(), 1, "one entry is left");
+        assert!(
+            plan.summary.merged_away >= 5,
+            "{}",
+            plan.summary.merged_away
+        );
+    }
+
+    /// `keep` leaves every entry as `cargo llvm-cov` wrote it, so an async
+    /// closure, reported twice, is scored twice. That is the documented meaning
+    /// of `keep`: one entry per instantiation.
+    #[test]
+    fn keeping_duplicates_scores_both_entries_of_an_async_closure() {
+        let (scored, plan) = closures_plan(Duplicates::Keep);
+        let simple: Vec<_> = scored
+            .iter()
+            .filter(|(n, _)| n == "asc2::simple::{closure#0}")
+            .collect();
+        assert_eq!(simple.len(), 2);
+        assert!(simple.iter().all(|(_, c)| *c == 2));
+        assert_eq!(plan.summary.unmatched, Vec::new());
+    }
+
+    const CLOSURE_ONLY: &str = "fn f() {\n    let c = async |x: u32| {\n        if x > 1 {}\n    };\n    let d = |x: u32| x;\n}\n";
+
+    #[test]
+    fn a_future_entry_away_from_the_async_closure_line_is_unmatched() {
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(CLOSURE_ONLY).expect("parses"),
+        )]);
+        let p = plan(
+            &report(vec![method(
+                0,
+                "x::f::{closure#0}::{closure#0}::<i16>",
+                9,
+                1,
+            )]),
+            &analyses,
+            &opts(),
+        );
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn the_future_shaped_entry_of_a_plain_closure_is_unmatched() {
+        // `d` is not async, so nothing is its future.
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(CLOSURE_ONLY).expect("parses"),
+        )]);
+        let p = plan(
+            &report(vec![method(
+                0,
+                "x::f::{closure#1}::{closure#0}::<i16>",
+                5,
+                1,
+            )]),
+            &analyses,
+            &opts(),
+        );
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn the_future_of_an_async_closure_is_matched_whatever_its_suffix() {
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(CLOSURE_ONLY).expect("parses"),
+        )]);
+        for suffix in ["<i8>", "<i16>", "<i32>"] {
+            let name = format!("x::f::{{closure#0}}::{{closure#0}}::{suffix}");
+            let p = plan(&report(vec![method(0, &name, 2, 1)]), &analyses, &opts());
+            assert_eq!(p.summary.unmatched, Vec::new(), "{suffix}");
+        }
+    }
+
+    #[test]
+    fn the_future_of_a_closure_is_not_matched_to_an_async_fn_at_its_line() {
+        // `g` is the async fn on line 1; a future of a closure of `g` is not its own.
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze("async fn g() {}\n").expect("parses"),
+        )]);
+        let p = plan(
+            &report(vec![method(
+                0,
+                "x::g::{closure#0}::{closure#0}::<i16>",
+                1,
+                1,
+            )]),
+            &analyses,
+            &opts(),
+        );
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn only_closure_zero_below_an_async_closure_is_its_future() {
+        // `{closure#1}` below the async closure is some other closure of its body.
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(CLOSURE_ONLY).expect("parses"),
+        )]);
+        let p = plan(
+            &report(vec![method(
+                0,
+                "x::f::{closure#0}::{closure#1}::<i16>",
+                2,
+                1,
+            )]),
+            &analyses,
+            &opts(),
+        );
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    /// `cargo llvm-cov` reports a closure at its first counted line, which can be
+    /// later than the line it starts on (here 20, for a closure starting on 17);
+    /// its future is reported there too.
+    #[test]
+    fn an_async_closure_and_its_future_are_found_at_its_first_counted_line() {
+        let src = include_str!("../../tests/fixtures/cobertura_async_closure_later_line.rs.txt");
+        let xml = include_str!("../../tests/fixtures/cobertura_async_closure_later_line.xml");
+        let report = crate::complexity::cobertura::parse(xml).expect("parses");
+        let analyses = Analyses::from([("src/lib.rs".to_string(), analyze(src).expect("parses"))]);
+        let p = plan(&report, &analyses, &opts());
+        assert_eq!(p.summary.unmatched, Vec::new());
     }
 }
