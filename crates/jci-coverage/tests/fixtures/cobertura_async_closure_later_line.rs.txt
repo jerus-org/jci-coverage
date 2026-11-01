@@ -1,0 +1,31 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+pub fn run<F: Future>(f: F) -> F::Output {
+    fn noop(_: *const ()) {}
+    fn clone(_: *const ()) -> RawWaker { RawWaker::new(std::ptr::null(), &VT) }
+    static VT: RawWakerVTable = RawWakerVTable::new(clone, noop, noop, noop);
+    let w = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VT)) };
+    let mut cx = Context::from_waker(&w);
+    let mut f = std::pin::pin!(f);
+    loop { if let Poll::Ready(v) = f.as_mut().poll(&mut cx) { return v; } }
+}
+
+
+pub fn later_line() -> u32 {
+    let c = async |
+        x: u32,
+    | -> u32
+    {
+
+        // a comment line before any code
+        if x > 1 { x } else { 0 }
+    };
+    run(c(2))
+}
+
+#[test]
+fn t() {
+    assert!(later_line() > 0);
+}

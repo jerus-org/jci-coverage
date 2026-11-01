@@ -198,9 +198,15 @@ fn is_async_future(entries: Option<&Vec<Entry>>, name: &str, line: u32) -> bool 
     entries.is_some_and(|entries| {
         entries.iter().any(|e| {
             e.is_async
-                && e.line == line as usize
                 && e.path == owner
-                && (!owner.is_empty() || e.name == function)
+                && if owner.is_empty() {
+                    // A function is always reported at its `fn` keyword line.
+                    e.line == line as usize && e.name == function
+                } else {
+                    // A closure is reported at its first counted line, which can be
+                    // later than the line it starts on, and so is its future.
+                    e.line <= line as usize && line as usize <= e.end_line
+                }
         })
     })
 }
@@ -1031,5 +1037,18 @@ fn f() {
             &opts(),
         );
         assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    /// `cargo llvm-cov` reports a closure at its first counted line, which can be
+    /// later than the line it starts on (here 20, for a closure starting on 17);
+    /// its future is reported there too.
+    #[test]
+    fn an_async_closure_and_its_future_are_found_at_its_first_counted_line() {
+        let src = include_str!("../../tests/fixtures/cobertura_async_closure_later_line.rs.txt");
+        let xml = include_str!("../../tests/fixtures/cobertura_async_closure_later_line.xml");
+        let report = crate::complexity::cobertura::parse(xml).expect("parses");
+        let analyses = Analyses::from([("src/lib.rs".to_string(), analyze(src).expect("parses"))]);
+        let p = plan(&report, &analyses, &opts());
+        assert_eq!(p.summary.unmatched, Vec::new());
     }
 }
