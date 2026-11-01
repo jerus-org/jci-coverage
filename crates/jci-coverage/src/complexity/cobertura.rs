@@ -211,6 +211,9 @@ impl Parser {
         if self.report.classes.is_empty() {
             bail!("malformed report: a <method> is not inside a <class>");
         }
+        if self.method.is_some() {
+            bail!("malformed report: a <method> is inside another <method>");
+        }
         let method = Method {
             class: self.report.classes.len() - 1,
             name: attribute(e, "name")?.context("<method> has no `name`")?,
@@ -833,6 +836,34 @@ mod tests {
         assert_eq!(r.classes[0].lines, vec![(3, 9), (4, 0), (5, 2)]);
         assert_eq!(r.classes[1].lines, vec![(1, 1)]);
         assert_eq!((r.methods[0].line, r.methods[0].hits), (3, 9));
+    }
+
+    #[test]
+    fn a_method_inside_another_method_is_rejected() {
+        for inner in [
+            r#"<method name="x::b"/>"#,
+            r#"<method name="x::b"></method>"#,
+        ] {
+            let xml = format!(
+                r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::a">{inner}</method>
+</methods></class></classes></package></packages></coverage>"#
+            );
+            let err = parse(&xml).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("a <method> is inside another <method>"),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_method_after_a_closed_method_is_accepted() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::a"/><method name="x::b"></method><method name="x::c"/>
+</methods></class></classes></package></packages></coverage>"#;
+        assert_eq!(parse(xml).expect("parses").methods.len(), 3);
     }
 
     #[test]
