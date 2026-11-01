@@ -152,10 +152,6 @@ workflows:
           max_crap: "30"
           baseline: .jci-coverage-baseline
           pr_comment: true
-          # Temporary: full verbosity while more of #44 is worked on. Logs the
-          # complexity summary and every upload field (token withheld). Remove
-          # once that work is done.
-          log_level: vvvv
           filters:
             branches:
               ignore:
