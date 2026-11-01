@@ -177,6 +177,23 @@ fn covering_closure<'a>(
         .max_by_key(|e| e.line)
 }
 
+/// Whether the method `name` at `line` is the future of an `async fn`:
+/// `cargo llvm-cov` reports it as `f::{closure#0}` beside `f`, at the same line.
+/// The function's entry keeps the complexity, so this one adds none.
+fn is_async_future(entries: Option<&Vec<Entry>>, name: &str, path: &[u32], line: u32) -> bool {
+    let Some(function) = name.strip_suffix("::{closure#0}") else {
+        return false;
+    };
+    path == [0]
+        && entries.is_some_and(|entries| {
+            entries.iter().any(|e| {
+                e.is_async
+                    && e.line == line as usize
+                    && e.name == function_name(&strip_generics(function))
+            })
+        })
+}
+
 /// The entries of one file by (start line, closure path).
 type EntryIndex<'a> = HashMap<(usize, Vec<u32>), Vec<&'a Entry>>;
 
@@ -209,8 +226,13 @@ pub(crate) fn plan(report: &Report, analyses: &Analyses, opts: &Options) -> Plan
                         .find(|e| path.is_empty() && e.name == wanted)
                         .or_else(|| entries.first())
                 })
-                .copied()
-                .or_else(|| covering_closure(analyses.get(file), &path, m.line as usize));
+                .copied();
+            if found.is_none() && is_async_future(analyses.get(file), &m.name, &path, m.line) {
+                // The function entry carries the complexity; this one is the same code.
+                return (0, true);
+            }
+            let found =
+                found.or_else(|| covering_closure(analyses.get(file), &path, m.line as usize));
             match found {
                 Some(e) if opts.exclude_tests && e.is_test => (0, true),
                 Some(e) => (e.counts.complexity(opts.rules), true),
@@ -688,5 +710,100 @@ fn f() {
         let plan: Plan = plan(&r, &analyses(), &opts());
         let edit: &Edit = &plan.edit;
         assert_eq!(edit.methods.len(), r.methods.len());
+    }
+
+    const ASYNC_SRC: &str = include_str!("../../tests/fixtures/cobertura_async.rs.txt");
+    const ASYNC_REPORT: &str = include_str!("../../tests/fixtures/cobertura_async.xml");
+
+    /// A real `cargo llvm-cov` report of async functions and blocks: every
+    /// `async fn` is two methods (the function and `f::{closure#0}`, its future,
+    /// at the same line), and blocks share closure numbering below the body.
+    fn async_plan(unmatched: Unmatched) -> (Vec<(String, u32)>, Plan) {
+        let report = crate::complexity::cobertura::parse(ASYNC_REPORT).expect("parses");
+        let analyses = Analyses::from([(
+            "src/lib.rs".to_string(),
+            analyze(ASYNC_SRC).expect("parses"),
+        )]);
+        let opts = Options {
+            unmatched,
+            ..opts()
+        };
+        let plan = plan(&report, &analyses, &opts);
+        let scored = report
+            .methods
+            .iter()
+            .zip(&plan.edit.methods)
+            .filter_map(|(m, e)| match e {
+                MethodEdit::Set { complexity, .. } => Some((m.name.clone(), *complexity)),
+                MethodEdit::Drop => None,
+            })
+            .collect();
+        (scored, plan)
+    }
+
+    #[test]
+    fn every_async_entry_of_a_real_report_is_matched() {
+        let (_, plan) = async_plan(Unmatched::Keep);
+        assert_eq!(plan.summary.unmatched, Vec::new());
+    }
+
+    #[test]
+    fn an_async_fn_keeps_its_complexity_and_its_future_adds_none() {
+        let (scored, plan) = async_plan(Unmatched::One);
+        let of = |name: &str| scored.iter().find(|(n, _)| n == name).expect(name).1;
+        assert_eq!(of("asy::plain"), 2, "the `if` is the function's");
+        assert_eq!(of("asy::plain::{closure#0}"), 0, "its future adds nothing");
+        assert_eq!(of("asy::with_block"), 1);
+        assert_eq!(of("asy::with_block::{closure#0}"), 0);
+        // The real closure and the two blocks below the body, each their own.
+        assert_eq!(of("asy::with_block::{closure#0}::{closure#0}"), 1);
+        assert_eq!(of("asy::with_block::{closure#0}::{closure#1}"), 1);
+        assert_eq!(of("asy::with_block::{closure#0}::{closure#2}"), 1);
+        // A block in a plain function is the function's `{closure#0}`.
+        assert_eq!(of("asy::returns_block::{closure#0}"), 2);
+        assert_eq!(plan.summary.unmatched, Vec::new());
+    }
+
+    const ASYNC_FN: &str =
+        "pub async fn run_it(x: u32) -> u32 {\n    if x > 1 { x } else { 0 }\n}\n\nfn plain() {}\n";
+
+    fn async_methods(methods: Vec<Method>) -> Plan {
+        let analyses =
+            Analyses::from([("src/lib.rs".to_string(), analyze(ASYNC_FN).expect("parses"))]);
+        plan(&report(methods), &analyses, &opts())
+    }
+
+    #[test]
+    fn the_future_of_a_generic_async_fn_is_matched_and_merged_with_its_instances() {
+        let p = async_methods(vec![
+            method(0, "x::run_it::<u8>", 1, 1),
+            method(0, "x::run_it::<u16>", 1, 1),
+            method(0, "x::run_it::<u8>::{closure#0}", 1, 1),
+            method(0, "x::run_it::<u16>::{closure#0}", 1, 1),
+        ]);
+        assert_eq!(p.summary.unmatched, Vec::new());
+        assert_eq!(p.summary.merged_away, 2);
+        assert_eq!(
+            sets(&p)[..],
+            [Some((2, Some(2))), None, Some((0, Some(2))), None]
+        );
+    }
+
+    #[test]
+    fn a_closure_entry_away_from_the_async_fn_line_is_not_its_future() {
+        let p = async_methods(vec![method(0, "x::run_it::{closure#0}", 9, 1)]);
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn a_closure_entry_of_a_function_that_is_not_async_is_not_a_future() {
+        let p = async_methods(vec![method(0, "x::plain::{closure#0}", 5, 1)]);
+        assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn an_async_fn_of_another_name_at_the_line_does_not_own_the_entry() {
+        let p = async_methods(vec![method(0, "x::other::{closure#0}", 1, 1)]);
+        assert_eq!(p.summary.unmatched.len(), 1);
     }
 }
