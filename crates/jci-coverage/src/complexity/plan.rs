@@ -180,18 +180,17 @@ fn covering_closure<'a>(
 /// Whether the method `name` at `line` is the future of an `async fn`:
 /// `cargo llvm-cov` reports it as `f::{closure#0}` beside `f`, at the same line.
 /// The function's entry keeps the complexity, so this one adds none.
-fn is_async_future(entries: Option<&Vec<Entry>>, name: &str, path: &[u32], line: u32) -> bool {
+fn is_async_future(entries: Option<&Vec<Entry>>, name: &str, line: u32) -> bool {
     let Some(function) = name.strip_suffix("::{closure#0}") else {
         return false;
     };
-    path == [0]
-        && entries.is_some_and(|entries| {
-            entries.iter().any(|e| {
-                e.is_async
-                    && e.line == line as usize
-                    && e.name == function_name(&strip_generics(function))
-            })
+    entries.is_some_and(|entries| {
+        entries.iter().any(|e| {
+            e.is_async
+                && e.line == line as usize
+                && e.name == function_name(&strip_generics(function))
         })
+    })
 }
 
 /// The entries of one file by (start line, closure path).
@@ -227,7 +226,7 @@ pub(crate) fn plan(report: &Report, analyses: &Analyses, opts: &Options) -> Plan
                         .or_else(|| entries.first())
                 })
                 .copied();
-            if found.is_none() && is_async_future(analyses.get(file), &m.name, &path, m.line) {
+            if found.is_none() && is_async_future(analyses.get(file), &m.name, m.line) {
                 // The function entry carries the complexity; this one is the same code.
                 return (0, true);
             }
@@ -805,5 +804,24 @@ fn f() {
     fn an_async_fn_of_another_name_at_the_line_does_not_own_the_entry() {
         let p = async_methods(vec![method(0, "x::other::{closure#0}", 1, 1)]);
         assert_eq!(p.summary.unmatched.len(), 1);
+    }
+
+    #[test]
+    fn an_async_test_and_its_future_are_both_left_out_when_tests_are_excluded() {
+        let src = "#[cfg(test)]\nmod t {\n    #[tokio::test]\n    async fn it() {\n        if true {}\n    }\n}\n";
+        let analyses = Analyses::from([("src/lib.rs".to_string(), analyze(src).expect("parses"))]);
+        let methods = vec![
+            method(0, "x::t::it", 4, 1),
+            method(0, "x::t::it::{closure#0}", 4, 1),
+        ];
+        for (exclude_tests, want) in [(true, 0), (false, 2)] {
+            let opts = Options {
+                exclude_tests,
+                ..opts()
+            };
+            let p = plan(&report(methods.clone()), &analyses, &opts);
+            assert_eq!(p.summary.unmatched, Vec::new());
+            assert_eq!(p.summary.total, want, "exclude_tests={exclude_tests}");
+        }
     }
 }
