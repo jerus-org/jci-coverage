@@ -199,6 +199,12 @@ impl Parser {
         if self.report.package_count == 0 {
             bail!("malformed report: a <class> is not inside a <package>");
         }
+        if let Some((open, _)) = &self.method {
+            bail!(
+                "malformed report: a <class> is inside the <method> `{}`",
+                open.name
+            );
+        }
         self.report.classes.push(Class {
             filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
             package: self.report.package_count - 1,
@@ -211,9 +217,16 @@ impl Parser {
         if self.report.classes.is_empty() {
             bail!("malformed report: a <method> is not inside a <class>");
         }
+        let name = attribute(e, "name")?.context("<method> has no `name`")?;
+        if let Some((open, _)) = &self.method {
+            bail!(
+                "malformed report: the <method> `{name}` is inside the <method> `{}`",
+                open.name
+            );
+        }
         let method = Method {
             class: self.report.classes.len() - 1,
-            name: attribute(e, "name")?.context("<method> has no `name`")?,
+            name,
             line: 0,
             hits: 0,
         };
@@ -836,6 +849,47 @@ mod tests {
     }
 
     #[test]
+    fn a_method_inside_another_method_is_rejected() {
+        for inner in [
+            r#"<method name="x::b"/>"#,
+            r#"<method name="x::b"></method>"#,
+        ] {
+            let xml = format!(
+                r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::a">{inner}</method>
+</methods></class></classes></package></packages></coverage>"#
+            );
+            let err = parse(&xml).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("the <method> `x::b` is inside the <method> `x::a`"),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_class_inside_a_method_is_rejected() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::a"><class filename="b.rs"/></method>
+</methods></class></classes></package></packages></coverage>"#;
+        let err = parse(xml).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("a <class> is inside the <method> `x::a`"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_method_after_a_closed_method_is_accepted() {
+        let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
+<method name="x::a"/><method name="x::b"></method><method name="x::c"/>
+</methods></class></classes></package></packages></coverage>"#;
+        assert_eq!(parse(xml).expect("parses").methods.len(), 3);
+    }
+
+    #[test]
     fn only_the_first_line_of_a_method_is_read() {
         let xml = r#"<coverage><packages><package><classes><class filename="a.rs"><methods>
 <method name="x::f"><lines><line number="3" hits="9"/><line number="4" hits="1"/></lines></method>
@@ -1079,5 +1133,26 @@ mod tests {
         };
         let out = rewrite("<coverage><coverage/></coverage>", &edit).expect("rewrites");
         assert_eq!(out, r#"<coverage complexity="5"><coverage/></coverage>"#);
+    }
+
+    /// A report `cargo llvm-cov` 0.9.1 wrote for `tests/fixtures/cobertura_nested_rust.rs.txt`:
+    /// nested functions, closures in closures and a method of a type declared inside a
+    /// function. Nesting shows only in the names; the `<method>` elements stay flat.
+    #[test]
+    fn a_real_report_of_nested_functions_and_closures_parses() {
+        let xml = include_str!("../../tests/fixtures/cobertura_nested_rust.xml");
+        let r = parse(xml).expect("a real report parses");
+        assert_eq!(r.classes.len(), 1);
+        let names: Vec<_> = r.methods.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names.len(), 14, "{names:?}");
+        for expected in [
+            "nest::outer",
+            "nest::outer::inner",
+            "nest::outer::inner::innermost",
+            "nest::outer::inner::{closure#0}::{closure#0}",
+            "<nest::outer::S>::m::{closure#0}",
+        ] {
+            assert!(names.contains(&expected), "{expected} in {names:?}");
+        }
     }
 }
