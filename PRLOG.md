@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update dependency jci-coverage to v0.0.18(pr [#88])
 - complexity: reject a method inside a method(pr [#99])
+- complexity: track the open package and class(pr [#101])
 
 ## [0.0.18] - 2026-10-30
 
@@ -313,6 +314,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#97]: https://github.com/jerus-org/jci-coverage/pull/97
 [#98]: https://github.com/jerus-org/jci-coverage/pull/98
 [#99]: https://github.com/jerus-org/jci-coverage/pull/99
+[#101]: https://github.com/jerus-org/jci-coverage/pull/101
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
