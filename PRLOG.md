@@ -16,6 +16,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - refactor(complexity)-split the baseline decode(pr [#96])
 - refactor(complexity)-split the Cobertura rewrite(pr [#97])
 - ci-empty the baseline(pr [#98])
+- ci-drop the temporary verbose logging(pr [#103])
 
 ### Fixed
 
@@ -315,6 +316,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#98]: https://github.com/jerus-org/jci-coverage/pull/98
 [#99]: https://github.com/jerus-org/jci-coverage/pull/99
 [#101]: https://github.com/jerus-org/jci-coverage/pull/101
+[#103]: https://github.com/jerus-org/jci-coverage/pull/103
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
