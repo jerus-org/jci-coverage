@@ -590,10 +590,7 @@ mod tests {
         let said = err.to_string();
         assert!(said.contains("CIRCLECI"), "{said}");
         assert!(said.contains("--allow-local"), "{said}");
-        assert!(
-            said.contains("never be shown") || said.contains("not be shown"),
-            "{said}"
-        );
+        assert!(said.contains("never be shown"), "{said}");
     }
 
     #[test]
