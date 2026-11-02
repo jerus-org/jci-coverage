@@ -200,7 +200,9 @@ pub struct ComplexityArgs {
     /// copy from when the failures are to be tracked as issues, however many
     /// there are. Written, after the report, when the gate fails; nothing is
     /// written when it passes or with `--dry-run`. A failure to write it is a
-    /// warning and does not change the result.
+    /// warning and does not change the result. `-` writes no file: the list is
+    /// put at the end of the failure report in the log, which works in a job that
+    /// cannot keep a file.
     #[arg(long, value_name = "PATH", conflicts_with = "write_baseline")]
     pub failures_file: Option<PathBuf>,
 
@@ -499,11 +501,15 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
         );
     }
     let report = args.output.as_deref().unwrap_or(&args.file);
+    let failures_path = args
+        .failures_file
+        .as_ref()
+        .filter(|p| !gate_report::lists_in_report(p));
     for path in [
-        &args.baseline,
-        &args.write_baseline,
-        &args.summary_file,
-        &args.failures_file,
+        args.baseline.as_ref(),
+        args.write_baseline.as_ref(),
+        args.summary_file.as_ref(),
+        failures_path,
     ]
     .into_iter()
     .flatten()
@@ -529,7 +535,7 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
     }
     // The failures list is the one other output that could land on the summary
     // or the baseline.
-    if let Some(list) = &args.failures_file {
+    if let Some(list) = failures_path {
         for (other, name) in [
             (&args.summary_file, "summary"),
             (&args.baseline, "baseline"),
@@ -693,7 +699,11 @@ fn publish_summary(
 /// Write every failing function to `--failures-file`, if one was asked for.
 /// Failing to is a warning: the gate's own result is what matters.
 fn write_failures_file(args: &ComplexityArgs, failing: &[metrics::Risk<'_>]) {
-    let Some(path) = &args.failures_file else {
+    let Some(path) = args
+        .failures_file
+        .as_ref()
+        .filter(|p| !gate_report::lists_in_report(p))
+    else {
         return;
     };
     if args.dry_run {
@@ -2697,6 +2707,48 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert!(
             markdown.contains(&format!("_{} more not shown", all - 1)),
             "{markdown}"
+        );
+    }
+
+    #[test]
+    fn a_dash_as_the_failures_file_puts_the_list_in_the_report_and_writes_no_file() {
+        let (dir, mut args) = setup();
+        let all = every_function_fails(&mut args);
+        args.max_listed = 1;
+        args.failures_file = Some(PathBuf::from("-"));
+        let before = fs::read_dir(".").map(|d| d.count()).unwrap_or(0);
+
+        let err = logged(&args).0.unwrap_err().to_string();
+
+        let (_, list) = err
+            .split_once(&format!("Every failing function ({all}):\n"))
+            .unwrap_or_else(|| panic!("the list is in the report:\n{err}"));
+        assert_eq!(list.lines().count(), all, "{err}");
+        assert!(list.lines().all(|l| l.starts_with("- [ ] `")), "{err}");
+        assert!(
+            err.contains(&format!("all {all} are at the end of this report")),
+            "{err}"
+        );
+        assert!(!Path::new("-").exists(), "no file called - was written");
+        assert_eq!(
+            fs::read_dir(".").map(|d| d.count()).unwrap_or(0),
+            before,
+            "nothing was written in the working directory"
+        );
+        drop(dir);
+    }
+
+    #[test]
+    fn a_dash_is_not_a_path_so_it_clashes_with_no_other_output() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 1;
+        args.failures_file = Some(PathBuf::from("-"));
+        args.summary_file = Some(dir.path().join("summary.md"));
+        let err = logged(&args).0.unwrap_err().to_string();
+        assert!(!err.contains("is both"), "{err}");
+        assert!(
+            dir.path().join("summary.md").exists(),
+            "the summary was written"
         );
     }
 }

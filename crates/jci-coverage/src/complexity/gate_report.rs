@@ -33,7 +33,21 @@ pub(crate) struct Listing<'a> {
     pub(crate) file: Option<&'a Path>,
 }
 
+/// The name that sends the list of every failing function to the end of the
+/// failure report instead of to a file.
+pub(crate) const LIST_IN_REPORT: &str = "-";
+
+/// Whether `path` is the name that asks for the list in the report.
+pub(crate) fn lists_in_report(path: &Path) -> bool {
+    path == Path::new(LIST_IN_REPORT)
+}
+
 impl Listing<'_> {
+    /// Whether every failing function is to be listed at the end of the report.
+    fn list_in_report(&self) -> bool {
+        self.file == Some(Path::new(LIST_IN_REPORT))
+    }
+
     /// Every function, as before there was a cap.
     #[cfg(test)]
     pub(crate) const ALL: Listing<'static> = Listing {
@@ -388,13 +402,26 @@ pub(crate) fn render(
     let note = if not_listed == 0 {
         String::new()
     } else {
-        let all = listing.file.map_or_else(String::new, |file| {
-            format!("; all {} are in {}", failures.len(), file.display())
-        });
+        let all = if listing.list_in_report() {
+            format!("; all {} are at the end of this report", failures.len())
+        } else {
+            listing.file.map_or_else(String::new, |file| {
+                format!("; all {} are in {}", failures.len(), file.display())
+            })
+        };
         format!("\n\n{not_listed} more not listed{all}.")
     };
+    let everything = if listing.list_in_report() {
+        format!(
+            "\n\nEvery failing function ({}):\n{}",
+            failures.len(),
+            failures_list(failing, limits)
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "{summary}\n\n{}{note}\n\n{}",
+        "{summary}\n\n{}{note}\n\n{}{everything}",
         table(&header, &rows),
         resolution(limits, baseline.is_some(), record)
     )
@@ -1055,5 +1082,59 @@ mod tests {
     #[test]
     fn an_empty_failures_list_is_empty() {
         assert_eq!(failures_list(&[], &LIMITS), "");
+    }
+
+    fn in_log() -> Listing<'static> {
+        Listing {
+            max: 5,
+            file: Some(Path::new("-")),
+        }
+    }
+
+    #[test]
+    fn a_dash_puts_every_failing_function_at_the_end_of_the_report() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = render(&risks, &LIMITS, None, &record(), in_log());
+        assert!(
+            out.contains("7 more not listed; all 12 are at the end of this report."),
+            "{out}"
+        );
+        let (report, list) = out
+            .split_once("Every failing function (12):\n")
+            .expect("the list has a heading");
+        assert!(
+            report.contains("How to resolve"),
+            "the list is last:\n{out}"
+        );
+        assert_eq!(list, failures_list(&risks, &LIMITS), "{out}");
+        assert_eq!(list.lines().count(), 12);
+    }
+
+    #[test]
+    fn the_list_in_the_log_is_there_even_when_nothing_was_cut() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let listing = Listing {
+            max: usize::MAX,
+            file: Some(Path::new("-")),
+        };
+        let out = render(&risks, &LIMITS, None, &record(), listing);
+        assert!(!out.contains("not listed"), "{out}");
+        assert!(out.contains("Every failing function (12):"), "{out}");
+    }
+
+    #[test]
+    fn no_list_is_added_for_a_path_or_no_file() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let path = Listing {
+            max: 5,
+            file: Some(Path::new("coverage/gate-failures.md")),
+        };
+        for listing in [path, listing(5), Listing::ALL] {
+            let out = render(&risks, &LIMITS, None, &record(), listing);
+            assert!(!out.contains("Every failing function"), "{out}");
+        }
     }
 }
