@@ -559,18 +559,9 @@ mod tests {
         }
     }
 
-    /// Fails the test if an upload reaches the network.
-    struct NoNetwork;
-
-    impl UploadClient for NoNetwork {
-        fn post_multipart(
-            &self,
-            _endpoint: &str,
-            _fields: &[(String, String)],
-            _file_field: &str,
-            _file_path: &Path,
-        ) -> Result<RawResponse> {
-            panic!("an upload outside CI must not reach the network");
+    fn capturing() -> CapturingClient {
+        CapturingClient {
+            fields: RefCell::new(Vec::new()),
         }
     }
 
@@ -586,8 +577,11 @@ mod tests {
         let dir = fixture_repo();
         let args = args_with_file(dir.path().join("lcov.info"));
 
-        let err = upload_with(&NoNetwork, &args, dir.path(), |_| None).unwrap_err();
+        let client = capturing();
 
+        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
         let said = err.to_string();
         assert!(said.contains("CIRCLECI"), "{said}");
         assert!(said.contains("--allow-local"), "{said}");
@@ -600,7 +594,10 @@ mod tests {
         let args = args_with_file(dir.path().join("lcov.info"));
         let only_build = |k: &str| (k == "CIRCLE_BUILD_NUM").then(|| "7".to_string());
 
-        assert!(upload_with(&NoNetwork, &args, dir.path(), only_build).is_err());
+        let client = capturing();
+
+        assert!(upload_with(&client, &args, dir.path(), only_build).is_err());
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
     }
 
     /// A missing file or token is reported first, so those errors do not depend
@@ -610,9 +607,12 @@ mod tests {
         let dir = fixture_repo();
         let args = args_with_file(dir.path().join("no-such-file"));
 
-        let err = upload_with(&NoNetwork, &args, dir.path(), |_| None).unwrap_err();
+        let client = capturing();
+
+        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
 
         assert!(err.to_string().contains("coverage file not found"), "{err}");
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
     }
 
     #[test]
@@ -624,8 +624,11 @@ mod tests {
         let mut args = args_with_file(dir.path().join("lcov.info"));
         args.allow_local = true;
 
-        upload_with(&client, &args, dir.path(), |_| None).expect("uploads");
+        let (result, log) =
+            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), |_| None));
+        result.expect("uploads");
 
+        assert!(log.contains("unlikely to be shown"), "{log}");
         let fields = client.fields.borrow();
         assert_eq!(field_of(&fields, "ci_provider"), None);
         assert_eq!(field_of(&fields, "ci_job"), None);
@@ -640,8 +643,14 @@ mod tests {
         };
         let args = args_with_file(dir.path().join("lcov.info"));
 
-        upload_with(&client, &args, dir.path(), in_ci).expect("uploads");
+        let (result, log) =
+            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), in_ci));
+        result.expect("uploads");
 
+        assert!(
+            !log.contains("WARN"),
+            "a full CircleCI environment is not warned about: {log}"
+        );
         let fields = client.fields.borrow();
         assert_eq!(field_of(&fields, "ci_provider"), Some("circle-ci"));
         assert_eq!(field_of(&fields, "ci_job"), Some("test"));
@@ -677,7 +686,15 @@ mod tests {
         let args = args_with_file(dir.path().join("lcov.info"));
         let bare = |k: &str| (k == "CIRCLECI").then(|| "true".to_string());
 
-        upload_with(&client, &args, dir.path(), bare).expect("uploads");
+        let (result, log) =
+            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), bare));
+        result.expect("uploads");
+
+        assert!(log.contains("lacks part of its identity"), "{log}");
+        assert!(
+            log.contains("CIRCLE_BRANCH, CIRCLE_BUILD_NUM, CIRCLE_JOB"),
+            "{log}"
+        );
 
         assert_eq!(
             field_of(&client.fields.borrow(), "ci_provider"),
