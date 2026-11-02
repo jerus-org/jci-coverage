@@ -166,6 +166,20 @@ when there is no token (a warning), no pull request, or the pull request is from
 build has no secrets). Like the summary file it needs a maximum, does nothing with `--dry-run` and cannot be
 combined with `--write-baseline`, and a failure to post is a warning that does not change the gate's result.
 
+A long failure list can be shortened and kept whole. `--max-listed N` lists at most `N` of the
+failing functions, worst first, in the failure report in the CI log and in the summary (the
+`--summary-file` and the pull request comment). The headline still counts every failing
+function and the report says how many are not listed; 0, the default, lists them all. Whatever
+it says, a pull request comment that would be over 60,000 characters (GitHub refuses one over
+65,536) is cut to fit, and says how many it left out. `--failures-file PATH` writes every
+failing function, not only the listed ones, as a markdown task list (one `- [ ]` item a line,
+worst first, with where it is, why it fails and the fix), to copy from when tracking the
+failures as issues in batches. The note about the functions not listed names the file. It is
+written, after the report, only when the gate fails, never with `--dry-run`, and a failure to
+write it is a warning. It cannot be the report, the summary or the baseline, and keep it after
+the job with a later `store_artifacts` step if it is wanted. The baselined functions that moved
+and those that stay as recorded keep their own cap of 25 rows.
+
 A project adopting a maximum usually has functions that are already over it. Record them
 with `--write-baseline` (which needs a maximum, writes nothing with `--dry-run`, and does not
 fail), commit the file, and pass it back with `--baseline`. A baselined function then fails
@@ -282,6 +296,8 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `max_crap` | `0` | fail the job, after the upload, if any function is at or over this CRAP score (`0` is off) |
 | `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
 | `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
+| `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
+| `failures_file` | empty | write every failing function to this file as a markdown task list; empty writes nothing |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 
 The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:

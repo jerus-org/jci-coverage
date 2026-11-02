@@ -22,6 +22,8 @@ esac
 [[ ! "${GCO_WRITE_BASELINE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --write-baseline "${GCO_WRITE_BASELINE}"
 [[ ! "${GCO_SUMMARY_FILE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --summary-file "${GCO_SUMMARY_FILE}"
 [[ "${GCO_PR_COMMENT:-false}" = "true" ]] && set -- "$@" --pr-comment
+[[ ! "${GCO_MAX_LISTED:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --max-listed "${GCO_MAX_LISTED}"
+[[ ! "${GCO_FAILURES_FILE:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --failures-file "${GCO_FAILURES_FILE}"
 [[ "${GCO_GATE_TESTS:-false}" = "true" ]] && set -- "$@" --gate-tests
 [[ "${GCO_CHECK_ONLY:-false}" = "true" ]] && set -- "$@" --check-only
 [[ "${GCO_DRY_RUN:-false}" = "true" ]] && set -- "$@" --dry-run

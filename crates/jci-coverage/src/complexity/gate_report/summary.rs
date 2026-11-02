@@ -26,6 +26,10 @@ pub(crate) const MARKER: &str = "<!-- jci-coverage:gate -->";
 /// How many failing functions the summary lists before counting the rest.
 pub(crate) const MAX_ROWS: usize = 25;
 
+/// The longest comment to post. GitHub refuses one over 65,536 characters, so
+/// this leaves room under that; a longer summary has rows dropped until it fits.
+pub(crate) const MAX_COMMENT_CHARS: usize = 60_000;
+
 /// The longest name or path shown in a cell; longer ones are clipped.
 const MAX_CELL: usize = 120;
 
@@ -151,11 +155,47 @@ fn bold_if(text: String, over: bool) -> String {
     if over { format!("**{text}**") } else { text }
 }
 
-/// The summary of a failing gate.
+/// The summary of a failing gate. At most `max_listed` of the failing functions
+/// are listed (and fewer if the comment would not fit in `MAX_COMMENT_CHARS`);
+/// `max_rows` limits the baselined tables.
 pub(crate) fn failing(
     failing: &[Risk<'_>],
     limits: &Thresholds,
     baseline: Option<&Baseline>,
+    max_listed: usize,
+    max_rows: usize,
+    moves: &[Movement<'_>],
+    unchanged: &[Risk<'_>],
+) -> String {
+    let render = |listed| {
+        failing_with_rows(
+            failing, limits, baseline, listed, max_rows, moves, unchanged,
+        )
+    };
+    let all = failing.len().min(max_listed);
+    let out = render(all);
+    if out.len() <= MAX_COMMENT_CHARS {
+        return out;
+    }
+    // Too long: keep the most rows that fit. The comment only gets longer with
+    // each row, so a search finds that number in a few renderings.
+    let (mut fits, mut over) = (0, all);
+    while over - fits > 1 {
+        let middle = fits + (over - fits) / 2;
+        if render(middle).len() <= MAX_COMMENT_CHARS {
+            fits = middle;
+        } else {
+            over = middle;
+        }
+    }
+    render(fits)
+}
+
+fn failing_with_rows(
+    failing: &[Risk<'_>],
+    limits: &Thresholds,
+    baseline: Option<&Baseline>,
+    listed: usize,
     max_rows: usize,
     moves: &[Movement<'_>],
     unchanged: &[Risk<'_>],
@@ -171,7 +211,7 @@ pub(crate) fn failing(
     } else {
         "| Function | Over | Fix |\n|---|---|---|\n"
     };
-    for r in failures.iter().take(max_rows) {
+    for r in failures.iter().take(listed) {
         let mut cells = vec![function_cell(r.risk.function), over_label(r)];
         if let Some(b) = baseline {
             cells.push(against_baseline(r, b));
@@ -179,8 +219,8 @@ pub(crate) fn failing(
         cells.push(fix(r, limits));
         out += &format!("| {} |\n", cells.join(" | "));
     }
-    if failures.len() > max_rows {
-        let more = failures.len() - max_rows;
+    if failures.len() > listed {
+        let more = failures.len() - listed;
         out += &format!("\n_{more} more not shown; see the full report in the CI log._\n");
     }
     out += &moved_section(moves, max_rows);
@@ -271,7 +311,15 @@ mod tests {
     #[test]
     fn every_summary_starts_with_the_marker_on_its_own_line() {
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let fail = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
+        let fail = failing(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &[],
+        );
         assert_eq!(fail.lines().next(), Some(MARKER), "{fail}");
         let pass = passing(&LIMITS, None, 25, &[], &[]);
         assert_eq!(pass.lines().next(), Some(MARKER), "{pass}");
@@ -283,7 +331,7 @@ mod tests {
         let a = func("crates/x/src/a.rs", "rewrite", 39, 75, 71);
         let b = func("crates/x/src/b.rs", "post_multipart", 5, 26, 0);
         let risks = [risk(&a, true, true), risk(&b, false, true)];
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         assert!(out.contains("### jci-coverage gate: fails"), "{out}");
         assert!(
             out.contains(
@@ -306,7 +354,7 @@ mod tests {
             risk(&b, false, true),
             risk(&c, true, false),
         ];
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         let rows = rows(&out);
         assert_eq!(
             rows[0],
@@ -328,7 +376,7 @@ mod tests {
             .map(|n| func("src/a.rs", &format!("f{n:02}"), 16 + n, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, 25, 25, &[], &[]);
         assert_eq!(rows(&out).len(), 25, "{out}");
         assert!(
             out.contains("`f24`") && !out.contains("`f25`"),
@@ -350,7 +398,7 @@ mod tests {
             .map(|n| func("src/a.rs", &format!("f{n:02}"), 16 + n, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         assert_eq!(rows(&out).len(), 25);
         assert!(!out.contains("not shown"), "{out}");
     }
@@ -369,7 +417,7 @@ mod tests {
             risk(&lines, true, false),
             risk(&slash, true, false),
         ];
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         let rows = rows(&out);
         assert_eq!(rows.len(), 5, "every row is one line:\n{out}");
         assert!(rows[0].starts_with("| `<closure>`<br>"), "{}", rows[0]);
@@ -403,7 +451,7 @@ mod tests {
             .map(|n| func(&format!("{long}{n}.rs"), &format!("{long}{n}"), 20, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         assert!(
             out.chars().count() < 20_000,
             "{} characters",
@@ -419,7 +467,15 @@ mod tests {
             .map(|n| func(&format!("{long}{n}.rs"), &format!("{long}{n}"), 20, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, true)).collect();
-        let out = failing(&risks[..30], &LIMITS, None, 25, &[], &risks[30..]);
+        let out = failing(
+            &risks[..30],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &risks[30..],
+        );
         assert!(
             out.chars().count() < 30_000,
             "{} characters",
@@ -433,7 +489,15 @@ mod tests {
         // The log may not be readable by everyone who can read the pull request,
         // so a link to it would only disclose where it is.
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let fail = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[], &[]);
+        let fail = failing(
+            &[risk(&f, true, true)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &[],
+        );
         let pass = passing(&LIMITS, Some(3), 25, &[], &[]);
         for out in [&fail, &pass] {
             assert!(!out.contains("http") && !out.contains("]("), "{out}");
@@ -443,7 +507,15 @@ mod tests {
     #[test]
     fn the_resolution_names_the_options_and_only_those_that_apply() {
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let both = failing(&[risk(&f, true, true)], &LIMITS, None, 25, &[], &[]);
+        let both = failing(
+            &[risk(&f, true, true)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &[],
+        );
         let tail = both
             .split("**To resolve:**")
             .nth(1)
@@ -465,6 +537,7 @@ mod tests {
             &[risk(&f, true, false)],
             &limits(15, 0.0),
             None,
+            usize::MAX,
             25,
             &[],
             &[],
@@ -487,7 +560,7 @@ mod tests {
         let fresh = func("src/a.rs", "fresh", 20, 40, 40);
         let baseline = Baseline::from_functions([&before], Rules::Rca);
         let risks = [risk(&worse, true, false), risk(&fresh, true, false)];
-        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, Some(&baseline), usize::MAX, 25, &[], &[]);
         assert!(
             out.contains("| Function | Over | Baseline | Fix |"),
             "{out}"
@@ -498,7 +571,7 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("not in the baseline"), "{out}");
-        let without = failing(&risks, &LIMITS, None, 25, &[], &[]);
+        let without = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
         assert!(!without.contains("Baseline"), "{without}");
     }
 
@@ -516,7 +589,7 @@ mod tests {
             risk(&more_complex, true, false),
             risk(&cold_now, false, true),
         ];
-        let out = failing(&risks, &LIMITS, Some(&baseline), 25, &[], &[]);
+        let out = failing(&risks, &LIMITS, Some(&baseline), usize::MAX, 25, &[], &[]);
         let rows = rows(&out);
         assert!(
             rows[0].contains("worse than the baseline: complexity 21 > 20 |"),
@@ -575,7 +648,15 @@ mod tests {
         let out = passing(&LIMITS, Some(2), 25, &[], &[]);
         assert!(!out.contains("moved"), "{out}");
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let out = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
+        let out = failing(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &[],
+        );
         assert!(!out.contains("moved"), "{out}");
     }
 
@@ -585,7 +666,15 @@ mod tests {
         let now = [func("src/a.rs", "parse", 29, 51, 47)];
         let moves = moves_of(&before, &now);
         let bad = func("src/a.rs", "bad", 40, 10, 10);
-        let out = failing(&[risk(&bad, true, false)], &LIMITS, None, 25, &moves, &[]);
+        let out = failing(
+            &[risk(&bad, true, false)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &moves,
+            &[],
+        );
         let moved = out
             .find("Baselined functions that moved")
             .expect("a section");
@@ -701,6 +790,7 @@ mod tests {
             &[risk(&bad, true, false)],
             &LIMITS,
             None,
+            usize::MAX,
             25,
             &[],
             &[risk(&ok, true, false)],
@@ -717,7 +807,15 @@ mod tests {
         let pass = passing(&LIMITS, Some(3), 25, &[], &[]);
         assert!(!pass.contains("<details>"), "{pass}");
         let f = func("src/a.rs", "f", 20, 10, 10);
-        let fail = failing(&[risk(&f, true, false)], &LIMITS, None, 25, &[], &[]);
+        let fail = failing(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            usize::MAX,
+            25,
+            &[],
+            &[],
+        );
         assert!(!fail.contains("<details>"), "{fail}");
     }
 
@@ -759,5 +857,75 @@ mod tests {
         f.crap = Some(29.205);
         let out = passing(&LIMITS, Some(1), 25, &[], &[risk(&f, true, false)]);
         assert!(out.contains("| **29** | 29.3 |"), "{out}");
+    }
+
+    fn thirty() -> Vec<FunctionMetrics> {
+        (0..30)
+            .map(|n| func("src/a.rs", &format!("f{n:02}"), 16 + n, 10, 10))
+            .collect()
+    }
+
+    #[test]
+    fn the_listing_cap_limits_the_failing_rows_whatever_the_row_cap() {
+        let all = thirty();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = failing(&risks, &LIMITS, None, 5, 25, &[], &[]);
+        assert_eq!(rows(&out).len(), 5, "{out}");
+        assert!(out.contains("`f04`") && !out.contains("`f05`"), "{out}");
+        assert!(out.contains("30 function(s) fail the gate"), "{out}");
+        assert!(
+            out.contains("_25 more not shown; see the full report in the CI log._"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn with_no_listing_cap_every_failing_function_is_listed() {
+        let all = thirty();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
+        assert_eq!(rows(&out).len(), 30, "{out}");
+        assert!(!out.contains("more not shown"), "{out}");
+    }
+
+    #[test]
+    fn the_listing_cap_does_not_touch_the_baselined_tables() {
+        let all = thirty();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        // Nothing fails here; the 30 are baselined and unchanged, listed to the row cap.
+        let out = failing(&[], &LIMITS, None, 1, 25, &[], &risks);
+        assert!(out.contains("_5 more not listed._"), "{out}");
+    }
+
+    #[test]
+    fn a_comment_too_long_for_github_is_cut_to_fit_and_says_so() {
+        let long = "x".repeat(200);
+        let all: Vec<FunctionMetrics> = (0..2000)
+            .map(|n| func("src/a.rs", &format!("{long}{n:04}"), 16 + n % 30, 10, 10))
+            .collect();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = failing(&risks, &LIMITS, None, usize::MAX, 25, &[], &[]);
+        assert!(out.len() <= MAX_COMMENT_CHARS, "{} chars", out.len());
+        let listed = rows(&out).len();
+        assert!(listed > 0 && listed < 2000, "{listed} rows");
+        assert!(
+            out.contains("2000 function(s) fail the gate"),
+            "the headline counts all"
+        );
+        assert!(
+            out.contains(&format!(
+                "_{} more not shown; see the full report in the CI log._",
+                2000 - listed
+            )),
+            "{out}"
+        );
+        assert!(out.contains("**To resolve:**"), "the way out stays");
+        // The most rows that fit: one more would not.
+        let one_more = failing_with_rows(&risks, &LIMITS, None, listed + 1, 25, &[], &[]);
+        assert!(
+            one_more.len() > MAX_COMMENT_CHARS,
+            "{} chars",
+            one_more.len()
+        );
     }
 }

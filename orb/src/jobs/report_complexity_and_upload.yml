@@ -74,6 +74,14 @@ parameters:
     type: boolean
     description: 'Post the gate''s result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job''s last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project''s environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter.'
     default: false
+  max_listed:
+    type: string
+    description: List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter.
+    default: '0'
+  failures_file:
+    type: string
+    description: 'Write every failing function to this file as a markdown task list, one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Written only when the gate fails; keep it after the job with a later store_artifacts step. Empty writes nothing. Needs an orb release that includes this parameter.'
+    default: ''
   gate_tests:
     type: boolean
     description: Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too
@@ -132,11 +140,13 @@ steps:
 - complexity:
     baseline: << parameters.baseline >>
     check_only: true
+    failures_file: << parameters.failures_file >>
     file: coverage/cobertura.xml
     gate_tests: << parameters.gate_tests >>
     log_level: << parameters.log_level >>
     max_complexity: << parameters.max_complexity >>
     max_crap: << parameters.max_crap >>
+    max_listed: << parameters.max_listed >>
     pr_comment: << parameters.pr_comment >>
     rules: << parameters.rules >>
     source_root: << parameters.source_root >>
