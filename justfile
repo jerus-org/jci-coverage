@@ -32,9 +32,14 @@ unit-tests:
     cargo test --all
 
 # Fail if OtterWise's bash uploader posts different form fields than we track
-# (needs network; see scripts/check-otterwise-drift.sh)
+# (needs network; see scripts/check-otterwise-drift.sh). CI runs it weekly from a
+# scheduled pipeline (.circleci/otterwise_drift.yml) and opens an issue on a change.
 otterwise-drift:
     scripts/check-otterwise-drift.sh
+
+# Test the drift reporter against a stub of the GitHub issues API (needs python3, jq)
+test-drift-reporter:
+    scripts/test-report-otterwise-drift.sh
 
 # run various auditing tools to assure we are legal and safe.
 # jci-audit orchestrates cargo-deny (policy) + cargo-audit (live advisories);
