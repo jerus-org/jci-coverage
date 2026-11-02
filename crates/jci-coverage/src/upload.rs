@@ -84,6 +84,24 @@ fn ensure_ready(file: &Path, cwd: &Path, repo_token: Option<&str>) -> Result<()>
     Ok(())
 }
 
+/// Refuse to upload unless the environment carries every CircleCI field a build
+/// has, and say which are missing. OtterWise's own uploader does not work outside
+/// a CI either: it accepts an upload that carries no CI identity (`Queued for
+/// processing`) and then never shows it, so without this a local run looks like a
+/// success. Anyone who sets the variables by hand takes responsibility for them.
+fn require_ci(get_env: &impl Fn(&str) -> Option<String>) -> Result<()> {
+    let missing = ci_meta::missing_required(get_env);
+    if missing.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "not running in a complete CircleCI environment: missing {}. OtterWise ignores uploads \
+         that carry no CI identity: this one would be accepted but never be shown. Run it from \
+         a CircleCI job.",
+        missing.join(", ")
+    )
+}
+
 /// Field name OtterWise's ingress endpoint expects the coverage file under,
 /// regardless of its format: its own bash uploader posts LCOV, Clover and
 /// Cobertura all as `clover` and detects the format from the content.
@@ -113,6 +131,7 @@ fn upload_with<C: UploadClient>(
     let repo_token = resolve_token(args.repo_token.as_deref(), env_token);
     ensure_ready(&args.file, cwd, repo_token.as_deref())?;
     tracing::info!(file = %diagnostics::describe_file(&args.file, cwd), "report file");
+    require_ci(&get_env)?;
 
     // `None` outside a git repo (or one with no commits) — not an error, per
     // `upload`'s standalone contract (see `cli.rs`'s long_about).
@@ -379,7 +398,7 @@ mod tests {
         };
         let args = args_with_file(dir.path().join("lcov.info"));
 
-        upload_with(&client, &args, dir.path(), |_| None).expect("succeeds");
+        upload_with(&client, &args, dir.path(), in_ci).expect("succeeds");
 
         let fields = client.fields.borrow();
         let base_dir = fields
@@ -444,7 +463,7 @@ mod tests {
         };
         let args = args_with_file(dir.path().join("lcov.info"));
 
-        upload_with(&client, &args, dir.path(), |_| None).expect("succeeds");
+        upload_with(&client, &args, dir.path(), in_ci).expect("succeeds");
     }
 
     #[test]
@@ -459,7 +478,7 @@ mod tests {
         // mock call.
         args.endpoint = Some("http://localhost:9999".to_string());
 
-        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+        let err = upload_with(&client, &args, dir.path(), in_ci).unwrap_err();
         assert!(err.to_string().contains("bad token"));
     }
 
@@ -472,7 +491,7 @@ mod tests {
         let mut args = args_with_file(dir.path().join("lcov.info"));
         args.repo_token = None;
 
-        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+        let err = upload_with(&client, &args, dir.path(), in_ci).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
     }
 
@@ -485,7 +504,7 @@ mod tests {
         let mut args = args_with_file(dir.path().join("lcov.info"));
         args.repo_token = Some(String::new());
 
-        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+        let err = upload_with(&client, &args, dir.path(), in_ci).unwrap_err();
         assert!(err.to_string().contains("no upload token"));
     }
 
@@ -501,7 +520,156 @@ mod tests {
         };
         let args = args_with_file(file);
 
-        upload_with(&client, &args, dir.path(), |_| None)
+        upload_with(&client, &args, dir.path(), in_ci)
             .expect("a missing git repo must not fail the upload");
+    }
+
+    /// The environment of a CircleCI build.
+    fn in_ci(key: &str) -> Option<String> {
+        match key {
+            "CIRCLECI" => Some("true".to_string()),
+            "CIRCLE_BRANCH" => Some("main".to_string()),
+            "CIRCLE_BUILD_NUM" => Some("7".to_string()),
+            "CIRCLE_JOB" => Some("test".to_string()),
+            "CIRCLE_PROJECT_USERNAME" => Some("jerus-org".to_string()),
+            "CIRCLE_PROJECT_REPONAME" => Some("jci-coverage".to_string()),
+            _ => None,
+        }
+    }
+
+    fn capturing() -> CapturingClient {
+        CapturingClient {
+            fields: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn field_of<'a>(fields: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        fields
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn outside_ci_the_upload_is_refused_before_any_network_call() {
+        let dir = fixture_repo();
+        let args = args_with_file(dir.path().join("lcov.info"));
+        let client = capturing();
+
+        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
+        let said = err.to_string();
+        for name in [
+            "CIRCLECI",
+            "CIRCLE_BRANCH",
+            "CIRCLE_BUILD_NUM",
+            "CIRCLE_JOB",
+            "CIRCLE_PROJECT_USERNAME",
+            "CIRCLE_PROJECT_REPONAME",
+        ] {
+            assert!(said.contains(name), "{name} in {said}");
+        }
+        assert!(said.contains("never be shown"), "{said}");
+        assert!(
+            !said.contains("allow-local"),
+            "there is no way round it: {said}"
+        );
+    }
+
+    /// Only what is missing is named, so the message says what to fix.
+    #[test]
+    fn a_partial_environment_is_refused_naming_exactly_what_is_missing() {
+        let dir = fixture_repo();
+        let args = args_with_file(dir.path().join("lcov.info"));
+        let client = capturing();
+        let partial = |k: &str| match k {
+            "CIRCLECI" => Some("true".to_string()),
+            "CIRCLE_BRANCH" => Some("main".to_string()),
+            "CIRCLE_PROJECT_USERNAME" => Some("jerus-org".to_string()),
+            "CIRCLE_PROJECT_REPONAME" => Some("jci-coverage".to_string()),
+            _ => None,
+        };
+
+        let err = upload_with(&client, &args, dir.path(), partial).unwrap_err();
+
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
+        let said = err.to_string();
+        assert!(
+            said.contains("missing CIRCLE_BUILD_NUM, CIRCLE_JOB."),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_circleci_variable_alone_does_not_make_it_ci() {
+        let dir = fixture_repo();
+        let args = args_with_file(dir.path().join("lcov.info"));
+        let only_build = |k: &str| (k == "CIRCLE_BUILD_NUM").then(|| "7".to_string());
+        let client = capturing();
+
+        assert!(upload_with(&client, &args, dir.path(), only_build).is_err());
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
+    }
+
+    /// A missing file or token is reported first, so those errors do not depend
+    /// on where the command runs.
+    #[test]
+    fn a_missing_file_is_reported_before_the_ci_check() {
+        let dir = fixture_repo();
+        let args = args_with_file(dir.path().join("no-such-file"));
+        let client = capturing();
+
+        let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
+
+        assert!(err.to_string().contains("coverage file not found"), "{err}");
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
+    }
+
+    #[test]
+    fn in_ci_the_provider_is_sent_with_the_build_identity() {
+        let dir = fixture_repo();
+        let client = capturing();
+        let args = args_with_file(dir.path().join("lcov.info"));
+
+        upload_with(&client, &args, dir.path(), in_ci).expect("uploads");
+
+        let fields = client.fields.borrow();
+        assert_eq!(field_of(&fields, "ci_provider"), Some("circle-ci"));
+        assert_eq!(field_of(&fields, "ci_job"), Some("test"));
+        assert_eq!(field_of(&fields, "ci_build"), Some("7"));
+        assert_eq!(field_of(&fields, "git_branch"), Some("main"));
+        assert_eq!(
+            field_of(&fields, "git_repo"),
+            Some("jerus-org/jci-coverage")
+        );
+    }
+
+    /// The repo's own `main` jobs unset every pull request variable.
+    #[test]
+    fn a_build_that_is_not_of_a_pull_request_uploads() {
+        let dir = fixture_repo();
+        let client = capturing();
+        let args = args_with_file(dir.path().join("lcov.info"));
+
+        upload_with(&client, &args, dir.path(), in_ci).expect("uploads");
+
+        assert_eq!(field_of(&client.fields.borrow(), "git_pr"), None);
+    }
+
+    #[test]
+    fn a_tag_build_without_a_branch_uploads() {
+        let dir = fixture_repo();
+        let client = capturing();
+        let args = args_with_file(dir.path().join("lcov.info"));
+        let tag_build = |k: &str| match k {
+            "CIRCLE_BRANCH" => None,
+            "CIRCLE_TAG" => Some("v1.0.0".to_string()),
+            other => in_ci(other),
+        };
+
+        upload_with(&client, &args, dir.path(), tag_build).expect("uploads");
+
+        assert_eq!(field_of(&client.fields.borrow(), "git_branch"), None);
     }
 }

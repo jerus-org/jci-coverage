@@ -37,6 +37,38 @@ fn circle_repo(get_env: &impl Fn(&str) -> Option<String>) -> Option<String> {
     Some(format!("{owner}/{name}"))
 }
 
+/// The variables every CircleCI build has that this one lacks, in the order
+/// they are reported: `CIRCLECI` (which CircleCI sets to `true`), the branch,
+/// the build number and job, and the project's owner and name. Empty when the
+/// environment is complete.
+///
+/// Two things a build can legitimately lack are not required: a pull request
+/// (`CIRCLE_PR_NUMBER`/`CIRCLE_PULL_REQUEST`, only set when the build is of one)
+/// and a user (`CIRCLE_USERNAME`, only set when a user with a CircleCI account
+/// started it). A build of a tag has `CIRCLE_TAG` and no `CIRCLE_BRANCH`, so the
+/// branch is required only when there is no tag.
+pub(crate) fn missing_required(get_env: &impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    let set = |name: &str| get_env(name).is_some_and(|v| !v.is_empty());
+    let tag_build = set("CIRCLE_TAG");
+    let mut missing = Vec::new();
+    if get_env("CIRCLECI").as_deref() != Some("true") {
+        missing.push("CIRCLECI");
+    }
+    missing.extend(
+        [
+            ("CIRCLE_BRANCH", !tag_build),
+            ("CIRCLE_BUILD_NUM", true),
+            ("CIRCLE_JOB", true),
+            ("CIRCLE_PROJECT_USERNAME", true),
+            ("CIRCLE_PROJECT_REPONAME", true),
+        ]
+        .into_iter()
+        .filter(|&(name, expected)| expected && !set(name))
+        .map(|(name, _)| name),
+    );
+    missing
+}
+
 pub fn collect(get_env: impl Fn(&str) -> Option<String>) -> CiMetadata {
     CiMetadata {
         provider: "circle-ci",
@@ -125,5 +157,99 @@ mod tests {
             "https://example.com/pull/",
         )]));
         assert_eq!(meta.pr_number, None);
+    }
+
+    /// What every CircleCI build has.
+    const FULL: &[(&str, &str)] = &[
+        ("CIRCLECI", "true"),
+        ("CIRCLE_BRANCH", "main"),
+        ("CIRCLE_BUILD_NUM", "7"),
+        ("CIRCLE_JOB", "test"),
+        ("CIRCLE_PROJECT_USERNAME", "jerus-org"),
+        ("CIRCLE_PROJECT_REPONAME", "jci-coverage"),
+    ];
+
+    fn without(name: &str) -> Vec<(&'static str, &'static str)> {
+        FULL.iter().copied().filter(|(k, _)| *k != name).collect()
+    }
+
+    #[test]
+    fn a_full_circleci_environment_has_nothing_missing() {
+        assert_eq!(missing_required(&lookup(FULL)), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn an_empty_environment_names_every_required_variable() {
+        assert_eq!(
+            missing_required(&lookup(&[])),
+            vec![
+                "CIRCLECI",
+                "CIRCLE_BRANCH",
+                "CIRCLE_BUILD_NUM",
+                "CIRCLE_JOB",
+                "CIRCLE_PROJECT_USERNAME",
+                "CIRCLE_PROJECT_REPONAME",
+            ]
+        );
+    }
+
+    #[test]
+    fn each_required_variable_is_named_when_it_alone_is_missing() {
+        for (name, _) in FULL {
+            assert_eq!(
+                missing_required(&lookup(&without(name))),
+                vec![*name],
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn circleci_must_be_exactly_true() {
+        for value in ["false", "1", "", "TRUE"] {
+            let mut vars = without("CIRCLECI");
+            vars.push(("CIRCLECI", value));
+            assert_eq!(
+                missing_required(&lookup(&vars)),
+                vec!["CIRCLECI"],
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_variable_counts_as_missing() {
+        let mut vars = without("CIRCLE_JOB");
+        vars.push(("CIRCLE_JOB", ""));
+        assert_eq!(missing_required(&lookup(&vars)), vec!["CIRCLE_JOB"]);
+    }
+
+    /// A build of a tag has `CIRCLE_TAG` and no `CIRCLE_BRANCH`.
+    #[test]
+    fn a_tag_build_is_not_missing_its_branch() {
+        let mut vars = without("CIRCLE_BRANCH");
+        vars.push(("CIRCLE_TAG", "v1.0.0"));
+        assert_eq!(missing_required(&lookup(&vars)), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn an_empty_tag_does_not_excuse_a_missing_branch() {
+        let mut vars = without("CIRCLE_BRANCH");
+        vars.push(("CIRCLE_TAG", ""));
+        assert_eq!(missing_required(&lookup(&vars)), vec!["CIRCLE_BRANCH"]);
+    }
+
+    /// Only a build of a pull request has a pull request, and only a build started
+    /// by a user with a CircleCI account has a username: neither is required.
+    #[test]
+    fn the_pull_request_and_the_user_are_not_required() {
+        // `FULL` has neither, and the repo's own `main` jobs unset the pull request.
+        assert_eq!(missing_required(&lookup(FULL)), Vec::<&str>::new());
+        assert!(
+            !FULL
+                .iter()
+                .any(|(k, _)| k.contains("PULL") || k.contains("PR_"))
+        );
+        assert!(!FULL.iter().any(|(k, _)| *k == "CIRCLE_USERNAME"));
     }
 }

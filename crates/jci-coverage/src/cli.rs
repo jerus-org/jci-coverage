@@ -83,7 +83,10 @@ enum Commands {
         long_about = "Standalone: takes a coverage file path and uploads \
             it. Does not require `report`, Rust, or `cargo-llvm-cov` — the \
             caller is responsible for the file existing at the given path \
-            in a format OtterWise accepts.",
+            in a format OtterWise accepts. It must run in CircleCI: \
+            OtterWise shows only uploads that carry a CI identity, so \
+            without the CircleCI environment it stops and names what \
+            is missing.",
         term_width = 70
     )]
     Upload(upload::UploadArgs),
