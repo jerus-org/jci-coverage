@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - BREAKING: require the CircleCI environment(pr [#106])
+- cap the listed failures, and list them all on request(pr [#109])
 
 ### Changed
 
@@ -328,6 +329,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#105]: https://github.com/jerus-org/jci-coverage/pull/105
 [#106]: https://github.com/jerus-org/jci-coverage/pull/106
 [#107]: https://github.com/jerus-org/jci-coverage/pull/107
+[#109]: https://github.com/jerus-org/jci-coverage/pull/109
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
