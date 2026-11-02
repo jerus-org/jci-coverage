@@ -103,7 +103,8 @@ fn require_ci(get_env: &impl Fn(&str) -> Option<String>, allow_local: bool) -> R
         if !missing.is_empty() {
             tracing::warn!(
                 missing = %missing.join(", "),
-                "this CircleCI build lacks part of its identity; OtterWise may not show the upload"
+                "this CircleCI build lacks part of its identity: OtterWise accepts such an upload \
+                 but is unlikely to show it"
             );
         }
         return Ok(());
