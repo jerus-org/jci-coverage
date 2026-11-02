@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use anyhow::{Context, Result, anyhow, bail};
 use quick_xml::{
     Reader, Writer, XmlVersion,
-    events::{BytesEnd, BytesStart, BytesText, Event, attributes::Attribute},
+    events::{BytesStart, BytesText, Event, attributes::Attribute},
 };
 
 /// A `<class>`: one source file.
@@ -151,15 +151,53 @@ fn with_attributes(e: &BytesStart<'_>, set: &[(&str, String)]) -> Result<BytesSt
     Ok(out)
 }
 
+/// The elements of a report that `parse` reads. The others are ignored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Package,
+    Class,
+    Method,
+    Line,
+}
+
+impl Kind {
+    /// Every kind, so that a name can be looked up from [`Kind::name`].
+    const ALL: [Self; 4] = [Self::Package, Self::Class, Self::Method, Self::Line];
+
+    fn of(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Package => "package",
+            Self::Class => "class",
+            Self::Method => "method",
+            Self::Line => "line",
+        }
+    }
+
+    /// What the nearest enclosing element of these kinds may be for an element of
+    /// this kind; `None` is no such element. Elements `parse` does not read, such
+    /// as `<classes>` and `<methods>`, are not counted. This is the whole rule for
+    /// where an element may sit.
+    fn inside(self) -> &'static [Option<Self>] {
+        match self {
+            Self::Package => &[None],
+            Self::Class => &[Some(Self::Package)],
+            Self::Method => &[Some(Self::Class)],
+            Self::Line => &[Some(Self::Class), Some(Self::Method)],
+        }
+    }
+}
+
 /// A [`parse`] in progress: what has been read so far and where the reader is.
 #[derive(Default)]
 struct Parser {
     report: Report,
-    depth: usize,
-    /// Whether the reader is between a `<package>` and its end tag.
-    in_package: bool,
-    /// Whether the reader is between a `<class>` and its end tag.
-    in_class: bool,
+    /// Every open element, the innermost last: its kind, or `None` for one that
+    /// is not read.
+    open: Vec<Option<Kind>>,
     /// The method being read, until its end tag, and whether its line is read.
     method: Option<(Method, bool)>,
 }
@@ -167,68 +205,88 @@ struct Parser {
 impl Parser {
     /// An element opens: `empty` for `<x/>`, which closes at once.
     fn open(&mut self, e: &BytesStart<'_>, empty: bool) -> Result<()> {
-        self.element(e)?;
+        let kind = Kind::of(e.name().as_ref());
+        if let Some(kind) = kind {
+            self.check(kind)?;
+            self.start(kind, e)?;
+        }
         if empty {
-            self.leave(e.name().as_ref());
+            self.finish(kind);
         } else {
-            self.depth += 1;
+            self.open.push(kind);
         }
         Ok(())
     }
 
-    /// An element closes.
-    fn close(&mut self, e: &BytesEnd<'_>) {
-        self.depth = self.depth.saturating_sub(1);
-        self.leave(e.name().as_ref());
+    /// An element closes. quick-xml has already matched it to the one that opened.
+    fn close(&mut self) {
+        let kind = self.open.pop().flatten();
+        self.finish(kind);
     }
 
-    /// The element called `name` is over, by its end tag or because it was empty.
-    fn leave(&mut self, name: &str) {
-        match name {
-            "method" => self.finish_method(),
-            "class" => self.in_class = false,
-            "package" => self.in_package = false,
-            _ => {}
-        }
+    /// The nearest open element of the kinds `parse` reads.
+    fn nearest(&self) -> Option<Kind> {
+        self.open.iter().rev().flatten().next().copied()
     }
 
-    fn element(&mut self, e: &BytesStart<'_>) -> Result<()> {
-        if is(e, "package") {
-            self.package()
-        } else if is(e, "class") {
-            self.class(e)
-        } else if is(e, "method") {
-            self.method(e)
-        } else if is(e, "line") {
-            self.line(e)
-        } else {
-            Ok(())
+    /// Fail unless an element of `kind` may sit where the reader is.
+    fn check(&self, kind: Kind) -> Result<()> {
+        let nearest = self.nearest();
+        if kind.inside().contains(&nearest) {
+            return Ok(());
         }
-    }
-
-    fn package(&mut self) -> Result<()> {
-        if self.in_package {
-            bail!("malformed report: a <package> is inside another <package>");
-        }
-        self.in_package = true;
-        self.report.package_count += 1;
-        Ok(())
-    }
-
-    fn class(&mut self, e: &BytesStart<'_>) -> Result<()> {
-        if !self.in_package {
-            bail!("malformed report: a <class> is not inside a <package>");
-        }
-        if let Some((open, _)) = &self.method {
+        let want = kind
+            .inside()
+            .iter()
+            .flatten()
+            .map(|k| format!("a <{}>", k.name()))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        let Some(found) = nearest else {
+            bail!("malformed report: a <{}> is not inside {want}", kind.name());
+        };
+        let named = match (&self.method, found) {
+            (Some((method, _)), Kind::Method) => format!(" `{}`", method.name),
+            _ => String::new(),
+        };
+        if want.is_empty() {
             bail!(
-                "malformed report: a <class> is inside the <method> `{}`",
-                open.name
+                "malformed report: a <{}> is inside a <{}>{named}",
+                kind.name(),
+                found.name()
             );
         }
-        if self.in_class {
-            bail!("malformed report: a <class> is inside another <class>");
+        bail!(
+            "malformed report: a <{}> is not inside {want} (it is inside a <{}>{named})",
+            kind.name(),
+            found.name()
+        )
+    }
+
+    fn start(&mut self, kind: Kind, e: &BytesStart<'_>) -> Result<()> {
+        match kind {
+            Kind::Package => {
+                self.report.package_count += 1;
+                Ok(())
+            }
+            Kind::Class => self.class(e),
+            Kind::Method => self.method(e),
+            Kind::Line => self.line(e),
         }
-        self.in_class = true;
+    }
+
+    /// An element of `kind` is over, by its end tag or because it was empty.
+    fn finish(&mut self, kind: Option<Kind>) {
+        if kind == Some(Kind::Method) {
+            self.report
+                .methods
+                .extend(self.method.take().map(|(m, _)| m));
+        }
+    }
+
+    /// A `<class>`. `check` has seen it is directly inside a `<package>`, so one
+    /// has been counted.
+    fn class(&mut self, e: &BytesStart<'_>) -> Result<()> {
         self.report.classes.push(Class {
             filename: attribute(e, "filename")?.context("<class> has no `filename`")?,
             package: self.report.package_count - 1,
@@ -237,20 +295,12 @@ impl Parser {
         Ok(())
     }
 
+    /// A `<method>`. `check` has seen it is directly inside a `<class>`, so one
+    /// has been read.
     fn method(&mut self, e: &BytesStart<'_>) -> Result<()> {
-        if !self.in_class {
-            bail!("malformed report: a <method> is not inside a <class>");
-        }
-        let name = attribute(e, "name")?.context("<method> has no `name`")?;
-        if let Some((open, _)) = &self.method {
-            bail!(
-                "malformed report: the <method> `{name}` is inside the <method> `{}`",
-                open.name
-            );
-        }
         let method = Method {
             class: self.report.classes.len() - 1,
-            name,
+            name: attribute(e, "name")?.context("<method> has no `name`")?,
             line: 0,
             hits: 0,
         };
@@ -267,18 +317,16 @@ impl Parser {
                 method.hits = number(e, "hits")?;
                 *read = true;
             }
-        } else if let (true, Some(class)) = (self.in_class, self.report.classes.last_mut()) {
-            class.lines.push((number(e, "number")?, number(e, "hits")?));
         } else {
-            bail!("malformed report: a <line> is not inside a <class>");
+            // `check` has seen it is directly inside a `<class>`, so one is open.
+            let class = self
+                .report
+                .classes
+                .last_mut()
+                .context("a <line> has no <class> to belong to")?;
+            class.lines.push((number(e, "number")?, number(e, "hits")?));
         }
         Ok(())
-    }
-
-    fn finish_method(&mut self) {
-        self.report
-            .methods
-            .extend(self.method.take().map(|(m, _)| m));
     }
 }
 
@@ -290,8 +338,8 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
         match reader.read_event().context("malformed XML")? {
             Event::Start(e) => parser.open(&e, false),
             Event::Empty(e) => parser.open(&e, true),
-            Event::End(e) => {
-                parser.close(&e);
+            Event::End(_) => {
+                parser.close();
                 Ok(())
             }
             Event::Eof => break,
@@ -299,10 +347,10 @@ pub(crate) fn parse(xml: &str) -> Result<Report> {
         }
         .map_err(|e| anyhow!("{e} (near byte {})", reader.buffer_position()))?;
     }
-    if parser.depth != 0 {
+    if !parser.open.is_empty() {
         bail!(
             "malformed XML: {} element(s) are never closed",
-            parser.depth
+            parser.open.len()
         );
     }
     Ok(parser.report)
@@ -520,6 +568,10 @@ impl<'a> Rewriter<'a> {
 }
 
 /// Write `edit` into `xml`.
+///
+/// `xml` must be a report [`parse`] has accepted, and `edit` one [`check_edit`]
+/// has accepted for it. The rewrite counts the packages, classes and methods it
+/// passes, not their nesting, and relies on `parse` having checked that.
 pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
     check_edit(&parse(xml)?, edit)?;
     let bytes = Rewriter::new(edit).run(Reader::from_str(xml))?;
@@ -891,8 +943,9 @@ mod tests {
             );
             let err = parse(&xml).unwrap_err();
             assert!(
-                err.to_string()
-                    .contains("the <method> `x::b` is inside the <method> `x::a`"),
+                err.to_string().contains(
+                    "a <method> is not inside a <class> (it is inside a <method> `x::a`)"
+                ),
                 "{err}"
             );
         }
@@ -906,7 +959,7 @@ mod tests {
         let err = parse(xml).unwrap_err();
         assert!(
             err.to_string()
-                .contains("a <class> is inside the <method> `x::a`"),
+                .contains("a <class> is not inside a <package> (it is inside a <method> `x::a`)"),
             "{err}"
         );
     }
@@ -1043,13 +1096,16 @@ mod tests {
         let xml = in_report(
             r#"<package><classes><class filename="a.rs"><class filename="b.rs"/></class></classes></package>"#,
         );
-        rejected(&xml, "a <class> is inside another <class>");
+        rejected(
+            &xml,
+            "a <class> is not inside a <package> (it is inside a <class>)",
+        );
     }
 
     #[test]
     fn a_package_inside_a_package_is_rejected() {
         let xml = in_report("<package><package/></package>");
-        rejected(&xml, "a <package> is inside another <package>");
+        rejected(&xml, "a <package> is inside a <package>");
     }
 
     #[test]
@@ -1113,6 +1169,88 @@ mod tests {
         let r = parse(&xml).expect("parses");
         assert_eq!((r.classes[1].package, r.classes[1].lines.len()), (1, 1));
         assert_eq!(r.classes[0].lines.len(), 0);
+    }
+
+    /// The rules for where each element the parser reads may sit, in full: each
+    /// kind against the nearest enclosing element of those kinds (or none), with
+    /// and without an element the parser ignores in between.
+    #[test]
+    fn each_element_is_accepted_only_inside_the_elements_the_table_allows() {
+        let child = |kind: &str| match kind {
+            "package" => "<package/>",
+            "class" => r#"<class filename="a.rs"/>"#,
+            "method" => r#"<method name="x::f"/>"#,
+            _ => r#"<line number="1" hits="1"/>"#,
+        };
+        // The tags that open and close the nearest enclosing element of each kind.
+        let around = |nearest: &str| match nearest {
+            "none" => ("", ""),
+            "package" => ("<package>", "</package>"),
+            "class" => (r#"<package><class filename="b.rs">"#, "</class></package>"),
+            "method" => (
+                r#"<package><class filename="b.rs"><method name="x::g">"#,
+                "</method></class></package>",
+            ),
+            _ => (
+                r#"<package><class filename="b.rs"><method name="x::g"><line number="9" hits="9">"#,
+                "</line></method></class></package>",
+            ),
+        };
+        // What each kind must be inside, as the error says it.
+        let want = |kind: &str| match kind {
+            "class" => "a <package>",
+            "method" => "a <class>",
+            _ => "a <class> or a <method>",
+        };
+        let allowed = [
+            ("package", "none"),
+            ("class", "package"),
+            ("method", "class"),
+            ("line", "class"),
+            ("line", "method"),
+        ];
+        for kind in ["package", "class", "method", "line"] {
+            for nearest in ["none", "package", "class", "method", "line"] {
+                for (ignored_open, ignored_close) in [("", ""), ("<x>", "</x>")] {
+                    let (open, close) = around(nearest);
+                    let xml = format!(
+                        "<coverage>{open}{ignored_open}{}{ignored_close}{close}</coverage>",
+                        child(kind)
+                    );
+                    let result = parse(&xml);
+                    let expected = allowed.contains(&(kind, nearest));
+                    assert_eq!(
+                        result.is_ok(),
+                        expected,
+                        "<{kind}> in a <{nearest}> (via {ignored_open:?}): {xml}\n{result:?}"
+                    );
+                    if let Err(e) = result {
+                        let said = e.to_string();
+                        assert!(said.starts_with("malformed report: "), "{said}");
+                        let wanted = match (kind, nearest) {
+                            ("package", _) => format!("a <package> is inside a <{nearest}>"),
+                            (_, "none") => format!("a <{kind}> is not inside {}", want(kind)),
+                            _ => format!(
+                                "a <{kind}> is not inside {} (it is inside a <{nearest}>",
+                                want(kind)
+                            ),
+                        };
+                        assert!(said.contains(&wanted), "wanted {wanted:?} in {said:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_kind_is_listed_and_found_again_by_its_name() {
+        // Four elements are read: a new `Kind` must be added to `Kind::ALL` too.
+        assert_eq!(Kind::ALL.len(), 4);
+        for kind in Kind::ALL {
+            assert_eq!(Kind::of(kind.name()), Some(kind));
+        }
+        assert_eq!(Kind::of("classes"), None);
+        assert_eq!(Kind::of(""), None);
     }
 
     /// One package, one class, and the methods given, with a class line.
