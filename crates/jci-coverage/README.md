@@ -176,8 +176,10 @@ failing function, not only the listed ones, as a markdown task list (one `- [ ]`
 worst first, with where it is, why it fails and the fix), to copy from when tracking the
 failures as issues in batches. The note about the functions not listed names the file. It is
 written, after the report, only when the gate fails, never with `--dry-run`, and a failure to
-write it is a warning. It cannot be the report, the summary or the baseline, and keep it after
-the job with a later `store_artifacts` step if it is wanted. The baselined functions that moved
+write it is a warning. It cannot be the report, the summary or the baseline. The file is lost when a CI job ends unless a
+step stores it, and the generated `report_complexity_and_upload` job cannot (it has no
+`failures_file` parameter): to keep it, run `complexity` in a job of your own, with a
+`store_artifacts` step after it. The baselined functions that moved
 and those that stay as recorded keep their own cap of 25 rows.
 
 A project adopting a maximum usually has functions that are already over it. Record them
@@ -297,7 +299,6 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
 | `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
 | `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
-| `failures_file` | empty | write every failing function to this file as a markdown task list; empty writes nothing |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 
 The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:

@@ -78,10 +78,6 @@ parameters:
     type: string
     description: List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter.
     default: '0'
-  failures_file:
-    type: string
-    description: 'Write every failing function to this file as a markdown task list, one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Written only when the gate fails; keep it after the job with a later store_artifacts step. Empty writes nothing. Needs an orb release that includes this parameter.'
-    default: ''
   gate_tests:
     type: boolean
     description: Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too
@@ -140,7 +136,6 @@ steps:
 - complexity:
     baseline: << parameters.baseline >>
     check_only: true
-    failures_file: << parameters.failures_file >>
     file: coverage/cobertura.xml
     gate_tests: << parameters.gate_tests >>
     log_level: << parameters.log_level >>

@@ -193,11 +193,6 @@ default = "0"
 description = "List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter."
 
 [[job_group.parameter]]
-name = "failures_file"
-default = ""
-description = "Write every failing function to this file as a markdown task list, one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Written only when the gate fails; keep it after the job with a later store_artifacts step. Empty writes nothing. Needs an orb release that includes this parameter."
-
-[[job_group.parameter]]
 name = "gate_tests"
 type = "boolean"
 default = "false"
@@ -265,14 +260,18 @@ log_level = "<< parameters.log_level >>"
 # is and does not repeat the summary or the warnings; with every maximum off
 # (the default) it has nothing to check and succeeds. The annotating step has
 # already matched the methods, set the roll-ups and warned, so `unmatched`,
-# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment`,
-# `max_listed` and `failures_file` are the gate's: the summary it posts and the
-# failures it lists are the gate's result. It is off by default, and
+# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment` and
+# `max_listed` are the gate's: the summary it posts and the failures it lists are
+# the gate's result. It is off by default, and
 # needs `GITHUB_TOKEN` from the environment or a context (never a parameter,
 # which would be stored in the consumer's config).
 [[job_group.step]]
 command = "complexity"
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
+# `failures_file` is left unset: the file is lost when the job ends unless a step
+# stores it, and a rich-mode built-in step cannot be given a path (gen-circleci-orb
+# writes a bare `store_artifacts`). A project that wants the file runs `complexity`
+# in a job of its own, with a `store_artifacts` step after it.
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file", "failures_file"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -284,7 +283,6 @@ max_crap = "<< parameters.max_crap >>"
 baseline = "<< parameters.baseline >>"
 pr_comment = "<< parameters.pr_comment >>"
 max_listed = "<< parameters.max_listed >>"
-failures_file = "<< parameters.failures_file >>"
 gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 
