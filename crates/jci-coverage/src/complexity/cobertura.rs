@@ -1173,7 +1173,8 @@ mod tests {
 
     /// The rules for where each element the parser reads may sit, in full: each
     /// kind against the nearest enclosing element of those kinds (or none), with
-    /// and without an element the parser ignores in between.
+    /// and without the elements the parser ignores in between, among them each
+    /// wrapper a report has (`<classes>`, `<methods>`, `<lines>`, ...).
     #[test]
     fn each_element_is_accepted_only_inside_the_elements_the_table_allows() {
         let child = |kind: &str| match kind {
@@ -1209,9 +1210,25 @@ mod tests {
             ("line", "class"),
             ("line", "method"),
         ];
+        // What may sit between an element and its parent: nothing; an element the
+        // parser ignores; each wrapper a report has (`<classes>` and the others,
+        // named like the elements they hold); and several of them. Each is tried
+        // at every position, including ones no report has (`<sources>` around a
+        // `<line>`): this tests the nearest-element rule, it does not list the
+        // shapes of real reports.
+        let wrappers = [
+            ("", ""),
+            ("<x>", "</x>"),
+            ("<packages>", "</packages>"),
+            ("<classes>", "</classes>"),
+            ("<methods>", "</methods>"),
+            ("<lines>", "</lines>"),
+            ("<sources><source>", "</source></sources>"),
+            ("<classes><methods><lines>", "</lines></methods></classes>"),
+        ];
         for kind in ["package", "class", "method", "line"] {
             for nearest in ["none", "package", "class", "method", "line"] {
-                for (ignored_open, ignored_close) in [("", ""), ("<x>", "</x>")] {
+                for (ignored_open, ignored_close) in wrappers {
                     let (open, close) = around(nearest);
                     let xml = format!(
                         "<coverage>{open}{ignored_open}{}{ignored_close}{close}</coverage>",
