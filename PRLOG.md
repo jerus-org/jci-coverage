@@ -25,6 +25,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - ci-check OtterWise's uploader weekly and open an issue(pr [#107])
 - refactor(complexity)-state the nesting rules in one table(pr [#110])
 - ci-run the drift reporter's tests(pr [#111])
+- test-put real wrappers in the parser table(pr [#112])
 
 ### Fixed
 
@@ -334,6 +335,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#109]: https://github.com/jerus-org/jci-coverage/pull/109
 [#110]: https://github.com/jerus-org/jci-coverage/pull/110
 [#111]: https://github.com/jerus-org/jci-coverage/pull/111
+[#112]: https://github.com/jerus-org/jci-coverage/pull/112
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
