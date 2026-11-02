@@ -492,24 +492,21 @@ fn same_file(a: &Path, b: &Path) -> bool {
     resolved(a) == resolved(b)
 }
 
-/// Check the baseline options before anything is read or written, and load the
-/// baseline to compare against.
-fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
-    if args.write_baseline.is_some() && !args.has_maximum() {
-        bail!(
-            "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
-        );
-    }
-    let report = args.output.as_deref().unwrap_or(&args.file);
-    let failures_path = args
-        .failures_file
+/// The failures file, unless it is `-`, which is no file.
+fn failures_path(args: &ComplexityArgs) -> Option<&PathBuf> {
+    args.failures_file
         .as_ref()
-        .filter(|p| !gate_report::lists_in_report(p));
+        .filter(|p| !gate_report::lists_in_report(p))
+}
+
+/// Fail if an output file is the report.
+fn check_apart_from_report(args: &ComplexityArgs) -> Result<()> {
+    let report = args.output.as_deref().unwrap_or(&args.file);
     for path in [
         args.baseline.as_ref(),
         args.write_baseline.as_ref(),
         args.summary_file.as_ref(),
-        failures_path,
+        failures_path(args),
     ]
     .into_iter()
     .flatten()
@@ -521,33 +518,58 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
             );
         }
     }
-    // Clap already keeps `--baseline` and `--write-baseline` apart; the summary
-    // is the one other output that could land on either.
-    if let Some(summary) = &args.summary_file {
-        for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
-            if same_file(summary, other) {
-                bail!(
-                    "{} is both the summary and the baseline; give each its own path",
-                    summary.display()
-                );
-            }
+    Ok(())
+}
+
+/// Fail if the summary lands on the baseline or the one being written. Clap
+/// already keeps `--baseline` and `--write-baseline` apart; the summary is the
+/// one other output that could land on either.
+fn check_summary_apart(args: &ComplexityArgs) -> Result<()> {
+    let Some(summary) = &args.summary_file else {
+        return Ok(());
+    };
+    for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
+        if same_file(summary, other) {
+            bail!(
+                "{} is both the summary and the baseline; give each its own path",
+                summary.display()
+            );
         }
     }
-    // The failures list is the one other output that could land on the summary
-    // or the baseline.
-    if let Some(list) = failures_path {
-        for (other, name) in [
-            (&args.summary_file, "summary"),
-            (&args.baseline, "baseline"),
-        ] {
-            if other.as_deref().is_some_and(|o| same_file(list, o)) {
-                bail!(
-                    "{} is both the failures list and the {name}; give each its own path",
-                    list.display()
-                );
-            }
+    Ok(())
+}
+
+/// Fail if the failures list lands on the summary or the baseline (clap keeps
+/// it apart from `--write-baseline`).
+fn check_failures_apart(args: &ComplexityArgs) -> Result<()> {
+    let Some(list) = failures_path(args) else {
+        return Ok(());
+    };
+    for (other, name) in [
+        (&args.summary_file, "summary"),
+        (&args.baseline, "baseline"),
+    ] {
+        if other.as_deref().is_some_and(|o| same_file(list, o)) {
+            bail!(
+                "{} is both the failures list and the {name}; give each its own path",
+                list.display()
+            );
         }
     }
+    Ok(())
+}
+
+/// Check the baseline options before anything is read or written, and load the
+/// baseline to compare against.
+fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
+    if args.write_baseline.is_some() && !args.has_maximum() {
+        bail!(
+            "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
+        );
+    }
+    check_apart_from_report(args)?;
+    check_summary_apart(args)?;
+    check_failures_apart(args)?;
     if args.baseline.is_some() && !args.has_maximum() {
         tracing::warn!("--baseline has no effect without --max-complexity or --max-crap");
     }
@@ -699,11 +721,7 @@ fn publish_summary(
 /// Write every failing function to `--failures-file`, if one was asked for.
 /// Failing to is a warning: the gate's own result is what matters.
 fn write_failures_file(args: &ComplexityArgs, failing: &[metrics::Risk<'_>]) {
-    let Some(path) = args
-        .failures_file
-        .as_ref()
-        .filter(|p| !gate_report::lists_in_report(p))
-    else {
+    let Some(path) = failures_path(args) else {
         return;
     };
     if args.dry_run {
