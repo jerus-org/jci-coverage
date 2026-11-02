@@ -53,7 +53,7 @@ server.serve_forever()
 PY
 python3 "$work/stub.py" "$work" &
 server_pid=$!
-for _ in $(seq 50); do [ -s "$work/port" ] && break; sleep 0.1; done
+for _ in $(seq 50); do [[ -s "$work/port" ]] && break; sleep 0.1; done
 port="$(cat "$work/port")"
 
 failures=0
@@ -76,19 +76,19 @@ run() {
         GITHUB_API_URL="http://127.0.0.1:$port" \
         "$here/report-otterwise-drift.sh" "$@" >"$work/out.txt" 2>&1
 }
-posts() { [ -f "$work/posts.jsonl" ] && wc -l <"$work/posts.jsonl" | tr -d ' ' || echo 0; }
+posts() { [[ -f "$work/posts.jsonl" ]] && wc -l <"$work/posts.jsonl" | tr -d ' ' || echo 0; }
 
 # 1. No drift: success, the API is not touched.
 reset
 run "$matching"; status=$?
-[ "$status" -eq 0 ] && [ ! -f "$work/gets.log" ] && [ "$(posts)" = 0 ] \
+[[ "$status" -eq 0 ]] && [[ ! -f "$work/gets.log" ]] && [[ "$(posts)" = 0 ]] \
     && pass "no drift: exit 0, no API call" || fail "no drift (status $status)"
 
 # 2. Drift: one issue is opened, naming the difference, and the run fails.
 reset
 { cat "$matching"; echo 'curl -F brand_new_field=x'; } >"$work/drifted.sh"
 run "$work/drifted.sh"; status=$?
-if [ "$status" -eq 1 ] && [ "$(posts)" = 1 ] \
+if [[ "$status" -eq 1 ]] && [[ "$(posts)" = 1 ]] \
     && jq -e '.title == "OtterWise uploader: the form fields differ from the manifest"' "$work/posts.jsonl" >/dev/null \
     && jq -e '.body | contains("brand_new_field") and contains("https://circleci.example/build/1")' "$work/posts.jsonl" >/dev/null \
     && grep -q 'auth=Bearer t0ken' "$work/gets.log"; then
@@ -101,49 +101,49 @@ fi
 reset
 echo '[{"number": 7, "title": "OtterWise uploader: the form fields differ from the manifest"}]' >"$work/issues.json"
 run "$work/drifted.sh"; status=$?
-[ "$status" -eq 1 ] && [ "$(posts)" = 0 ] && grep -q '#7' "$work/out.txt" \
+[[ "$status" -eq 1 ]] && [[ "$(posts)" = 0 ]] && grep -q '#7' "$work/out.txt" \
     && pass "open issue: exit 1, no second issue" || fail "open issue (status $status, posts $(posts))"
 
 # 4. A pull request with that title is not an issue about it.
 reset
 echo '[{"number": 8, "pull_request": {}, "title": "OtterWise uploader: the form fields differ from the manifest"}]' >"$work/issues.json"
 run "$work/drifted.sh"; status=$?
-[ "$status" -eq 1 ] && [ "$(posts)" = 1 ] \
+[[ "$status" -eq 1 ]] && [[ "$(posts)" = 1 ]] \
     && pass "a pull request with the title does not count" || fail "pull request title (status $status, posts $(posts))"
 
 # 5. An issue with another title does not count.
 reset
 echo '[{"number": 9, "title": "something else"}]' >"$work/issues.json"
 run "$work/drifted.sh"; status=$?
-[ "$status" -eq 1 ] && [ "$(posts)" = 1 ] \
+[[ "$status" -eq 1 ]] && [[ "$(posts)" = 1 ]] \
     && pass "an unrelated open issue does not count" || fail "unrelated issue (status $status, posts $(posts))"
 
 # 6. No form fields at all: its own issue.
 reset
 echo 'echo no uploads here' >"$work/empty.sh"
 run "$work/empty.sh"; status=$?
-[ "$status" -eq 1 ] && [ "$(posts)" = 1 ] \
+[[ "$status" -eq 1 ]] && [[ "$(posts)" = 1 ]] \
     && jq -e '.title == "OtterWise uploader: no form fields found"' "$work/posts.jsonl" >/dev/null \
     && pass "no fields: exit 1, its own issue" || fail "no fields (status $status, posts $(posts))"
 
 # 7. The script cannot be fetched: fails, but no issue about a change.
 reset
 run "http://127.0.0.1:1/nothing"; status=$?
-[ "$status" -ne 0 ] && [ "$(posts)" = 0 ] && grep -q 'could not run' "$work/out.txt" \
+[[ "$status" -ne 0 ]] && [[ "$(posts)" = 0 ]] && grep -q 'could not run' "$work/out.txt" \
     && pass "fetch failure: fails, no issue" || fail "fetch failure (status $status, posts $(posts))"
 
 # 8. No token: fails and says so, with no API call.
 reset
 TOKEN='' run "$work/drifted.sh"; status=$?
-[ "$status" -eq 1 ] && [ ! -f "$work/gets.log" ] && grep -q 'GITHUB_TOKEN is not set' "$work/out.txt" \
+[[ "$status" -eq 1 ]] && [[ ! -f "$work/gets.log" ]] && grep -q 'GITHUB_TOKEN is not set' "$work/out.txt" \
     && pass "no token: exit 1, says why, no API call" || fail "no token (status $status)"
 
 # 9. The API refuses the new issue: fails and says so.
 reset
 echo 403 >"$work/post_status"
 run "$work/drifted.sh"; status=$?
-[ "$status" -eq 1 ] && grep -q 'Could not open the issue' "$work/out.txt" \
+[[ "$status" -eq 1 ]] && grep -q 'Could not open the issue' "$work/out.txt" \
     && pass "refused issue: exit 1, says so" || fail "refused issue (status $status)";
 
 echo
-if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
+if [[ "$failures" -eq 0 ]]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

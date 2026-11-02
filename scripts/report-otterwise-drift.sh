@@ -27,7 +27,7 @@ output="$("$here/check-otterwise-drift.sh" "$@" 2>&1)"
 status=$?
 printf '%s\n' "$output"
 
-[ "$status" -eq 0 ] && exit 0
+[[ "$status" -eq 0 ]] && exit 0
 
 case "$status" in
     1) title="OtterWise uploader: the form fields differ from the manifest" ;;
@@ -38,12 +38,12 @@ case "$status" in
         ;;
 esac
 
-if [ -z "${GITHUB_TOKEN:-}" ]; then
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
     echo "GITHUB_TOKEN is not set; not opening an issue." >&2
     exit 1
 fi
 repo="${CIRCLE_PROJECT_USERNAME:-}/${CIRCLE_PROJECT_REPONAME:-}"
-if [ "$repo" = "/" ]; then
+if [[ "$repo" = "/" ]]; then
     echo "CIRCLE_PROJECT_USERNAME/CIRCLE_PROJECT_REPONAME are not set; not opening an issue." >&2
     exit 1
 fi
@@ -63,7 +63,7 @@ existing="$(gh_curl "$api?state=open&per_page=100" \
     | jq -r --arg t "$title" \
         '[.[] | select(.pull_request == null and .title == $t)][0].number // empty')" \
     || { echo "Could not list the open issues; not opening one." >&2; exit 1; }
-if [ -n "$existing" ]; then
+if [[ -n "$existing" ]]; then
     echo "Issue #$existing already reports this; not opening another."
     exit 1
 fi
