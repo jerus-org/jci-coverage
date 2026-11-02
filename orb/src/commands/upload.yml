@@ -1,4 +1,4 @@
-description: 'Standalone: takes a coverage file path and uploads it. Does not require `report`, Rust, or `cargo-llvm-cov` — the caller is responsible for the file existing at the given path in a format OtterWise accepts. It must run in CircleCI: OtterWise shows only uploads that carry a CI identity, so elsewhere it refuses unless told to upload anyway (see the allow-local option).'
+description: 'Standalone: takes a coverage file path and uploads it. Does not require `report`, Rust, or `cargo-llvm-cov` — the caller is responsible for the file existing at the given path in a format OtterWise accepts. It must run in CircleCI: OtterWise shows only uploads that carry a CI identity, so without the CircleCI environment it stops and names what is missing.'
 parameters:
   file:
     type: string
@@ -22,17 +22,7 @@ parameters:
     type: string
     description: Override the upload endpoint (primarily for testing)
     default: ''
-  allow_local:
-    type: boolean
-    description: 'Upload even when not running in CircleCI. OtterWise shows only uploads that carry a CI identity: from anywhere else it answers "Queued for processing" and the result never appears. Without this flag `upload` refuses to run outside CircleCI (`CIRCLECI` is not `true`).'
-    default: false
 steps:
-- when:
-    condition: << parameters.allow_local >>
-    steps:
-    - run:
-        name: Set GCO_ALLOW_LOCAL flag
-        command: echo 'export GCO_ALLOW_LOCAL=true' >> "$BASH_ENV"
 - run:
     name: Upload coverage to OtterWise
     command: <<include(scripts/upload.sh)>>

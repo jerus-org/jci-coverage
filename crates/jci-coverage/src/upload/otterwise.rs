@@ -67,7 +67,7 @@ pub fn build_fields(
         }
     };
 
-    push("ci_provider", ci.provider);
+    push("ci_provider", Some(ci.provider));
     push("ci_job", ci.job.as_deref());
     push("ci_build", ci.build_num.as_deref());
     push("ci_author", ci.username.as_deref());
@@ -199,7 +199,7 @@ mod tests {
 
     fn ci() -> CiMetadata {
         CiMetadata {
-            provider: Some("circle-ci"),
+            provider: "circle-ci",
             pr_number: Some("42".to_string()),
             branch: Some("feat/x".to_string()),
             build_num: Some("100".to_string()),
@@ -334,23 +334,5 @@ mod tests {
         assert!(!is_success(&response(500, "Queued for processing")));
         assert!(!is_success(&response(401, "unauthorized")));
         assert!(!is_success(&response(200, "unexpected body")));
-    }
-
-    #[test]
-    fn no_provider_means_no_ci_provider_field() {
-        let ci = CiMetadata {
-            provider: None,
-            ..CiMetadata {
-                provider: Some("circle-ci"),
-                pr_number: None,
-                branch: None,
-                build_num: None,
-                job: None,
-                username: None,
-                repo: None,
-            }
-        };
-        let fields = build_fields(None, &ci, Some("rt"), "/work");
-        assert_eq!(field(&fields, "ci_provider"), None);
     }
 }

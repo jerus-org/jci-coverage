@@ -242,10 +242,8 @@ log_level = "<< parameters.log_level >>"
 command = "upload"
 # Deliberately not exposed: the token comes from OTTERWISE_TOKEN (a token passed
 # as a parameter is stored in the consumer's config and shown on the command
-# line), and the endpoint override is for testing the CLI. `allow_local` is not
-# exposed either: this job always runs in CircleCI, where `upload` needs no
-# escape hatch, and exposing it would invite an upload OtterWise never shows.
-defaults = ["repo_token", "endpoint", "allow_local"]
+# line), and the endpoint override is for testing the CLI.
+defaults = ["repo_token", "endpoint"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"

@@ -85,8 +85,8 @@ enum Commands {
             caller is responsible for the file existing at the given path \
             in a format OtterWise accepts. It must run in CircleCI: \
             OtterWise shows only uploads that carry a CI identity, so \
-            elsewhere it refuses unless told to upload anyway (see \
-            the allow-local option).",
+            without the CircleCI environment it stops and names what \
+            is missing.",
         term_width = 70
     )]
     Upload(upload::UploadArgs),

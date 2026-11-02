@@ -37,14 +37,6 @@ pub struct UploadArgs {
     /// Override the upload endpoint (primarily for testing).
     #[arg(long, value_name = "URL")]
     pub endpoint: Option<String>,
-
-    /// Upload even when not running in CircleCI.
-    ///
-    /// OtterWise shows only uploads that carry a CI identity: from anywhere else it
-    /// answers "Queued for processing" and the result never appears. Without this
-    /// flag `upload` refuses to run outside CircleCI (`CIRCLECI` is not `true`).
-    #[arg(long)]
-    pub allow_local: bool,
 }
 
 impl std::fmt::Debug for UploadArgs {
@@ -59,7 +51,6 @@ impl std::fmt::Debug for UploadArgs {
                 },
             )
             .field("endpoint", &self.endpoint)
-            .field("allow_local", &self.allow_local)
             .finish()
     }
 }
@@ -93,33 +84,21 @@ fn ensure_ready(file: &Path, cwd: &Path, repo_token: Option<&str>) -> Result<()>
     Ok(())
 }
 
-/// Refuse to upload from outside CircleCI, unless `allow_local`, and warn about
-/// a CircleCI build that lacks part of its identity. OtterWise accepts an upload
-/// that carries no CI identity (`Queued for processing`) and then never shows
-/// it, so without this a local run looks like a success.
-fn require_ci(get_env: &impl Fn(&str) -> Option<String>, allow_local: bool) -> Result<()> {
-    if ci_meta::in_circleci(get_env) {
-        let missing = ci_meta::missing_build_vars(get_env);
-        if !missing.is_empty() {
-            tracing::warn!(
-                missing = %missing.join(", "),
-                "this CircleCI build lacks part of its identity: OtterWise accepts such an upload \
-                 but is unlikely to show it"
-            );
-        }
-        return Ok(());
-    }
-    if allow_local {
-        tracing::warn!(
-            "not running in CircleCI: OtterWise ignores uploads that carry no CI identity, so \
-             this one is unlikely to be shown"
-        );
+/// Refuse to upload unless the environment carries every CircleCI field a build
+/// has, and say which are missing. OtterWise's own uploader does not work outside
+/// a CI either: it accepts an upload that carries no CI identity (`Queued for
+/// processing`) and then never shows it, so without this a local run looks like a
+/// success. Anyone who sets the variables by hand takes responsibility for them.
+fn require_ci(get_env: &impl Fn(&str) -> Option<String>) -> Result<()> {
+    let missing = ci_meta::missing_required(get_env);
+    if missing.is_empty() {
         return Ok(());
     }
     bail!(
-        "not running in CircleCI (`CIRCLECI` is not `true`). OtterWise ignores uploads that \
-         carry no CI identity: this one would be accepted but never be shown. Run it from a CI \
-         job, or pass `--allow-local` to upload anyway."
+        "not running in a complete CircleCI environment: missing {}. OtterWise ignores uploads \
+         that carry no CI identity: this one would be accepted but never be shown. Run it from \
+         a CircleCI job.",
+        missing.join(", ")
     )
 }
 
@@ -152,7 +131,7 @@ fn upload_with<C: UploadClient>(
     let repo_token = resolve_token(args.repo_token.as_deref(), env_token);
     ensure_ready(&args.file, cwd, repo_token.as_deref())?;
     tracing::info!(file = %diagnostics::describe_file(&args.file, cwd), "report file");
-    require_ci(&get_env, args.allow_local)?;
+    require_ci(&get_env)?;
 
     // `None` outside a git repo (or one with no commits) — not an error, per
     // `upload`'s standalone contract (see `cli.rs`'s long_about).
@@ -385,7 +364,6 @@ mod tests {
             file,
             repo_token: Some("rt".to_string()),
             endpoint: None,
-            allow_local: false,
         }
     }
 
@@ -438,7 +416,6 @@ mod tests {
             file: PathBuf::from("coverage/lcov.info"),
             repo_token: Some("s3cret-value".to_string()),
             endpoint: None,
-            allow_local: false,
         };
         let shown = format!("{args:?}");
         assert!(!shown.contains("s3cret-value"), "{shown}");
@@ -472,7 +449,6 @@ mod tests {
             file: PathBuf::from("coverage/lcov.info"),
             repo_token: None,
             endpoint: None,
-            allow_local: false,
         };
         let shown = format!("{args:?}");
         assert!(shown.contains("OTTERWISE_TOKEN"), "{shown}");
@@ -555,6 +531,8 @@ mod tests {
             "CIRCLE_BRANCH" => Some("main".to_string()),
             "CIRCLE_BUILD_NUM" => Some("7".to_string()),
             "CIRCLE_JOB" => Some("test".to_string()),
+            "CIRCLE_PROJECT_USERNAME" => Some("jerus-org".to_string()),
+            "CIRCLE_PROJECT_REPONAME" => Some("jci-coverage".to_string()),
             _ => None,
         }
     }
@@ -576,16 +554,51 @@ mod tests {
     fn outside_ci_the_upload_is_refused_before_any_network_call() {
         let dir = fixture_repo();
         let args = args_with_file(dir.path().join("lcov.info"));
-
         let client = capturing();
 
         let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
 
         assert!(client.fields.borrow().is_empty(), "nothing was sent");
         let said = err.to_string();
-        assert!(said.contains("CIRCLECI"), "{said}");
-        assert!(said.contains("--allow-local"), "{said}");
+        for name in [
+            "CIRCLECI",
+            "CIRCLE_BRANCH",
+            "CIRCLE_BUILD_NUM",
+            "CIRCLE_JOB",
+            "CIRCLE_PROJECT_USERNAME",
+            "CIRCLE_PROJECT_REPONAME",
+        ] {
+            assert!(said.contains(name), "{name} in {said}");
+        }
         assert!(said.contains("never be shown"), "{said}");
+        assert!(
+            !said.contains("allow-local"),
+            "there is no way round it: {said}"
+        );
+    }
+
+    /// Only what is missing is named, so the message says what to fix.
+    #[test]
+    fn a_partial_environment_is_refused_naming_exactly_what_is_missing() {
+        let dir = fixture_repo();
+        let args = args_with_file(dir.path().join("lcov.info"));
+        let client = capturing();
+        let partial = |k: &str| match k {
+            "CIRCLECI" => Some("true".to_string()),
+            "CIRCLE_BRANCH" => Some("main".to_string()),
+            "CIRCLE_PROJECT_USERNAME" => Some("jerus-org".to_string()),
+            "CIRCLE_PROJECT_REPONAME" => Some("jci-coverage".to_string()),
+            _ => None,
+        };
+
+        let err = upload_with(&client, &args, dir.path(), partial).unwrap_err();
+
+        assert!(client.fields.borrow().is_empty(), "nothing was sent");
+        let said = err.to_string();
+        assert!(
+            said.contains("missing CIRCLE_BUILD_NUM, CIRCLE_JOB."),
+            "{said}"
+        );
     }
 
     #[test]
@@ -593,7 +606,6 @@ mod tests {
         let dir = fixture_repo();
         let args = args_with_file(dir.path().join("lcov.info"));
         let only_build = |k: &str| (k == "CIRCLE_BUILD_NUM").then(|| "7".to_string());
-
         let client = capturing();
 
         assert!(upload_with(&client, &args, dir.path(), only_build).is_err());
@@ -606,7 +618,6 @@ mod tests {
     fn a_missing_file_is_reported_before_the_ci_check() {
         let dir = fixture_repo();
         let args = args_with_file(dir.path().join("no-such-file"));
-
         let client = capturing();
 
         let err = upload_with(&client, &args, dir.path(), |_| None).unwrap_err();
@@ -616,89 +627,49 @@ mod tests {
     }
 
     #[test]
-    fn outside_ci_with_allow_local_it_uploads_without_claiming_a_provider() {
-        let dir = fixture_repo();
-        let client = CapturingClient {
-            fields: RefCell::new(Vec::new()),
-        };
-        let mut args = args_with_file(dir.path().join("lcov.info"));
-        args.allow_local = true;
-
-        let (result, log) =
-            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), |_| None));
-        result.expect("uploads");
-
-        assert!(log.contains("unlikely to be shown"), "{log}");
-        let fields = client.fields.borrow();
-        assert_eq!(field_of(&fields, "ci_provider"), None);
-        assert_eq!(field_of(&fields, "ci_job"), None);
-        assert!(field_of(&fields, "base_dir").is_some(), "{fields:?}");
-    }
-
-    #[test]
     fn in_ci_the_provider_is_sent_with_the_build_identity() {
         let dir = fixture_repo();
-        let client = CapturingClient {
-            fields: RefCell::new(Vec::new()),
-        };
+        let client = capturing();
         let args = args_with_file(dir.path().join("lcov.info"));
 
-        let (result, log) =
-            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), in_ci));
-        result.expect("uploads");
+        upload_with(&client, &args, dir.path(), in_ci).expect("uploads");
 
-        assert!(
-            !log.contains("WARN"),
-            "a full CircleCI environment is not warned about: {log}"
-        );
         let fields = client.fields.borrow();
         assert_eq!(field_of(&fields, "ci_provider"), Some("circle-ci"));
         assert_eq!(field_of(&fields, "ci_job"), Some("test"));
         assert_eq!(field_of(&fields, "ci_build"), Some("7"));
         assert_eq!(field_of(&fields, "git_branch"), Some("main"));
+        assert_eq!(
+            field_of(&fields, "git_repo"),
+            Some("jerus-org/jci-coverage")
+        );
     }
 
+    /// The repo's own `main` jobs unset every pull request variable.
     #[test]
-    fn allow_local_inside_ci_changes_nothing() {
+    fn a_build_that_is_not_of_a_pull_request_uploads() {
         let dir = fixture_repo();
-        let client = CapturingClient {
-            fields: RefCell::new(Vec::new()),
-        };
-        let mut args = args_with_file(dir.path().join("lcov.info"));
-        args.allow_local = true;
+        let client = capturing();
+        let args = args_with_file(dir.path().join("lcov.info"));
 
         upload_with(&client, &args, dir.path(), in_ci).expect("uploads");
 
-        assert_eq!(
-            field_of(&client.fields.borrow(), "ci_provider"),
-            Some("circle-ci")
-        );
+        assert_eq!(field_of(&client.fields.borrow(), "git_pr"), None);
     }
 
-    /// A partial CircleCI environment still uploads (the warning is the guard);
-    /// it must not be refused.
     #[test]
-    fn a_partial_circleci_environment_still_uploads() {
+    fn a_tag_build_without_a_branch_uploads() {
         let dir = fixture_repo();
-        let client = CapturingClient {
-            fields: RefCell::new(Vec::new()),
-        };
+        let client = capturing();
         let args = args_with_file(dir.path().join("lcov.info"));
-        let bare = |k: &str| (k == "CIRCLECI").then(|| "true".to_string());
+        let tag_build = |k: &str| match k {
+            "CIRCLE_BRANCH" => None,
+            "CIRCLE_TAG" => Some("v1.0.0".to_string()),
+            other => in_ci(other),
+        };
 
-        let (result, log) =
-            crate::github::testing::logged(|| upload_with(&client, &args, dir.path(), bare));
-        result.expect("uploads");
+        upload_with(&client, &args, dir.path(), tag_build).expect("uploads");
 
-        assert!(log.contains("lacks part of its identity"), "{log}");
-        assert!(
-            log.contains("CIRCLE_BRANCH, CIRCLE_BUILD_NUM, CIRCLE_JOB"),
-            "{log}"
-        );
-
-        assert_eq!(
-            field_of(&client.fields.borrow(), "ci_provider"),
-            Some("circle-ci")
-        );
+        assert_eq!(field_of(&client.fields.borrow(), "git_branch"), None);
     }
 }
