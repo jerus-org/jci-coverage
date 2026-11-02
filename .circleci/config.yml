@@ -63,6 +63,20 @@ jobs:
           paths:
             - target
 
+  # Tests of scripts/report-otterwise-drift.sh (#40), which opens an issue when
+  # OtterWise's uploader changes: it is run against a local stub of the GitHub
+  # issues API, so it needs no network or token. cimg/base has the tools it
+  # needs (bash, curl, jq, python3).
+  test_scripts:
+    docker:
+      - image: cimg/base:stable
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Test the OtterWise drift reporter
+          command: scripts/test-report-otterwise-drift.sh
+
 workflows:
   validation:
     jobs:
@@ -95,6 +109,11 @@ workflows:
               ignore: main
 
       - test_doc_build:
+          filters:
+            branches:
+              ignore: main
+
+      - test_scripts:
           filters:
             branches:
               ignore: main
