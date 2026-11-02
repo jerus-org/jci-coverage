@@ -161,14 +161,11 @@ enum Kind {
 }
 
 impl Kind {
+    /// Every kind, so that a name can be looked up from [`Kind::name`].
+    const ALL: [Self; 4] = [Self::Package, Self::Class, Self::Method, Self::Line];
+
     fn of(name: &str) -> Option<Self> {
-        match name {
-            "package" => Some(Self::Package),
-            "class" => Some(Self::Class),
-            "method" => Some(Self::Method),
-            "line" => Some(Self::Line),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
     }
 
     fn name(self) -> &'static str {
@@ -320,7 +317,13 @@ impl Parser {
                 method.hits = number(e, "hits")?;
                 *read = true;
             }
-        } else if let Some(class) = self.report.classes.last_mut() {
+        } else {
+            // `check` has seen it is directly inside a `<class>`, so one is open.
+            let class = self
+                .report
+                .classes
+                .last_mut()
+                .context("a <line> has no <class> to belong to")?;
             class.lines.push((number(e, "number")?, number(e, "hits")?));
         }
         Ok(())
@@ -565,6 +568,10 @@ impl<'a> Rewriter<'a> {
 }
 
 /// Write `edit` into `xml`.
+///
+/// `xml` must be a report [`parse`] has accepted, and `edit` one [`check_edit`]
+/// has accepted for it. The rewrite counts the packages, classes and methods it
+/// passes, not their nesting, and relies on `parse` having checked that.
 pub(crate) fn rewrite(xml: &str, edit: &Edit) -> Result<String> {
     check_edit(&parse(xml)?, edit)?;
     let bytes = Rewriter::new(edit).run(Reader::from_str(xml))?;
@@ -1189,6 +1196,12 @@ mod tests {
                 "</line></method></class></package>",
             ),
         };
+        // What each kind must be inside, as the error says it.
+        let want = |kind: &str| match kind {
+            "class" => "a <package>",
+            "method" => "a <class>",
+            _ => "a <class> or a <method>",
+        };
         let allowed = [
             ("package", "none"),
             ("class", "package"),
@@ -1211,9 +1224,33 @@ mod tests {
                         expected,
                         "<{kind}> in a <{nearest}> (via {ignored_open:?}): {xml}\n{result:?}"
                     );
+                    if let Err(e) = result {
+                        let said = e.to_string();
+                        assert!(said.starts_with("malformed report: "), "{said}");
+                        let wanted = match (kind, nearest) {
+                            ("package", _) => format!("a <package> is inside a <{nearest}>"),
+                            (_, "none") => format!("a <{kind}> is not inside {}", want(kind)),
+                            _ => format!(
+                                "a <{kind}> is not inside {} (it is inside a <{nearest}>",
+                                want(kind)
+                            ),
+                        };
+                        assert!(said.contains(&wanted), "wanted {wanted:?} in {said:?}");
+                    }
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_kind_is_listed_and_found_again_by_its_name() {
+        // Four elements are read: a new `Kind` must be added to `Kind::ALL` too.
+        assert_eq!(Kind::ALL.len(), 4);
+        for kind in Kind::ALL {
+            assert_eq!(Kind::of(kind.name()), Some(kind));
+        }
+        assert_eq!(Kind::of("classes"), None);
+        assert_eq!(Kind::of(""), None);
     }
 
     /// One package, one class, and the methods given, with a class line.
