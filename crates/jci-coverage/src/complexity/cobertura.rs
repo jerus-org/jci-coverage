@@ -1212,7 +1212,10 @@ mod tests {
         ];
         // What may sit between an element and its parent: nothing; an element the
         // parser ignores; each wrapper a report has (`<classes>` and the others,
-        // named like the elements they hold); and several of them.
+        // named like the elements they hold); and several of them. Each is tried
+        // at every position, including ones no report has (`<sources>` around a
+        // `<line>`): this tests the nearest-element rule, it does not list the
+        // shapes of real reports.
         let wrappers = [
             ("", ""),
             ("<x>", "</x>"),
