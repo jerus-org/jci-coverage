@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: require the CircleCI environment(pr [#106])
+
 ### Changed
 
 - ci-cover the head of main from the prlog job(pr [#89])
@@ -321,6 +325,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#103]: https://github.com/jerus-org/jci-coverage/pull/103
 [#104]: https://github.com/jerus-org/jci-coverage/pull/104
 [#105]: https://github.com/jerus-org/jci-coverage/pull/105
+[#106]: https://github.com/jerus-org/jci-coverage/pull/106
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
