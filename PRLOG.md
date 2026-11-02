@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - refactor(complexity)-split the Cobertura rewrite(pr [#97])
 - ci-empty the baseline(pr [#98])
 - ci-drop the temporary verbose logging(pr [#103])
+- ci-check OtterWise's uploader weekly and open an issue(pr [#107])
 
 ### Fixed
 
@@ -326,6 +327,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#104]: https://github.com/jerus-org/jci-coverage/pull/104
 [#105]: https://github.com/jerus-org/jci-coverage/pull/105
 [#106]: https://github.com/jerus-org/jci-coverage/pull/106
+[#107]: https://github.com/jerus-org/jci-coverage/pull/107
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
