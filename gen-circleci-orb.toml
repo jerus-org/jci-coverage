@@ -188,6 +188,16 @@ default = "false"
 description = "Post the gate's result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job's last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project's environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter."
 
 [[job_group.parameter]]
+name = "max_listed"
+default = "0"
+description = "List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
+name = "failures_file"
+default = ""
+description = "Where to put every failing function, as a markdown task list one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Set it to `-` to have the whole list at the end of the failure report in the job log. A file path is written when the gate fails but is lost when the job ends, as this job cannot store it yet. Empty adds nothing. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
 name = "gate_tests"
 type = "boolean"
 default = "false"
@@ -225,7 +235,7 @@ command = "complexity"
 # change what OtterWise sums, and `--dry-run` is for a local preview. The
 # maximums and the baseline are the gate step's, after `upload`: failing this
 # step would skip the upload and leave the dashboard stale.
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment"]
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment", "max_listed", "failures_file"]
 
 [job_group.step.with]
 file = "coverage/cobertura.xml"
@@ -255,8 +265,13 @@ log_level = "<< parameters.log_level >>"
 # is and does not repeat the summary or the warnings; with every maximum off
 # (the default) it has nothing to check and succeeds. The annotating step has
 # already matched the methods, set the roll-ups and warned, so `unmatched`,
-# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment` is the
-# gate's: the summary it posts is the gate's result. It is off by default, and
+# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment`,
+# `max_listed` and `failures_file` are the gate's: the summary it posts and the
+# failures it lists are the gate's result. A file path is lost when the job ends,
+# since a rich-mode built-in step cannot be given a path (gen-circleci-orb writes a
+# bare `store_artifacts`, jerus-org/gen-circleci-orb#527), so `failures_file: "-"`
+# puts the list in the log; a path needs `complexity` in a job of one's own with a
+# `store_artifacts` step after it. It is off by default, and
 # needs `GITHUB_TOKEN` from the environment or a context (never a parameter,
 # which would be stored in the consumer's config).
 [[job_group.step]]
@@ -272,6 +287,8 @@ max_complexity = "<< parameters.max_complexity >>"
 max_crap = "<< parameters.max_crap >>"
 baseline = "<< parameters.baseline >>"
 pr_comment = "<< parameters.pr_comment >>"
+max_listed = "<< parameters.max_listed >>"
+failures_file = "<< parameters.failures_file >>"
 gate_tests = "<< parameters.gate_tests >>"
 log_level = "<< parameters.log_level >>"
 

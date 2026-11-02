@@ -86,6 +86,14 @@ parameters:
     type: boolean
     description: Post the gate summary as a comment on the pull request. The same summary as `--summary-file`, posted to the pull request this build is for (from `CIRCLE_PULL_REQUEST`), using the token in `GITHUB_TOKEN`. An earlier comment from this tool is edited in place, otherwise one is created, whether the gate passes or fails, so the pull request shows that the gate ran. Nothing is posted, and a reason is logged, when there is no token or no pull request, or the pull request is from a fork. A failure to post is a warning and does not change the result.
     default: false
+  max_listed:
+    type: string
+    description: List at most this many of the failing functions, worst first. For the failure report in the CI log and for the summary (`--summary-file`, `--pr-comment`). The headline still counts every failing function, and the report says how many are not listed. 0, the default, lists them all. A pull request comment too long for GitHub (over 60,000 characters) is cut to fit whatever this says. See `--failures-file` for the whole list.
+    default: '0'
+  failures_file:
+    type: string
+    description: 'Write every failing function to this file as a markdown task list. One task to a line, worst first, whatever `--max-listed` says: a list to copy from when the failures are to be tracked as issues, however many there are. Written, after the report, when the gate fails; nothing is written when it passes or with `--dry-run`. A failure to write it is a warning and does not change the result. `-` writes no file: the list is put at the end of the failure report in the log, which works in a job that cannot keep a file.'
+    default: ''
   gate_tests:
     type: boolean
     description: Judge test code against the warning and maximum thresholds too
@@ -136,6 +144,8 @@ steps:
     write_baseline: << parameters.write_baseline >>
     summary_file: << parameters.summary_file >>
     pr_comment: << parameters.pr_comment >>
+    max_listed: << parameters.max_listed >>
+    failures_file: << parameters.failures_file >>
     gate_tests: << parameters.gate_tests >>
     check_only: << parameters.check_only >>
     dry_run: << parameters.dry_run >>

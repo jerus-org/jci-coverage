@@ -55,6 +55,12 @@ Options:
           file
       --pr-comment
           Post the gate summary as a comment on the pull request
+      --max-listed <N>
+          List at most this many of the failing functions, worst first
+          [default: 0]
+      --failures-file <PATH>
+          Write every failing function to this file as a markdown task
+          list
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too

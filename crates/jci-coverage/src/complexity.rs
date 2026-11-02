@@ -183,6 +183,29 @@ pub struct ComplexityArgs {
     #[arg(long)]
     pub pr_comment: bool,
 
+    /// List at most this many of the failing functions, worst first.
+    ///
+    /// For the failure report in the CI log and for the summary
+    /// (`--summary-file`, `--pr-comment`). The headline still counts every
+    /// failing function, and the report says how many are not listed. 0, the
+    /// default, lists them all. A pull request comment too long for GitHub (over
+    /// 60,000 characters) is cut to fit whatever this says. See `--failures-file`
+    /// for the whole list.
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub max_listed: usize,
+
+    /// Write every failing function to this file as a markdown task list.
+    ///
+    /// One task to a line, worst first, whatever `--max-listed` says: a list to
+    /// copy from when the failures are to be tracked as issues, however many
+    /// there are. Written, after the report, when the gate fails; nothing is
+    /// written when it passes or with `--dry-run`. A failure to write it is a
+    /// warning and does not change the result. `-` writes no file: the list is
+    /// put at the end of the failure report in the log, which works in a job that
+    /// cannot keep a file.
+    #[arg(long, value_name = "PATH", conflicts_with = "write_baseline")]
+    pub failures_file: Option<PathBuf>,
+
     /// Judge test code against the warning and maximum thresholds too.
     #[arg(long)]
     pub gate_tests: bool,
@@ -325,6 +348,18 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
 }
 
 impl ComplexityArgs {
+    /// How much of the failing functions to list.
+    fn listing(&self) -> gate_report::Listing<'_> {
+        gate_report::Listing {
+            max: if self.max_listed == 0 {
+                usize::MAX
+            } else {
+                self.max_listed
+            },
+            file: self.failures_file.as_deref(),
+        }
+    }
+
     /// Whether either maximum is on, so there is something to gate.
     fn has_maximum(&self) -> bool {
         self.max_complexity > 0 || self.max_crap > 0.0
@@ -457,18 +492,24 @@ fn same_file(a: &Path, b: &Path) -> bool {
     resolved(a) == resolved(b)
 }
 
-/// Check the baseline options before anything is read or written, and load the
-/// baseline to compare against.
-fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
-    if args.write_baseline.is_some() && !args.has_maximum() {
-        bail!(
-            "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
-        );
-    }
+/// The failures file, unless it is `-`, which is no file.
+fn failures_path(args: &ComplexityArgs) -> Option<&PathBuf> {
+    args.failures_file
+        .as_ref()
+        .filter(|p| !gate_report::lists_in_report(p))
+}
+
+/// Fail if an output file is the report.
+fn check_apart_from_report(args: &ComplexityArgs) -> Result<()> {
     let report = args.output.as_deref().unwrap_or(&args.file);
-    for path in [&args.baseline, &args.write_baseline, &args.summary_file]
-        .into_iter()
-        .flatten()
+    for path in [
+        args.baseline.as_ref(),
+        args.write_baseline.as_ref(),
+        args.summary_file.as_ref(),
+        failures_path(args),
+    ]
+    .into_iter()
+    .flatten()
     {
         if same_file(path, &args.file) || same_file(path, report) {
             bail!(
@@ -477,18 +518,58 @@ fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
             );
         }
     }
-    // Clap already keeps `--baseline` and `--write-baseline` apart; the summary
-    // is the one other output that could land on either.
-    if let Some(summary) = &args.summary_file {
-        for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
-            if same_file(summary, other) {
-                bail!(
-                    "{} is both the summary and the baseline; give each its own path",
-                    summary.display()
-                );
-            }
+    Ok(())
+}
+
+/// Fail if the summary lands on the baseline or the one being written. Clap
+/// already keeps `--baseline` and `--write-baseline` apart; the summary is the
+/// one other output that could land on either.
+fn check_summary_apart(args: &ComplexityArgs) -> Result<()> {
+    let Some(summary) = &args.summary_file else {
+        return Ok(());
+    };
+    for other in [&args.baseline, &args.write_baseline].into_iter().flatten() {
+        if same_file(summary, other) {
+            bail!(
+                "{} is both the summary and the baseline; give each its own path",
+                summary.display()
+            );
         }
     }
+    Ok(())
+}
+
+/// Fail if the failures list lands on the summary or the baseline (clap keeps
+/// it apart from `--write-baseline`).
+fn check_failures_apart(args: &ComplexityArgs) -> Result<()> {
+    let Some(list) = failures_path(args) else {
+        return Ok(());
+    };
+    for (other, name) in [
+        (&args.summary_file, "summary"),
+        (&args.baseline, "baseline"),
+    ] {
+        if other.as_deref().is_some_and(|o| same_file(list, o)) {
+            bail!(
+                "{} is both the failures list and the {name}; give each its own path",
+                list.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Check the baseline options before anything is read or written, and load the
+/// baseline to compare against.
+fn check_baseline_args(args: &ComplexityArgs) -> Result<()> {
+    if args.write_baseline.is_some() && !args.has_maximum() {
+        bail!(
+            "--write-baseline records the functions over a maximum: set --max-complexity or --max-crap"
+        );
+    }
+    check_apart_from_report(args)?;
+    check_summary_apart(args)?;
+    check_failures_apart(args)?;
     if args.baseline.is_some() && !args.has_maximum() {
         tracing::warn!("--baseline has no effect without --max-complexity or --max-crap");
     }
@@ -620,6 +701,7 @@ fn publish_summary(
             &gate.failing,
             &limits,
             baseline,
+            args.listing().max,
             gate_report::MAX_ROWS,
             &gate.moves,
             &gate.unchanged,
@@ -633,6 +715,33 @@ fn publish_summary(
     }
     if args.pr_comment {
         publisher(&markdown);
+    }
+}
+
+/// Write every failing function to `--failures-file`, if one was asked for.
+/// Failing to is a warning: the gate's own result is what matters.
+fn write_failures_file(args: &ComplexityArgs, failing: &[metrics::Risk<'_>]) {
+    let Some(path) = failures_path(args) else {
+        return;
+    };
+    if args.dry_run {
+        println!(
+            "(dry run) would write the {} failing function(s) to {}",
+            failing.len(),
+            path.display()
+        );
+        return;
+    }
+    let list = gate_report::failures_list(failing, &args.max_thresholds());
+    match write_atomic(path, list.as_bytes()) {
+        Ok(()) => println!(
+            "wrote the {} failing function(s) to {}",
+            failing.len(),
+            path.display()
+        ),
+        Err(e) => {
+            tracing::warn!(error = %format!("{e:#}"), "could not write the failures file");
+        }
     }
 }
 
@@ -795,10 +904,17 @@ fn finish_with(
     if failing.is_empty() {
         return Ok(());
     }
+    write_failures_file(args, failing);
     let record = write_baseline_record(args);
     bail!(
         "{}",
-        gate_report::render(failing, &args.max_thresholds(), baseline, &record)
+        gate_report::render(
+            failing,
+            &args.max_thresholds(),
+            baseline,
+            &record,
+            args.listing()
+        )
     )
 }
 
@@ -993,6 +1109,8 @@ fn pick(x: Option<i32>) -> Option<i32> {
             check_only: false,
             summary_file: None,
             pr_comment: false,
+            max_listed: 0,
+            failures_file: None,
             dry_run: false,
         };
         (dir, args)
@@ -2459,5 +2577,196 @@ fn pick(x: Option<i32>) -> Option<i32> {
             "{text}"
         );
         assert!(!text.contains("\nwrote "), "{text}");
+    }
+
+    /// `max_complexity = 1` fails every function, however the fixture grows.
+    fn every_function_fails(args: &mut ComplexityArgs) -> usize {
+        args.max_complexity = 1;
+        let err = logged(args).0.unwrap_err().to_string();
+        let first = err.lines().next().expect("a headline");
+        first
+            .split(" function(s) fail the gate")
+            .next()
+            .and_then(|n| n.rsplit(' ').next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("a count in {first:?}"))
+    }
+
+    #[test]
+    fn the_listing_cap_is_unlimited_at_zero_and_a_count_otherwise() {
+        let (_dir, mut args) = setup();
+        assert_eq!(args.listing().max, usize::MAX);
+        args.max_listed = 3;
+        assert_eq!(args.listing().max, 3);
+        args.failures_file = Some(PathBuf::from("coverage/gate-failures.md"));
+        assert_eq!(
+            args.listing().file,
+            Some(Path::new("coverage/gate-failures.md"))
+        );
+    }
+
+    #[test]
+    fn the_report_lists_every_failing_function_unless_capped() {
+        let (_dir, mut args) = setup();
+        let all = every_function_fails(&mut args);
+        assert!(all >= 2, "the fixture needs two failing functions: {all}");
+        let err = logged(&args).0.unwrap_err().to_string();
+        assert!(!err.contains("not listed"), "{err}");
+
+        args.max_listed = 1;
+        let err = logged(&args).0.unwrap_err().to_string();
+        let rows = err.lines().filter(|l| l.starts_with('|')).count();
+        assert_eq!(rows, 2 + 1, "header, rule and one row:\n{err}");
+        assert!(
+            err.contains(&format!("{} more not listed.", all - 1)),
+            "{err}"
+        );
+        assert!(
+            err.contains(&format!("{all} function(s) fail the gate")),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn the_failures_file_has_every_failing_function_whatever_the_cap() {
+        let (dir, mut args) = setup();
+        let all = every_function_fails(&mut args);
+        let path = dir.path().join("out/gate-failures.md");
+        args.failures_file = Some(path.clone());
+        args.max_listed = 1;
+
+        let err = logged(&args).0.unwrap_err().to_string();
+
+        let list = fs::read_to_string(&path).expect("written");
+        assert_eq!(list.lines().count(), all, "{list}");
+        assert!(list.lines().all(|l| l.starts_with("- [ ] `")), "{list}");
+        assert!(
+            err.contains(&format!("all {all} are in {}", path.display())),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn no_failures_file_is_written_when_the_gate_passes_or_on_a_dry_run() {
+        let (dir, mut args) = setup();
+        let path = dir.path().join("gate-failures.md");
+        args.failures_file = Some(path.clone());
+        args.max_complexity = 40;
+        logged(&args).0.expect("passes");
+        assert!(!path.exists(), "nothing fails, nothing is listed");
+
+        args.max_complexity = 1;
+        args.dry_run = true;
+        let _ = logged(&args);
+        assert!(!path.exists(), "a dry run writes nothing");
+    }
+
+    #[test]
+    fn a_failures_file_that_cannot_be_written_is_a_warning_and_the_gate_still_fails() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 1;
+        // A directory is not a file that can be replaced.
+        args.failures_file = Some(dir.path().to_path_buf());
+        let err = logged(&args).0.unwrap_err().to_string();
+        assert!(err.contains("fail the gate"), "{err}");
+    }
+
+    #[test]
+    fn the_failures_file_cannot_be_the_report_the_baseline_or_the_summary() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 1;
+        args.failures_file = Some(args.file.clone());
+        assert!(
+            run(&args)
+                .unwrap_err()
+                .to_string()
+                .contains("same file as the report")
+        );
+
+        let (dir2, mut args2) = setup();
+        args2.max_complexity = 1;
+        let shared = dir2.path().join("shared.md");
+        args2.failures_file = Some(shared.clone());
+        args2.summary_file = Some(shared);
+        assert!(
+            run(&args2)
+                .unwrap_err()
+                .to_string()
+                .contains("both the failures list and the summary")
+        );
+
+        let (dir3, mut args3) = setup();
+        args3.max_complexity = 1;
+        let shared = dir3.path().join("shared.bin");
+        args3.failures_file = Some(shared.clone());
+        args3.baseline = Some(shared);
+        assert!(
+            run(&args3)
+                .unwrap_err()
+                .to_string()
+                .contains("both the failures list and the baseline")
+        );
+        drop(dir);
+    }
+
+    #[test]
+    fn the_summary_and_the_comment_follow_the_same_cap() {
+        let (dir, mut args) = setup();
+        let all = every_function_fails(&mut args);
+        let path = dir.path().join("summary.md");
+        args.summary_file = Some(path.clone());
+        args.max_listed = 1;
+
+        let _ = logged(&args);
+
+        let markdown = fs::read_to_string(&path).expect("written");
+        let rows = markdown.lines().filter(|l| l.starts_with("| `")).count();
+        assert_eq!(rows, 1, "{markdown}");
+        assert!(
+            markdown.contains(&format!("_{} more not shown", all - 1)),
+            "{markdown}"
+        );
+    }
+
+    #[test]
+    fn a_dash_as_the_failures_file_puts_the_list_in_the_report_and_writes_no_file() {
+        let (dir, mut args) = setup();
+        let all = every_function_fails(&mut args);
+        args.max_listed = 1;
+        args.failures_file = Some(PathBuf::from("-"));
+        let before = fs::read_dir(".").map(|d| d.count()).unwrap_or(0);
+
+        let err = logged(&args).0.unwrap_err().to_string();
+
+        let (_, list) = err
+            .split_once(&format!("Every failing function ({all}):\n"))
+            .unwrap_or_else(|| panic!("the list is in the report:\n{err}"));
+        assert_eq!(list.lines().count(), all, "{err}");
+        assert!(list.lines().all(|l| l.starts_with("- [ ] `")), "{err}");
+        assert!(
+            err.contains(&format!("all {all} are at the end of this report")),
+            "{err}"
+        );
+        assert!(!Path::new("-").exists(), "no file called - was written");
+        assert_eq!(
+            fs::read_dir(".").map(|d| d.count()).unwrap_or(0),
+            before,
+            "nothing was written in the working directory"
+        );
+        drop(dir);
+    }
+
+    #[test]
+    fn a_dash_is_not_a_path_so_it_clashes_with_no_other_output() {
+        let (dir, mut args) = setup();
+        args.max_complexity = 1;
+        args.failures_file = Some(PathBuf::from("-"));
+        args.summary_file = Some(dir.path().join("summary.md"));
+        let err = logged(&args).0.unwrap_err().to_string();
+        assert!(!err.contains("is both"), "{err}");
+        assert!(
+            dir.path().join("summary.md").exists(),
+            "the summary was written"
+        );
     }
 }

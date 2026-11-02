@@ -16,10 +16,45 @@ pub(crate) use summary::{
     MARKER, MAX_ROWS, failing as failing_summary, passing as passing_summary,
 };
 
+use std::path::Path;
+
 use crate::complexity::{
     baseline::{Baseline, Standing},
     metrics::{FunctionMetrics, Risk, Thresholds, crap},
 };
+
+/// How many of the failing functions a report lists.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Listing<'a> {
+    /// At most this many functions are listed, worst first; the rest are counted.
+    pub(crate) max: usize,
+    /// The file holding every failing function, named in the note about the ones
+    /// not listed.
+    pub(crate) file: Option<&'a Path>,
+}
+
+/// The name that sends the list of every failing function to the end of the
+/// failure report instead of to a file.
+pub(crate) const LIST_IN_REPORT: &str = "-";
+
+/// Whether `path` is the name that asks for the list in the report.
+pub(crate) fn lists_in_report(path: &Path) -> bool {
+    path == Path::new(LIST_IN_REPORT)
+}
+
+impl Listing<'_> {
+    /// Whether every failing function is to be listed at the end of the report.
+    fn list_in_report(&self) -> bool {
+        self.file == Some(Path::new(LIST_IN_REPORT))
+    }
+
+    /// Every function, as before there was a cap.
+    #[cfg(test)]
+    pub(crate) const ALL: Listing<'static> = Listing {
+        max: usize::MAX,
+        file: None,
+    };
+}
 
 /// How to record the current state as a baseline: the command that does it, and
 /// the file it writes.
@@ -316,6 +351,7 @@ pub(crate) fn render(
     limits: &Thresholds,
     baseline: Option<&Baseline>,
     record: &Record,
+    listing: Listing<'_>,
 ) -> String {
     let (complexity_on, crap_on) = (limits.complexity > 0, limits.crap > 0.0);
     let failures: Vec<Failure<'_>> = failing.iter().map(|r| Failure::new(r, limits)).collect();
@@ -342,6 +378,7 @@ pub(crate) fn render(
 
     let rows: Vec<Vec<String>> = failures
         .iter()
+        .take(listing.max)
         .map(|r| {
             let f = r.risk.function;
             let mut row = vec![
@@ -361,11 +398,58 @@ pub(crate) fn render(
         })
         .collect();
 
+    let not_listed = failures.len().saturating_sub(listing.max);
+    let note = if not_listed == 0 {
+        String::new()
+    } else {
+        let all = if listing.list_in_report() {
+            format!("; all {} are at the end of this report", failures.len())
+        } else {
+            listing.file.map_or_else(String::new, |file| {
+                format!("; all {} are in {}", failures.len(), file.display())
+            })
+        };
+        format!("\n\n{not_listed} more not listed{all}.")
+    };
+    let everything = if listing.list_in_report() {
+        format!(
+            "\n\nEvery failing function ({}):\n{}",
+            failures.len(),
+            failures_list(failing, limits)
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "{summary}\n\n{}\n\n{}",
+        "{summary}\n\n{}{note}\n\n{}{everything}",
         table(&header, &rows),
         resolution(limits, baseline.is_some(), record)
     )
+}
+
+/// Every failing function as a markdown task, one to a line, worst first: a list
+/// to copy from when the failures are to be tracked as issues, however many
+/// there are. Empty when nothing fails.
+pub(crate) fn failures_list(failing: &[Risk<'_>], limits: &Thresholds) -> String {
+    failing
+        .iter()
+        .map(|risk| {
+            let r = Failure::new(risk, limits);
+            let f = r.risk.function;
+            let crap = f
+                .crap
+                .map_or_else(|| "n/a".to_string(), |c| format!("{c:.1}"));
+            format!(
+                "- [ ] `{}` (`{}:{}`): {}; complexity {}, CRAP {crap}. Fix: {}\n",
+                display_name(f),
+                f.file,
+                f.line,
+                over_label(&r),
+                f.complexity,
+                fix(&r, limits),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -491,7 +575,7 @@ mod tests {
             .map(|n| scored(&format!("f{n:02}"), 16 + n, 10, 10))
             .collect();
         let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
-        let out = render(&risks, &LIMITS, None, &record());
+        let out = render(&risks, &LIMITS, None, &record(), Listing::ALL);
         for f in &all {
             assert!(out.contains(&f.name), "{} missing:\n{out}", f.name);
         }
@@ -504,7 +588,7 @@ mod tests {
         let a = scored("rewrite", 39, 75, 71);
         let b = scored("post_multipart", 5, 26, 0);
         let risks = [risk(&a, true, true), risk(&b, false, true)];
-        let out = render(&risks, &LIMITS, None, &record());
+        let out = render(&risks, &LIMITS, None, &record(), Listing::ALL);
         let rows: Vec<&str> = out.lines().filter(|l| l.starts_with('|')).collect();
         assert_eq!(rows.len(), 4, "header, rule and two rows:\n{out}");
         assert!(
@@ -552,7 +636,7 @@ mod tests {
             risk(&untested, false, true),
             risk(&hopeless, true, true),
         ];
-        let out = render(&risks, &LIMITS, None, &record());
+        let out = render(&risks, &LIMITS, None, &record(), Listing::ALL);
         assert_eq!(fix_of(&out, "complex"), "reduce complexity below 15");
         assert_eq!(fix_of(&out, "untested"), "cover 1 more line (1 of 26)");
         assert_eq!(
@@ -567,7 +651,13 @@ mod tests {
         // Complexity 20 against 15, and 0 of 26 lines covered: once simplified
         // to 14 its CRAP is 14 × 14 + 14 = 210, so it still needs coverage.
         let f = scored("both", 20, 26, 0);
-        let out = render(&[risk(&f, true, true)], &LIMITS, None, &record());
+        let out = render(
+            &[risk(&f, true, true)],
+            &LIMITS,
+            None,
+            &record(),
+            Listing::ALL,
+        );
         assert_eq!(
             fix_of(&out, "both"),
             "reduce complexity below 15, then cover 15 more lines (15 of 26)"
@@ -579,7 +669,13 @@ mod tests {
         // The CRAP limit (10) is stricter than the complexity limit (15): the
         // function has to come down to 9, and be covered enough at 9.
         let f = scored("tight", 20, 20, 0);
-        let out = render(&[risk(&f, true, true)], &limits(15, 10.0), None, &record());
+        let out = render(
+            &[risk(&f, true, true)],
+            &limits(15, 10.0),
+            None,
+            &record(),
+            Listing::ALL,
+        );
         let fix = fix_of(&out, "tight");
         assert!(
             fix.starts_with("reduce complexity below 15, then cover "),
@@ -592,7 +688,13 @@ mod tests {
     #[test]
     fn a_crap_failure_that_tests_cannot_fix_says_why() {
         let f = scored("big", 40, 50, 50);
-        let out = render(&[risk(&f, false, true)], &limits(0, 30.0), None, &record());
+        let out = render(
+            &[risk(&f, false, true)],
+            &limits(0, 30.0),
+            None,
+            &record(),
+            Listing::ALL,
+        );
         assert!(out.contains("tests alone cannot"), "{out}");
         assert!(out.contains("fully covered"), "{out}");
         assert!(out.contains("CRAP would still be 40"), "{out}");
@@ -608,7 +710,7 @@ mod tests {
             risk(&b, false, true),
             risk(&c, true, true),
         ];
-        let out = render(&risks, &LIMITS, None, &record());
+        let out = render(&risks, &LIMITS, None, &record(), Listing::ALL);
         assert!(
             out.contains(
                 "3 function(s) fail the gate: 2 over the complexity limit (15), 2 over the CRAP limit (30)"
@@ -624,7 +726,13 @@ mod tests {
     #[test]
     fn a_limit_that_was_off_has_no_column_text() {
         let f = scored("f", 20, 10, 10);
-        let out = render(&[risk(&f, true, false)], &limits(15, 0.0), None, &record());
+        let out = render(
+            &[risk(&f, true, false)],
+            &limits(15, 0.0),
+            None,
+            &record(),
+            Listing::ALL,
+        );
         assert!(!out.contains("CRAP (max"), "{out}");
         assert!(!out.contains("over the CRAP limit"), "{out}");
         assert!(out.contains("over the complexity limit (15)"), "{out}");
@@ -633,7 +741,13 @@ mod tests {
     #[test]
     fn a_function_with_no_coverage_data_shows_n_a() {
         let f = func("bare", 20, 0, 0, None);
-        let out = render(&[risk(&f, true, false)], &LIMITS, None, &record());
+        let out = render(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            &record(),
+            Listing::ALL,
+        );
         let row = out.lines().find(|l| l.contains("bare")).expect("row");
         assert!(row.contains("n/a"), "{row}");
     }
@@ -652,14 +766,26 @@ mod tests {
     #[test]
     fn a_closure_is_named_as_one() {
         let f = scored("", 20, 10, 10);
-        let out = render(&[risk(&f, true, false)], &LIMITS, None, &record());
+        let out = render(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            &record(),
+            Listing::ALL,
+        );
         assert!(out.contains("<closure>"), "{out}");
     }
 
     #[test]
     fn the_report_ends_with_the_ways_to_resolve_a_failure() {
         let f = scored("f", 20, 10, 10);
-        let out = render(&[risk(&f, true, false)], &LIMITS, None, &record());
+        let out = render(
+            &[risk(&f, true, false)],
+            &LIMITS,
+            None,
+            &record(),
+            Listing::ALL,
+        );
         let tail = out
             .split("How to resolve")
             .nth(1)
@@ -686,7 +812,13 @@ mod tests {
                 .into(),
             path: "ci/b.bin".into(),
         };
-        let out = render(&[risk(&f, true, false)], &limits(15, 0.0), None, &custom);
+        let out = render(
+            &[risk(&f, true, false)],
+            &limits(15, 0.0),
+            None,
+            &custom,
+            Listing::ALL,
+        );
         let tail = out.split("How to resolve").nth(1).expect("section");
         assert!(tail.contains("--file cov.xml --rules mccabe"), "{tail}");
         assert!(tail.contains("repository root"), "{tail}");
@@ -709,7 +841,13 @@ mod tests {
                 .into(),
             path: ".jci-coverage-baseline".into(),
         };
-        let out = render(&[risk(&f, true, false)], &limits(15, 0.0), None, &record);
+        let out = render(
+            &[risk(&f, true, false)],
+            &limits(15, 0.0),
+            None,
+            &record,
+            Listing::ALL,
+        );
         let tail = out.split("How to resolve").nth(1).expect("section");
         assert!(
             !tail.contains("Add tests"),
@@ -729,6 +867,7 @@ mod tests {
             &LIMITS,
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(
             out.contains("worse than the baseline: complexity 31 > 29"),
@@ -759,6 +898,7 @@ mod tests {
             &limits(0, 30.0),
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(
             out.contains("worse than the baseline: CRAP 41.5 > 20.0"),
@@ -771,6 +911,7 @@ mod tests {
             &limits(0, 10.0),
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(out.contains("CRAP 20.0, none recorded"), "{out}");
     }
@@ -787,6 +928,7 @@ mod tests {
             &LIMITS,
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(
             out.contains("worse than the baseline: complexity 30 > 29"),
@@ -807,6 +949,7 @@ mod tests {
             &LIMITS,
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(
             out.contains("worse than the baseline: CRAP 42.0 > 30.0"),
@@ -825,6 +968,7 @@ mod tests {
             &LIMITS,
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(
             out.contains("worse than the baseline: complexity 40 > 39; CRAP 40.9 > 39.2"),
@@ -842,7 +986,155 @@ mod tests {
             &LIMITS,
             Some(&baseline),
             &record(),
+            Listing::ALL,
         );
         assert!(out.contains("not in the baseline"), "{out}");
+    }
+
+    fn twelve() -> Vec<FunctionMetrics> {
+        (0..12)
+            .map(|n| scored(&format!("f{n:02}"), 30 - n, 10, 10))
+            .collect()
+    }
+
+    fn listing(max: usize) -> Listing<'static> {
+        Listing { max, file: None }
+    }
+
+    #[test]
+    fn a_cap_lists_the_worst_functions_and_counts_the_rest() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = render(&risks, &LIMITS, None, &record(), listing(5));
+        for f in &all[..5] {
+            assert!(
+                out.contains(&format!("`{}`", f.name)) || out.contains(&f.name),
+                "{out}"
+            );
+        }
+        for f in &all[5..] {
+            assert!(!out.contains(&f.name), "{} is past the cap:\n{out}", f.name);
+        }
+        let rows = out.lines().filter(|l| l.starts_with('|')).count();
+        assert_eq!(rows, 2 + 5, "header, rule and five rows:\n{out}");
+        assert!(
+            out.contains("12 function(s)"),
+            "the headline counts all:\n{out}"
+        );
+        assert!(out.contains("7 more not listed."), "{out}");
+        assert!(out.contains("How to resolve"), "the way out stays:\n{out}");
+    }
+
+    #[test]
+    fn the_note_names_the_file_with_every_function_when_there_is_one() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let file = std::path::Path::new("coverage/gate-failures.md");
+        let listing = Listing {
+            max: 5,
+            file: Some(file),
+        };
+        let out = render(&risks, &LIMITS, None, &record(), listing);
+        assert!(
+            out.contains("7 more not listed; all 12 are in coverage/gate-failures.md."),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_cap_at_or_over_the_count_lists_everything_with_no_note() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        for max in [12, 13, usize::MAX] {
+            let out = render(&risks, &LIMITS, None, &record(), listing(max));
+            assert!(!out.contains("not listed"), "max {max}:\n{out}");
+            assert!(all.iter().all(|f| out.contains(&f.name)), "max {max}");
+        }
+    }
+
+    #[test]
+    fn the_failures_list_has_one_task_per_function_worst_first_whatever_the_cap() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let list = failures_list(&risks, &LIMITS);
+        let lines: Vec<&str> = list.lines().collect();
+        assert_eq!(lines.len(), 12, "{list}");
+        assert!(lines.iter().all(|l| l.starts_with("- [ ] ")), "{list}");
+        for (line, f) in lines.iter().zip(&all) {
+            assert!(line.contains(&format!("`{}`", f.name)), "{line}");
+        }
+        assert!(list.ends_with('\n'), "a file ends with a newline");
+    }
+
+    #[test]
+    fn a_failures_list_item_gives_where_why_and_the_fix() {
+        let f = scored("rewrite", 39, 75, 71);
+        let list = failures_list(&[risk(&f, true, true)], &LIMITS);
+        let crap_score = format!("{:.1}", f.crap.expect("scored"));
+        assert_eq!(
+            list,
+            format!(
+                "- [ ] `rewrite` (`src/a.rs:10`): complexity, CRAP (complexity); complexity 39, CRAP {crap_score}. Fix: reduce complexity below 15\n"
+            )
+        );
+    }
+
+    #[test]
+    fn an_empty_failures_list_is_empty() {
+        assert_eq!(failures_list(&[], &LIMITS), "");
+    }
+
+    fn in_log() -> Listing<'static> {
+        Listing {
+            max: 5,
+            file: Some(Path::new("-")),
+        }
+    }
+
+    #[test]
+    fn a_dash_puts_every_failing_function_at_the_end_of_the_report() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let out = render(&risks, &LIMITS, None, &record(), in_log());
+        assert!(
+            out.contains("7 more not listed; all 12 are at the end of this report."),
+            "{out}"
+        );
+        let (report, list) = out
+            .split_once("Every failing function (12):\n")
+            .expect("the list has a heading");
+        assert!(
+            report.contains("How to resolve"),
+            "the list is last:\n{out}"
+        );
+        assert_eq!(list, failures_list(&risks, &LIMITS), "{out}");
+        assert_eq!(list.lines().count(), 12);
+    }
+
+    #[test]
+    fn the_list_in_the_log_is_there_even_when_nothing_was_cut() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let listing = Listing {
+            max: usize::MAX,
+            file: Some(Path::new("-")),
+        };
+        let out = render(&risks, &LIMITS, None, &record(), listing);
+        assert!(!out.contains("not listed"), "{out}");
+        assert!(out.contains("Every failing function (12):"), "{out}");
+    }
+
+    #[test]
+    fn no_list_is_added_for_a_path_or_no_file() {
+        let all = twelve();
+        let risks: Vec<Risk<'_>> = all.iter().map(|f| risk(f, true, false)).collect();
+        let path = Listing {
+            max: 5,
+            file: Some(Path::new("coverage/gate-failures.md")),
+        };
+        for listing in [path, listing(5), Listing::ALL] {
+            let out = render(&risks, &LIMITS, None, &record(), listing);
+            assert!(!out.contains("Every failing function"), "{out}");
+        }
     }
 }

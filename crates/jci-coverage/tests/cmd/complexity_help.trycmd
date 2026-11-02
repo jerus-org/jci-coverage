@@ -166,6 +166,33 @@ Options:
           pull request is from a fork. A failure to post is a warning
           and does not change the result.
 
+      --max-listed <N>
+          List at most this many of the failing functions, worst
+          first.
+          
+          For the failure report in the CI log and for the summary
+          (`--summary-file`, `--pr-comment`). The headline still
+          counts every failing function, and the report says how many
+          are not listed. 0, the default, lists them all. A pull
+          request comment too long for GitHub (over 60,000 characters)
+          is cut to fit whatever this says. See `--failures-file` for
+          the whole list.
+          
+          [default: 0]
+
+      --failures-file <PATH>
+          Write every failing function to this file as a markdown task
+          list.
+          
+          One task to a line, worst first, whatever `--max-listed`
+          says: a list to copy from when the failures are to be
+          tracked as issues, however many there are. Written, after
+          the report, when the gate fails; nothing is written when it
+          passes or with `--dry-run`. A failure to write it is a
+          warning and does not change the result. `-` writes no file:
+          the list is put at the end of the failure report in the log,
+          which works in a job that cannot keep a file.
+
       --gate-tests
           Judge test code against the warning and maximum thresholds
           too
