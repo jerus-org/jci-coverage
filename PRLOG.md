@@ -34,6 +34,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - complexity: track the open package and class(pr [#101])
 - complexity: match async fns and async blocks(pr [#104])
 - complexity: match async closures(pr [#105])
+- deps: pin cimg/base docker tag to 35e5e29(pr [#113])
 
 ## [0.0.18] - 2026-10-30
 
@@ -336,6 +337,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#110]: https://github.com/jerus-org/jci-coverage/pull/110
 [#111]: https://github.com/jerus-org/jci-coverage/pull/111
 [#112]: https://github.com/jerus-org/jci-coverage/pull/112
+[#113]: https://github.com/jerus-org/jci-coverage/pull/113
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
