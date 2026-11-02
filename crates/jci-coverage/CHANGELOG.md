@@ -5,9 +5,45 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.19] - 2026-11-02
+
+Summary: Added[5], Changed[10], Documentation[2], Fixed[8], Testing[7]
+
+### Added
+
+ - feat(complexity): --failures-file - puts the list in the report
+ - feat(complexity): cap the listed failures, write them all to a file
+ - feat(upload)!: require the CircleCI environment, no escape hatch
+ - feat(upload): refuse to run outside CircleCI
+ - feat(complexity): say where a report is malformed
+
+### Fixed
+
+ - fix(orb): leave failures_file off the composed job
+ - fix(upload): say a partial identity is unlikely to show
+ - fix(complexity): find an async closure's future at its first line
+ - fix(complexity): match async closures
+ - fix(complexity): match async fns and async blocks
+ - fix(complexity): track the open package and class
+ - fix(complexity): name nesting and reject class in method
+ - fix(complexity): reject a method inside a method
+
+### Changed
+
+ - refactor(complexity): act on the review of the scope table
+ - refactor(complexity): state the nesting rules in one table
+ - refactor(complexity): split the output path checks
+ - refactor(complexity): tidy the rewrite loop
+ - refactor(complexity): split the Cobertura rewrite
+ - refactor(complexity): split the baseline decode
+ - refactor(upload): test and split the HTTP post
+ - refactor(complexity): make the run output testable
+ - refactor(complexity): split the complexity run
+ - refactor(complexity): split the Cobertura parse
+
 ## [0.0.18] - 2026-10-30
 
-Summary: Added[1], Changed[1], Fixed[1], Testing[1]
+Summary: Added[1], Changed[1], Chore[1], Fixed[1], Testing[1]
 
 ### Added
 
@@ -218,7 +254,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
+[0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/jerus-org/jci-coverage/compare/v0.0.14...v0.0.15

@@ -2864,7 +2864,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.18
+- jci-coverage 0.0.19
 
 ```text
                               Apache License
