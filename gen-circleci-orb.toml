@@ -25,6 +25,7 @@ base_image = "rust:1-slim-trixie@sha256:ea0999ff67355d958b8799b6751c879a6d770076
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
     "src/examples/rust_report_and_upload.yml",
+    "src/examples/rust_complexity_and_upload.yml",
     "src/examples/rust_report_complexity_and_upload.yml",
     "src/examples/upload_only.yml",
 ]
@@ -316,3 +317,165 @@ label = "Upload coverage to OtterWise"
 # standalone `upload` job gets the same default.
 [subcommand.upload.param.file]
 default = "coverage/lcov.info"
+
+# The input-only counterpart of `report_complexity_and_upload` (jerus-org/jci-coverage#117).
+# Creating the coverage report means compiling and running the consumer's tests
+# under instrumentation, which needs the consumer's own toolchain and native
+# libraries (a workspace that links openssl needs pkg-config and libssl-dev, which
+# the orb's image does not carry, and no job here takes an executor). `complexity`
+# and `upload` compile nothing: they need only the report and the source files, so
+# the orb's image always suffices for them. This job therefore starts from a
+# Cobertura report the consumer's own job wrote with
+# `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml` and persisted to
+# the workspace, and does what `report_complexity_and_upload` does after `report`.
+# Rich mode, as there: hand-maintained, so keep the parameters it shares with
+# `report_complexity_and_upload` in step with it. `attach_workspace` is declared
+# here, defaulting to true, because the built-in step's own parameter defaults to
+# false and the report arrives in the workspace; a declared parameter takes
+# precedence over the one the built-in injects.
+[[job_group]]
+name = "complexity_and_upload"
+description = "Add cyclomatic complexity to a Cobertura report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image; use it for a project the orb's image cannot build. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
+
+[[job_group.parameter]]
+name = "file"
+default = "coverage/cobertura.xml"
+description = "The Cobertura report, relative to workspace_root, as the earlier job persisted it. Written by `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml`."
+
+[[job_group.parameter]]
+name = "attach_workspace"
+type = "boolean"
+default = "true"
+description = "Attach the workspace that holds the report. Leave on: the report is persisted by an earlier job. Turn off only if that job's output is already in the job's working directory."
+
+[[job_group.parameter]]
+name = "unmatched"
+enum = ["keep", "one", "fail"]
+default = "keep"
+description = "What to do with a method that has no matching function in the source. `fail` stops the job, so a run where complexity silently stays 0 is not reported as a success."
+
+[[job_group.parameter]]
+name = "exclude_tests"
+type = "boolean"
+default = "false"
+description = "Count `#[cfg(test)]` code and `#[test]` functions as complexity 0"
+
+[[job_group.parameter]]
+name = "source_root"
+default = "."
+description = "Directory the report's source file paths are relative to"
+
+[[job_group.parameter]]
+name = "rules"
+enum = ["rca", "mccabe"]
+default = "rca"
+description = "Which decision points count"
+
+[[job_group.parameter]]
+name = "warn_complexity"
+default = "10"
+description = "Warn about each function whose cyclomatic complexity is at least this. 0 turns the check off"
+
+[[job_group.parameter]]
+name = "warn_crap"
+default = "30"
+description = "Warn about each function whose CRAP score is at least this. 0 turns the check off"
+
+[[job_group.parameter]]
+name = "max_complexity"
+default = "0"
+description = "Fail the job, after the upload, if any function's cyclomatic complexity is at least this. 0 (the default) turns the check off"
+
+[[job_group.parameter]]
+name = "max_crap"
+default = "0"
+description = "Fail the job, after the upload, if any function's CRAP score is at least this. 0 (the default) turns the check off"
+
+[[job_group.parameter]]
+name = "baseline"
+default = ""
+description = "Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline"
+
+[[job_group.parameter]]
+name = "pr_comment"
+type = "boolean"
+default = "false"
+description = "Post the gate's result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job's last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project's environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
+name = "max_listed"
+default = "0"
+description = "List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
+name = "failures_file"
+default = ""
+description = "Where to put every failing function, as a markdown task list one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Set it to `-` to have the whole list at the end of the failure report in the job log. A file path is written when the gate fails and kept as a job artifact. Empty adds nothing. Needs an orb release that includes this parameter."
+
+[[job_group.parameter]]
+name = "gate_tests"
+type = "boolean"
+default = "false"
+description = "Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too"
+
+[[job_group.parameter]]
+name = "log_level"
+enum = ["quiet", "default", "v", "vv", "vvv", "vvvv"]
+default = "default"
+description = "Logging verbosity, from `quiet` to `vvvv` (most verbose)."
+
+[[job_group.step]]
+builtin = "checkout"
+
+[[job_group.step]]
+builtin = "attach_workspace"
+
+[[job_group.step]]
+command = "complexity"
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment", "max_listed", "failures_file"]
+
+[job_group.step.with]
+file = "<< parameters.workspace_root >>/<< parameters.file >>"
+source_root = "<< parameters.source_root >>"
+rules = "<< parameters.rules >>"
+unmatched = "<< parameters.unmatched >>"
+exclude_tests = "<< parameters.exclude_tests >>"
+warn_complexity = "<< parameters.warn_complexity >>"
+warn_crap = "<< parameters.warn_crap >>"
+gate_tests = "<< parameters.gate_tests >>"
+log_level = "<< parameters.log_level >>"
+
+[[job_group.step]]
+command = "upload"
+defaults = ["repo_token", "endpoint"]
+
+[job_group.step.with]
+file = "<< parameters.workspace_root >>/<< parameters.file >>"
+log_level = "<< parameters.log_level >>"
+
+# The gate, after the upload, as in `report_complexity_and_upload`.
+[[job_group.step]]
+command = "complexity"
+defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
+
+[job_group.step.with]
+file = "<< parameters.workspace_root >>/<< parameters.file >>"
+check_only = "true"
+source_root = "<< parameters.source_root >>"
+rules = "<< parameters.rules >>"
+max_complexity = "<< parameters.max_complexity >>"
+max_crap = "<< parameters.max_crap >>"
+baseline = "<< parameters.baseline >>"
+pr_comment = "<< parameters.pr_comment >>"
+max_listed = "<< parameters.max_listed >>"
+failures_file = "<< parameters.failures_file >>"
+gate_tests = "<< parameters.gate_tests >>"
+log_level = "<< parameters.log_level >>"
+
+# Keep the failures file, when a path was given (jerus-org/jci-coverage#65).
+[[job_group.step]]
+builtin = "store_artifacts"
+condition = "failures_file"
+
+[job_group.step.with]
+path = "<< parameters.failures_file >>"

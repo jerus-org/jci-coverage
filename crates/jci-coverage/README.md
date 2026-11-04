@@ -268,6 +268,7 @@ first use in CI.
 | Job | Use it for |
 |-----|------------|
 | `report_complexity_and_upload` | **The default for Rust projects.** Generate coverage, add cyclomatic complexity to the Cobertura report and upload that, so OtterWise shows Complexity and CRAP as well as coverage. It writes only `coverage/cobertura.xml`, so a later job that needs `coverage/lcov.info` must set `format: both`. |
+| `complexity_and_upload` | Rust projects whose dependencies the orb's image cannot build (a workspace that links openssl, for example): take the Cobertura report your own job wrote with `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml` and persisted to the workspace, add complexity to it and upload it, then apply the gate. See below. |
 | `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. No Complexity or CRAP. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
 | `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
@@ -350,8 +351,47 @@ config and shown on the command line, so don't use it. See
 [`orb/src/examples`](../../orb/src/examples) for a non-Rust, upload-only workflow.
 
 Each job runs in the orb's own image, so `report` compiles your crate there. A crate
-that needs extra system libraries to build can't use the orb's `report` jobs yet;
-generate the report in your own executor and use the `upload` job.
+that needs extra system libraries to build can't use the orb's `report` jobs; generate the
+report in your own executor and use `complexity_and_upload` (below), or the `upload` job for
+a report without complexity.
+
+### A project the orb's image cannot build
+
+Making the coverage report compiles and runs your tests under instrumentation, so it needs
+your toolchain and native libraries. The orb's image carries neither (a workspace that links
+openssl fails at `report` for want of `pkg-config` and `libssl-dev`), and its jobs take no
+`executor` parameter, so `report_complexity_and_upload` cannot be made to work for such a
+project. `complexity` and `upload` compile nothing: they need only the report and the source
+files. So write the report in a job of your own, in your own executor, persist it, and let
+`complexity_and_upload` do the rest:
+
+```yaml
+jobs:
+  coverage_report:
+    docker:
+      - image: cimg/rust:1.91 # your toolchain, native libraries and cargo-llvm-cov
+    steps:
+      - checkout
+      - run: cargo llvm-cov --cobertura --output-path coverage/cobertura.xml
+      - persist_to_workspace:
+          root: .
+          paths: [coverage/cobertura.xml]
+
+workflows:
+  validation:
+    jobs:
+      - coverage_report
+      - jci-coverage/complexity_and_upload:
+          requires: [coverage_report]
+```
+
+`complexity_and_upload` checks out the source (the report names its files relative to the
+repository root), attaches the workspace (`attach_workspace` is `true` here, and
+`workspace_root` is where it is attached), annotates the report in place, uploads it and then
+checks the gate, so a failing gate still updates the dashboard. `file` names the report
+relative to the workspace (`coverage/cobertura.xml`). It takes the same complexity, gate and
+`log_level` parameters as `report_complexity_and_upload`, and none of the parameters only
+`report` uses (`package`, `runner`, `nextest_profile`, `no_all_features`, `format`).
 
 ## License
 

@@ -1,0 +1,56 @@
+description: >
+  Rust project whose dependencies the orb's image cannot build: write the
+  Cobertura report in your own job, then add cyclomatic complexity to it and
+  upload it to OtterWise with complexity_and_upload.
+
+  Making the report means compiling and running your tests under
+  instrumentation, which needs your toolchain and native libraries (a
+  workspace that links openssl needs pkg-config and libssl-dev, for example).
+  The orb's image does not carry them, and its jobs take no executor, so
+  report_complexity_and_upload fails for such a project at its first step. So
+  your own job runs `cargo llvm-cov --cobertura --output-path
+  coverage/cobertura.xml` in your executor and persists that file to the
+  workspace; complexity_and_upload attaches the workspace and does the rest.
+  Neither complexity nor upload compiles anything, so the orb's image is always
+  enough for them. Rust only.
+
+  complexity_and_upload takes the same options as report_complexity_and_upload
+  for the complexity step, the gate (max_complexity, max_crap, baseline,
+  pr_comment, max_listed, failures_file) and the log level; file names the
+  report relative to the workspace (coverage/cobertura.xml by default). Set the
+  OtterWise token as the OTTERWISE_TOKEN environment variable in each project's
+  settings. Never pass a token as a parameter: it would be stored in your
+  config and appear on the command line.
+
+  The job checks out the source: the report names its files relative to the
+  repository root, and complexity reads them from the checkout. The gate is the
+  last step, after the upload, so a failing gate still updates the dashboard.
+usage:
+  version: 2.1
+  orbs:
+    jci-coverage: jerus-org/jci-coverage@0.0
+  jobs:
+    coverage_report:
+      docker:
+        # Your own image: the project's toolchain, its native libraries,
+        # cargo-llvm-cov and the llvm-tools-preview component.
+        - image: cimg/rust:1.91
+      steps:
+        - checkout
+        - run:
+            name: Write the Cobertura coverage report
+            command: cargo llvm-cov --cobertura --output-path coverage/cobertura.xml
+        - persist_to_workspace:
+            root: .
+            paths:
+              - coverage/cobertura.xml
+  workflows:
+    validation:
+      jobs:
+        - coverage_report
+        - jci-coverage/complexity_and_upload:
+            requires:
+              - coverage_report
+            # Optional: fail on risky functions, allowing today's with a baseline.
+            # max_complexity: 15
+            # baseline: .jci-coverage-baseline
