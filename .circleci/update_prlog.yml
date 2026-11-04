@@ -13,7 +13,7 @@ orbs:
   # Dogfood: the coverage job below uses this crate's own published orb.
   jci-coverage: jerus-org/jci-coverage@0.0.19
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.6
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.7
   # <<< gen-circleci-orb
 jobs:
   # Coverage for the head of main (#75). OtterWise compares a pull request
