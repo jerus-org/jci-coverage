@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - keep the failures file as a job artifact(pr [#119])
+- add the complexity_and_upload job(pr [#120])
 
 ### Fixed
 
@@ -354,6 +355,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#114]: https://github.com/jerus-org/jci-coverage/pull/114
 [#116]: https://github.com/jerus-org/jci-coverage/pull/116
 [#119]: https://github.com/jerus-org/jci-coverage/pull/119
+[#120]: https://github.com/jerus-org/jci-coverage/pull/120
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...HEAD
 [0.0.19]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
