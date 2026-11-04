@@ -77,9 +77,22 @@ jobs:
           name: Test the OtterWise drift reporter
           command: scripts/test-report-otterwise-drift.sh
 
+  probe_store_artifacts:
+    docker:
+      - image: cimg/base:stable
+    resource_class: small
+    steps:
+      - checkout
+      - store_artifacts:
+          path: coverage/does-not-exist.md
+
 workflows:
   validation:
     jobs:
+      - probe_store_artifacts:
+          filters:
+            branches:
+              ignore: main
       - toolkit/verify_commit_signatures:
           name: verify_commit_signatures_trusted
           context: bot-check
