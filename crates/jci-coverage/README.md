@@ -177,11 +177,13 @@ worst first, with where it is, why it fails and the fix), to copy from when trac
 failures as issues in batches. The note about the functions not listed names the file. It is
 written, after the report, only when the gate fails, never with `--dry-run`, and a failure to
 write it is a warning. It cannot be the report, the summary or the baseline. The file is lost when a CI job ends unless a
-step stores it. The generated `report_complexity_and_upload` job cannot store one yet (a
-generator limit, jerus-org/gen-circleci-orb#527), so there `failures_file: "-"` puts the whole
-list at the end of the failure report in the job log, headed "Every failing function (N)",
-where it can be copied; with `--failures-file -` on the command, no file is written. To keep a
-file, run `complexity` in a job of your own, with a `store_artifacts` step after it. The baselined functions that moved
+step stores it. The generated `report_complexity_and_upload` job stores it: give `failures_file` a
+path and the job ends with a `store_artifacts` step for it, which runs even though the gate
+failed, so the file is among the job's artifacts. (Nothing is stored when the gate passes, as no
+file is written; CircleCI notes that and the step succeeds.) `failures_file: "-"` puts the whole
+list at the end of the failure report in the job log instead, headed "Every failing function
+(N)", where it can be copied; with `--failures-file -` on the command, no file is written. In a
+job of your own, run `complexity` with a `store_artifacts` step after it. The baselined functions that moved
 and those that stay as recorded keep their own cap of 25 rows.
 
 A project adopting a maximum usually has functions that are already over it. Record them
@@ -302,7 +304,7 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `baseline` | empty | path of a committed baseline, such as `.jci-coverage-baseline`, of the functions allowed to stay over a maximum |
 | `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
 | `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
-| `failures_file` | empty | `-` puts every failing function, as a markdown task list, at the end of the failure report in the job log; empty adds nothing (a file path is lost when the job ends) |
+| `failures_file` | empty | where to write every failing function, as a markdown task list; the job keeps it as an artifact when the gate fails. `-` puts the list at the end of the failure report in the job log instead; empty adds nothing |
 | `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 

@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- keep the failures file as a job artifact(pr [#119])
+
 ### Fixed
 
 - deps: update dependency jci-coverage to v0.0.19(pr [#115])
@@ -349,6 +353,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#115]: https://github.com/jerus-org/jci-coverage/pull/115
 [#114]: https://github.com/jerus-org/jci-coverage/pull/114
 [#116]: https://github.com/jerus-org/jci-coverage/pull/116
+[#119]: https://github.com/jerus-org/jci-coverage/pull/119
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...HEAD
 [0.0.19]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
