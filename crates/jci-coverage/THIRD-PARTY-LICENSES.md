@@ -13,8 +13,8 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 ## Overview
 
-- **Apache License 2.0** — 116 crate(s)
-- **MIT License** — 36 crate(s)
+- **Apache License 2.0** — 119 crate(s)
+- **MIT License** — 37 crate(s)
 - **Unicode License v3** — 19 crate(s)
 - **ISC License** — 4 crate(s)
 - **BSD 3-Clause "New" or "Revised" License** — 2 crate(s)
@@ -2634,6 +2634,8 @@ Used by:
 - pkg-config 0.3.34
 - regex-automata 0.4.18
 - regex-syntax 0.8.11
+- regex 1.13.1
+- rustc-demangle 0.1.28
 - rustc_version 0.4.1
 - rustix 1.1.5
 - rustls-native-certs 0.8.5
@@ -2864,7 +2866,7 @@ limitations under the License.
 
 Used by:
 
-- jci-coverage 0.0.19
+- jci-coverage 0.0.20
 
 ```text
                               Apache License
@@ -3505,6 +3507,7 @@ Used by:
 - jni-macros 0.22.4
 - jni-sys-macros 0.4.1
 - jni 0.22.4
+- lcov2cobertura 1.0.10
 - libc 0.2.191
 - pin-project-lite 0.2.17
 - proc-macro2 1.0.107
@@ -4391,6 +4394,7 @@ SOFTWARE.
 
 Used by:
 
+- aho-corasick 1.1.5
 - memchr 2.8.3
 - walkdir 2.5.0
 

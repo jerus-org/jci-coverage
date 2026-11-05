@@ -5,9 +5,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.20] - 2026-11-05
+
+Summary: Added[3], Documentation[1], Fixed[2], Testing[1]
+
+### Added
+
+ - feat: take an lcov report as complexity input
+ - feat: add the complexity_and_upload job
+ - feat: keep the failures file as an artifact
+
+### Fixed
+
+ - fix: point two doc links at annotate
+ - fix: detect the report format once
+
 ## [0.0.19] - 2026-11-02
 
-Summary: Added[5], Changed[10], Documentation[2], Fixed[8], Testing[7]
+Summary: Added[5], Changed[10], Chore[1], Documentation[2], Fixed[8], Testing[7]
 
 ### Added
 
@@ -254,7 +269,8 @@ Summary: Added[1], Chore[1]
 
  - feat: scaffold jci-coverage workspace (P0)
 
-[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...HEAD
+[0.0.19]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/jerus-org/jci-coverage/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/jerus-org/jci-coverage/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/jerus-org/jci-coverage/compare/v0.0.15...v0.0.16
