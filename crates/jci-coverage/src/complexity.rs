@@ -6,9 +6,10 @@
 //! reads it for its Complexity and CRAP scores.
 //!
 //! Rust only: the report must be a Cobertura report that `cargo llvm-cov`
-//! wrote for Rust source. A class that is not a `.rs` file, or a report without
-//! `cargo llvm-cov`'s per-function entries, is refused before anything is
-//! read or written.
+//! wrote for Rust source, or the lcov report of `cargo llvm-cov --lcov`, which
+//! is converted to one (see [`lcov`]). A class that is not a `.rs` file, or a
+//! report without `cargo llvm-cov`'s per-function entries, is refused before
+//! anything is read or written.
 //!
 //! Limitations, from reading source rather than compiled code:
 //!
@@ -28,6 +29,7 @@ mod baseline;
 mod cobertura;
 mod counter;
 mod gate_report;
+mod lcov;
 mod metrics;
 mod plan;
 
@@ -54,18 +56,23 @@ pub use plan::{Duplicates, Unmatched};
 pub const DEFAULT_BASELINE: &str = ".jci-coverage-baseline";
 
 /// Parsed `complexity` subcommand arguments.
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct ComplexityArgs {
-    /// Cobertura report to annotate.
+    /// Report to annotate: a Cobertura or an lcov report.
     ///
-    /// The Cobertura file `report` writes.
+    /// The Cobertura file `report` writes, or the lcov file of `cargo llvm-cov
+    /// --lcov`; the format is told from the content. An lcov report is
+    /// converted the way `cargo llvm-cov` converts it, finding the source files
+    /// it names under `--source-root` wherever the report was written.
     #[arg(long, value_name = "PATH", default_value = "coverage/cobertura.xml")]
     pub file: PathBuf,
 
     /// Write the annotated report here instead of over `--file`.
     ///
-    /// The default replaces the report in place; a failed run never leaves a
-    /// half-written file.
+    /// A Cobertura report is replaced in place by default; a failed run never
+    /// leaves a half-written file. An lcov report is never replaced: the
+    /// annotated Cobertura report it is converted to goes here, by default to
+    /// `coverage/cobertura.xml`, where `report` writes one.
     #[arg(long, value_name = "PATH")]
     pub output: Option<PathBuf>,
 
@@ -282,10 +289,32 @@ pub(crate) struct Outcome {
     pub(crate) functions: Vec<FunctionMetrics>,
 }
 
+/// The arguments with an lcov input's output filled in, and the report as
+/// Cobertura XML: read from `--file`, an lcov report converted first.
+fn prepare(args: &ComplexityArgs) -> Result<(ComplexityArgs, String)> {
+    let args = with_lcov_output(args)?;
+    let xml = read_cobertura(&args)?;
+    Ok((args, xml))
+}
+
+/// The report as Cobertura XML: read from `--file`, an lcov report converted
+/// first.
+fn read_cobertura(args: &ComplexityArgs) -> Result<String> {
+    let text = fs::read_to_string(&args.file)
+        .with_context(|| format!("failed to read {}", args.file.display()))?;
+    let format = lcov::detect(&text)
+        .with_context(|| format!("cannot use {} as a report", args.file.display()))?;
+    match format {
+        lcov::Format::Cobertura => Ok(text),
+        lcov::Format::Lcov => lcov::to_cobertura(&text, &args.source_root)
+            .with_context(|| format!("{} is not an lcov report to use", args.file.display())),
+    }
+}
+
 /// Annotate the report, and return what was done.
 pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
-    let xml = fs::read_to_string(&args.file)
-        .with_context(|| format!("failed to read {}", args.file.display()))?;
+    let (args, xml) = prepare(args)?;
+    let args = &args;
     let report = cobertura::parse(&xml)
         .with_context(|| format!("{} is not a Cobertura report", args.file.display()))?;
     report.require_rust_llvm_cov().with_context(|| {
@@ -1000,8 +1029,31 @@ fn outcome_text(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionM
     out
 }
 
+/// The arguments with an lcov input's output filled in: an lcov report is not
+/// rewritten in place, so its annotated Cobertura report goes where `report`
+/// writes one unless `--output` says otherwise.
+fn with_lcov_output(args: &ComplexityArgs) -> Result<ComplexityArgs> {
+    let mut resolved = args.clone();
+    if lcov::sniff(&args.file) != lcov::Format::Lcov {
+        return Ok(resolved);
+    }
+    let output = resolved
+        .output
+        .get_or_insert_with(|| PathBuf::from(crate::report::COBERTURA_PATH));
+    if !args.check_only && !args.dry_run && same_file(output, &args.file) {
+        bail!(
+            "{} is an lcov report and is not rewritten in place; give --output the path of the \
+             Cobertura report to write (by default {})",
+            args.file.display(),
+            crate::report::COBERTURA_PATH
+        );
+    }
+    Ok(resolved)
+}
+
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
+    let args = &with_lcov_output(args)?;
     check_baseline_args(args)?;
     if args.check_only && !args.has_maximum() {
         println!("complexity check: no maximum is set, so there is nothing to check");
@@ -1244,29 +1296,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
 
     /// Run the subcommand and return what it logged.
     fn logged(args: &ComplexityArgs) -> (Result<()>, String) {
-        use std::sync::{Arc, Mutex};
-
-        #[derive(Clone)]
-        struct Buf(Arc<Mutex<Vec<u8>>>);
-        impl std::io::Write for Buf {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().expect("lock").extend_from_slice(bytes);
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-
-        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
-        let writer = buf.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(move || writer.clone())
-            .with_ansi(false)
-            .finish();
-        let result = tracing::subscriber::with_default(subscriber, || run(args));
-        let text = String::from_utf8(buf.0.lock().expect("lock").clone()).expect("utf8");
-        (result, text)
+        github::testing::logged(|| run(args))
     }
 
     #[test]
@@ -2768,5 +2798,170 @@ fn pick(x: Option<i32>) -> Option<i32> {
             dir.path().join("summary.md").exists(),
             "the summary was written"
         );
+    }
+
+    /// The same two functions as `report`, as `cargo llvm-cov --lcov` writes them
+    /// from another machine: `plain` once, `pick` twice.
+    fn lcov_report(root: &str) -> String {
+        format!(
+            "TN:\nSF:{root}/src/lib.rs\n\
+             FN:1,_RNvCs2mwpCrQKxwN_1x5plain\n\
+             FN:3,_RNvCs2mwpCrQKxwN_1x4pick\n\
+             FNDA:1,_RNvCs2mwpCrQKxwN_1x5plain\n\
+             FNDA:0,_RNvCs2mwpCrQKxwN_1x4pick\n\
+             FNF:2\nFNH:1\nDA:1,1\nDA:3,0\nLF:2\nLH:1\nend_of_record\n"
+        )
+    }
+
+    /// `setup`, with an lcov report as the input and an output beside it.
+    fn setup_lcov() -> (tempfile::TempDir, ComplexityArgs) {
+        let (dir, mut args) = setup();
+        args.file = dir.path().join("coverage/lcov.info");
+        fs::write(&args.file, lcov_report("/build/proj")).expect("write lcov");
+        args.output = Some(dir.path().join("coverage/annotated.xml"));
+        (dir, args)
+    }
+
+    #[test]
+    fn an_lcov_report_is_annotated_into_a_cobertura_report_and_left_as_it_was() {
+        let (_dir, args) = setup_lcov();
+        let before = fs::read_to_string(&args.file).expect("read");
+        run(&args).expect("runs");
+        let out = args.output.as_deref().expect("output");
+        let xml = fs::read_to_string(out).expect("written");
+        assert!(xml.trim_start().starts_with("<?xml"), "{xml}");
+        let found = complexities(&xml);
+        assert!(
+            found.contains(&"x::plain=1".to_string()) && found.contains(&"x::pick=4".to_string()),
+            "{found:?}"
+        );
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn an_lcov_report_with_no_output_goes_where_report_writes_its_cobertura_report() {
+        let (_dir, mut args) = setup_lcov();
+        args.output = None;
+        let resolved = with_lcov_output(&args).expect("resolves");
+        assert_eq!(
+            resolved.output.as_deref(),
+            Some(Path::new(crate::report::COBERTURA_PATH))
+        );
+        assert_eq!(resolved.file, args.file);
+        // An output that was asked for is kept.
+        args.output = Some(PathBuf::from("elsewhere.xml"));
+        let kept = with_lcov_output(&args).expect("resolves");
+        assert_eq!(kept.output.as_deref(), Some(Path::new("elsewhere.xml")));
+    }
+
+    #[test]
+    fn a_cobertura_report_is_still_annotated_in_place_by_default() {
+        let (_dir, args) = setup();
+        assert!(args.output.is_none());
+        let resolved = with_lcov_output(&args).expect("resolves");
+        assert!(resolved.output.is_none());
+        run(&args).expect("runs");
+        let xml = fs::read_to_string(&args.file).expect("read");
+        assert!(complexities(&xml).contains(&"x::pick::&lt;u8&gt;=4".to_string()));
+    }
+
+    #[test]
+    fn an_output_that_would_overwrite_the_lcov_report_is_refused() {
+        let (_dir, mut args) = setup_lcov();
+        args.output = Some(args.file.clone());
+        let before = fs::read_to_string(&args.file).expect("read");
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(err.contains("lcov") && err.contains("--output"), "{err}");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn the_gate_reads_an_lcov_report_directly_and_writes_nothing() {
+        let (_dir, mut args) = setup_lcov();
+        args.check_only = true;
+        args.max_complexity = 4;
+        let err = run(&args).unwrap_err().to_string();
+        assert!(err.contains("pick"), "{err}");
+        assert!(!args.output.as_deref().expect("output").exists());
+        args.max_complexity = 5;
+        run(&args).expect("nothing is over 5");
+        assert!(!args.output.as_deref().expect("output").exists());
+    }
+
+    #[test]
+    fn the_overwrite_refusal_is_for_runs_that_write_not_for_the_gate_or_a_dry_run() {
+        let (_dir, mut args) = setup_lcov();
+        args.output = Some(args.file.clone());
+        let before = fs::read_to_string(&args.file).expect("read");
+        args.check_only = true;
+        args.max_complexity = 5;
+        run(&args).expect("the gate writes nothing");
+        args.check_only = false;
+        args.max_complexity = 0;
+        args.dry_run = true;
+        run(&args).expect("a dry run writes nothing");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn a_dry_run_on_an_lcov_report_writes_nothing_and_says_where_it_would() {
+        let (_dir, mut args) = setup_lcov();
+        args.dry_run = true;
+        let out = args.output.clone().expect("output");
+        let outcome = execute(&args).expect("runs");
+        assert!(!out.exists());
+        let text = outcome_text(&args, &outcome.summary, &outcome.functions);
+        assert!(text.contains("(dry run) would write") && text.contains("annotated.xml"));
+    }
+
+    #[test]
+    fn the_report_that_is_neither_format_is_refused_naming_the_file() {
+        let (_dir, mut args) = setup();
+        fs::write(&args.file, "just some words\n").expect("write");
+        args.output = None;
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(
+            err.contains("cobertura.xml") && err.contains("neither a Cobertura report"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_lcov_report_is_annotated_as_the_cobertura_report_of_the_same_run_is() {
+        let dir = tempdir().expect("tempdir");
+        let fixtures = |name: &str| format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+        fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+        fs::copy(fixtures("lcov_demo.rs.txt"), dir.path().join("src/lib.rs")).expect("copy");
+        let annotate = |input: &str| {
+            let (_d, mut args) = setup();
+            args.source_root = dir.path().to_path_buf();
+            args.file = PathBuf::from(fixtures(input));
+            args.output = Some(dir.path().join(format!("{input}.out.xml")));
+            args.warn_complexity = 0;
+            args.warn_crap = 0.0;
+            run(&args).expect("runs");
+            let xml = fs::read_to_string(args.output.expect("output")).expect("read");
+            let mut found = complexities(&xml);
+            found.sort();
+            found
+        };
+        let from_lcov = annotate("lcov_demo.info");
+        assert_eq!(from_lcov, annotate("lcov_demo.xml"));
+        assert!(
+            from_lcov.contains(&"demo::total::{closure#0}=2".to_string())
+                && from_lcov.contains(&"demo::later=2".to_string()),
+            "{from_lcov:?}"
+        );
+    }
+
+    #[test]
+    fn an_lcov_report_whose_files_are_elsewhere_is_annotated_from_the_source_root() {
+        // The report names /build/proj/src/lib.rs; the source is under source_root.
+        let (dir, args) = setup_lcov();
+        assert!(!Path::new("/build/proj/src/lib.rs").exists());
+        run(&args).expect("runs");
+        let xml = fs::read_to_string(args.output.as_deref().expect("output")).expect("read");
+        assert!(xml.contains(r#"filename="src/lib.rs""#), "{xml}");
+        drop(dir);
     }
 }

@@ -65,16 +65,18 @@ enum Commands {
         term_width = 70
     )]
     Report(report::ReportArgs),
-    /// Add cyclomatic complexity to a Cobertura report.
+    /// Add cyclomatic complexity to a Cobertura or lcov report.
     #[command(
         long_about = "Computes the cyclomatic complexity of the Rust \
-            functions a Cobertura report covers and writes it into each \
-            method, where OtterWise reads it for its Complexity and CRAP \
-            scores. `cargo llvm-cov` leaves every complexity at 0. Reads the \
-            source files the report names, relative to `--source-root`, and \
-            needs no other tool. Rust only: it refuses a report that is \
-            not a `cargo llvm-cov` Cobertura report of `.rs` files. Run it \
-            after `report` has written one, and before `upload`.",
+            functions a coverage report covers and writes it into each \
+            method of a Cobertura report, where OtterWise reads it for its \
+            Complexity and CRAP scores. `cargo llvm-cov` leaves every \
+            complexity at 0. Takes the Cobertura report `report` writes, or \
+            the lcov report of `cargo llvm-cov --lcov`, which is converted \
+            first. Reads the source files the report names, relative to \
+            `--source-root`, and needs no other tool. Rust only: it refuses \
+            a report that is not a `cargo llvm-cov` report of `.rs` files. \
+            Run it after `report` has written one, and before `upload`.",
         term_width = 70
     )]
     Complexity(complexity::ComplexityArgs),

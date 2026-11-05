@@ -1,0 +1,11 @@
+An lcov report without function records is refused, with the way to make one.
+
+```
+$ jci-coverage complexity --file coverage/report.lcov
+? 1
+Error: coverage/report.lcov is not an lcov report to use
+
+Caused by:
+    the lcov report has no function records (`FN:` lines); `complexity` needs the per-function data of a report written by `cargo llvm-cov --lcov`
+
+```

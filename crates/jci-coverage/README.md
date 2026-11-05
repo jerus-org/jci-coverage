@@ -18,9 +18,9 @@ Three independent subcommands, not one:
   `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
   `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific.
 - **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
-  report covers and writes it into the report. `cargo llvm-cov` leaves every complexity at
-  zero, so without this step OtterWise shows Complexity and CRAP as 0. It reads the source
-  files the report names and needs no other tool.
+  or lcov report covers and writes it into a Cobertura report. `cargo llvm-cov` leaves
+  every complexity at zero, so without this step OtterWise shows Complexity and CRAP as 0. It
+  reads the source files the report names and needs no other tool.
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates. It must run in a
@@ -83,6 +83,28 @@ functions `cargo llvm-cov` names in its Cobertura report, so it refuses (before 
 source or writing anything) a report that lists a file that is not `.rs`, or that lacks
 `cargo llvm-cov`'s per-function entries. A Cobertura report from another language or tool
 can still be uploaded as it is with `upload`.
+
+The input may also be the lcov report of `cargo llvm-cov --lcov`, which is smaller than the
+Cobertura report. The format is told from the content of `--file`. An lcov report is
+converted exactly as `cargo llvm-cov --cobertura` converts it (with the same
+[`lcov2cobertura`](https://crates.io/crates/lcov2cobertura) crate), annotated, and written
+as a Cobertura report: it is never replaced, so `--output` says where to write (by default
+`coverage/cobertura.xml`, where `report` writes one) and is what `upload` takes next:
+
+```bash
+cargo llvm-cov --lcov --output-path coverage/lcov.info
+jci-coverage complexity --file coverage/lcov.info    # writes coverage/cobertura.xml
+jci-coverage upload --file coverage/cobertura.xml
+```
+
+An lcov report names its files by the absolute path they had where it was written, which is
+often not where the sources are now. For each file `complexity` looks for the longest tail of
+its path that exists under `--source-root`, and takes what is left of the path as the
+directory to strip from all of them, so the report may come from another machine. A file
+that does not share that directory (a dependency's source, say) is left as it is. An lcov
+report without function records, such as one from another tool, is refused: write it with
+`cargo llvm-cov --lcov`. With `--check-only` the report is read and nothing is written, so
+the gate can read the lcov report directly.
 
 `complexity` counts decisions the way [`rust-code-analysis`](https://github.com/mozilla/rust-code-analysis)
 does by default (`--rules rca`): one for each `if`, `for`, `while`, `loop`, match arm,
@@ -271,7 +293,7 @@ first use in CI.
 | `complexity_and_upload` | Rust projects whose dependencies the orb's image cannot build (a workspace that links openssl, for example): take the Cobertura report your own job wrote with `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml` and persisted to the workspace, add complexity to it and upload it, then apply the gate. See below. |
 | `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. No Complexity or CRAP. |
 | `report` | Generate coverage only, e.g. to persist or store the report yourself. |
-| `complexity` | Rust projects: add complexity to a Cobertura report an earlier job produced. |
+| `complexity` | Rust projects: add complexity to a Cobertura or lcov report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
 
 ```yaml
@@ -363,7 +385,8 @@ openssl fails at `report` for want of `pkg-config` and `libssl-dev`), and its jo
 `executor` parameter, so `report_complexity_and_upload` cannot be made to work for such a
 project. `complexity` and `upload` compile nothing: they need only the report and the source
 files. So write the report in a job of your own, in your own executor, persist it, and let
-`complexity_and_upload` do the rest:
+`complexity_and_upload` do the rest (write `--lcov` instead, and set `file: coverage/lcov.info`,
+if your job produces an lcov report; see below):
 
 ```yaml
 jobs:
@@ -387,10 +410,14 @@ workflows:
 
 `complexity_and_upload` checks out the source (the report names its files relative to the
 repository root), attaches the workspace (`attach_workspace` is `true` here, and
-`workspace_root` is where it is attached), annotates the report in place, uploads it and then
-checks the gate, so a failing gate still updates the dashboard. `file` names the report
-relative to the workspace (`coverage/cobertura.xml`). It takes the same complexity, gate and
-`log_level` parameters as `report_complexity_and_upload`, and none of the parameters only
+`workspace_root` is where it is attached), annotates the report, uploads it and then checks
+the gate, so a failing gate still updates the dashboard. `file` names the report relative to
+the workspace (`coverage/cobertura.xml`), and `output` where the annotated Cobertura report
+goes, which is what is uploaded and checked (also `coverage/cobertura.xml`, so a Cobertura
+report is annotated in place). A job that writes an lcov report (`cargo llvm-cov --lcov
+--output-path coverage/lcov.info`, or any job that writes `lcov` from `cargo llvm-cov`)
+sets `file: coverage/lcov.info` and leaves `output`. The job takes the same complexity, gate
+and `log_level` parameters as `report_complexity_and_upload`, and none of the parameters only
 `report` uses (`package`, `runner`, `nextest_profile`, `no_all_features`, `format`).
 
 ## License

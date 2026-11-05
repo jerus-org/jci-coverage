@@ -57,30 +57,69 @@ pub(crate) fn page(comments: &[(u64, &str)]) -> Result<Response> {
     ok(200, &Value::Array(items).to_string())
 }
 
-/// Run `f`, returning what it logged along with its result.
-pub(crate) fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
-    use std::sync::{Arc, Mutex};
+thread_local! {
+    /// Where this thread's log lines go while it is inside [`logged`].
+    static CAPTURE: std::cell::RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>> =
+        const { std::cell::RefCell::new(None) };
+}
 
-    #[derive(Clone)]
-    struct Buf(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Buf {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("lock").extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
+/// Writes a log line to the buffer of the thread that logged it, if that thread
+/// is inside [`logged`], and drops it otherwise.
+#[derive(Clone, Copy)]
+struct ToCapture;
+
+impl std::io::Write for ToCapture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        CAPTURE.with(|c| {
+            if let Some(buf) = c.borrow().as_ref() {
+                buf.lock().expect("lock").extend_from_slice(bytes);
+            }
+        });
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Run `f`, returning what it logged along with its result.
+///
+/// One subscriber is installed for the whole test process and sends each
+/// thread's lines to that thread's buffer. A subscriber installed per call with
+/// `tracing::subscriber::with_default` lost a line in about 3 runs in 100 of the
+/// whole suite (a warning the capturing test had caused was missing from its
+/// log); tracing decides per log statement whether anyone wants it and caches
+/// the answer, and parallel tests changing the subscribers of their threads at
+/// the same time are the likely cause. With one subscriber that wants
+/// everything the failure did not occur in 600 runs.
+pub(crate) fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
+    use std::sync::{Arc, Mutex, Once};
+
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(|| ToCapture)
+            .with_ansi(false)
+            .finish();
+        // A second global subscriber is not an error worth stopping a test for.
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    });
+
+    /// Stops capturing when dropped, so a panic in `f` does not leave the
+    /// buffer attached to the thread.
+    struct Detach;
+    impl Drop for Detach {
+        fn drop(&mut self) {
+            CAPTURE.with(|c| c.borrow_mut().take());
         }
     }
 
-    let buf = Buf(Arc::new(Mutex::new(Vec::new())));
-    let writer = buf.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(move || writer.clone())
-        .with_ansi(false)
-        .finish();
-    let result = tracing::subscriber::with_default(subscriber, f);
-    let text = String::from_utf8(buf.0.lock().expect("lock").clone()).expect("utf8");
+    let buf = Arc::new(Mutex::new(Vec::new()));
+    CAPTURE.with(|c| *c.borrow_mut() = Some(Arc::clone(&buf)));
+    let detach = Detach;
+    let result = f();
+    drop(detach);
+    let text = String::from_utf8(buf.lock().expect("lock").clone()).expect("utf8");
     (result, text)
 }
 

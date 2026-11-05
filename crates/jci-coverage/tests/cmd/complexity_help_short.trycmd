@@ -1,12 +1,12 @@
 ```
 $ jci-coverage complexity -h
-Add cyclomatic complexity to a Cobertura report
+Add cyclomatic complexity to a Cobertura or lcov report
 
 Usage: jci-coverage complexity [OPTIONS]
 
 Options:
       --file <PATH>
-          Cobertura report to annotate [default:
+          Report to annotate: a Cobertura or an lcov report [default:
           coverage/cobertura.xml]
   -v, --verbose...
           Increase logging verbosity

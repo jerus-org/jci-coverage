@@ -37,6 +37,7 @@ tracing-log.workspace = true
 syn.workspace = true
 proc-macro2.workspace = true
 quick-xml.workspace = true
+lcov2cobertura.workspace = true
 
 # upload: git metadata + OtterWise HTTP client
 git2.workspace = true

@@ -1,0 +1,8 @@
+An lcov report is never overwritten with its own annotated Cobertura report.
+
+```
+$ jci-coverage complexity --file coverage/report.lcov --output coverage/report.lcov
+? 1
+Error: coverage/report.lcov is an lcov report and is not rewritten in place; give --output the path of the Cobertura report to write (by default coverage/cobertura.xml)
+
+```
