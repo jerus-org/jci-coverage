@@ -282,7 +282,7 @@ fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
     })
 }
 
-/// What [`execute`] did, and the per-function scores it measured.
+/// What [`annotate`] did, and the per-function scores it measured.
 #[derive(Debug)]
 pub(crate) struct Outcome {
     pub(crate) summary: Summary,
@@ -426,7 +426,7 @@ fn warnings_only<'a, 'b>(
         .collect()
 }
 
-/// A short report of what [`execute`] did.
+/// A short report of what [`annotate`] did.
 fn format_summary(s: &Summary) -> String {
     let mean = if s.kept() == 0 {
         0.0
