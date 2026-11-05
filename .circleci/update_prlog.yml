@@ -16,18 +16,26 @@ orbs:
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.7
   # <<< gen-circleci-orb
 commands:
-  # Move to the head of main and label what is uploaded as main. The pipeline
-  # starts on the merged pull request's branch, so without this the upload would
-  # be labelled with that branch and its pull request.
-  move_to_main_head:
+  # Move to the commit the report job covered, and label what is uploaded as
+  # main. The commit hash comes from the first job through the workspace, so
+  # both jobs cover the same commit even if main moves in between. An empty
+  # hash means the first job found nothing to cover.
+  cover_the_reported_commit:
     steps:
       - run:
-          name: Move to the head of main
+          name: Move to the commit the report covers
           command: |
+            if [ ! -s /tmp/workspace/coverage/head-sha ]; then
+              echo "Nothing was covered - nothing to do."
+              circleci-agent step halt
+              # halt ends the job after this step; the script itself keeps running.
+              exit 0
+            fi
+            sha="$(cat /tmp/workspace/coverage/head-sha)"
             git fetch origin main
-            git checkout -B main origin/main
+            git checkout -B main "$sha"
             git log -1 --format='Covering the head of main: %h %s'
-            # Label the upload as main, not as the merged pull request's branch.
+            # Label the upload as main, not as whatever this pipeline was started for.
             {
               echo 'export CIRCLE_BRANCH=main'
               echo 'unset CIRCLE_PULL_REQUEST CIRCLE_PULL_REQUESTS CI_PULL_REQUEST CIRCLE_PR_NUMBER'
@@ -39,35 +47,41 @@ jobs:
   # pipeline delivers: the prlog commit (`[skip ci]`) when the prlog job added
   # one, else the merge commit. The validation run on a merge covers the commit
   # before the prlog is written, which is never the head, so it does not upload
-  # for main. These two jobs run after the prlog job, move to the head, and
-  # upload coverage for it: the lcov report is written in the workspace's own
-  # executor (the orb's image carries no Rust toolchain), and the second job
-  # converts it, adds complexity (Complexity and CRAP) and uploads it, without
-  # the gate (the gate runs on pull requests).
+  # for main. These two jobs run after the prlog job and upload coverage for
+  # that head: the first writes the lcov report in the workspace's own executor
+  # (the orb's image carries no Rust toolchain) and records which commit it
+  # covered; the second converts the report, adds complexity (Complexity and
+  # CRAP) and uploads it, without the gate (the gate runs on pull requests). The
+  # pipeline starts on the merged pull request's branch, so the upload is
+  # labelled as main.
   coverage_report_on_head:
     executor: toolkit/rust_env_rolling
-    # Coverage instrumentation roughly doubles build memory (as in the
-    # toolkit's code_coverage job).
-    resource_class: large
+    resource_class: medium
     steps:
       - checkout
-      - move_to_main_head
+      - run:
+          name: Move to the head of main
+          command: |
+            git fetch origin main
+            git checkout -B main origin/main
+            git log -1 --format='Covering the head of main: %h %s'
       - run:
           name: Write the lcov coverage report
           command: |
             mkdir -p coverage
             cargo llvm-cov --lcov --output-path coverage/lcov.info --all-features
+            git rev-parse HEAD > coverage/head-sha
       - persist_to_workspace:
           root: .
           paths:
-            - coverage/lcov.info
+            - coverage
   coverage_on_main_head:
     executor: jci-coverage/default
     steps:
       - checkout
-      - move_to_main_head
       - attach_workspace:
           at: /tmp/workspace
+      - cover_the_reported_commit
       # An lcov report is annotated into a Cobertura report, which is written to
       # coverage/cobertura.xml (the default output for an lcov input).
       - jci-coverage/complexity:

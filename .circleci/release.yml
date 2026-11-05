@@ -19,25 +19,24 @@ orbs:
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.7
   # <<< gen-circleci-orb
 commands:
-  # Move to the head of main after a release, if it is the prlog commit the
-  # release ended with, and label what is uploaded as main. Stops the job
-  # (successfully) when the head is not a prlog commit, so a commit is never
-  # uploaded twice.
-  move_to_release_head:
+  # Move to the commit the report job covered, and label what is uploaded as
+  # main. The commit hash comes from the first job through the workspace, so
+  # both jobs cover the same commit even if main moves in between. An empty
+  # hash means the first job found nothing to cover.
+  cover_the_reported_commit:
     steps:
       - run:
-          name: Move to the head of main
+          name: Move to the commit the report covers
           command: |
+            if [ ! -s /tmp/workspace/coverage/head-sha ]; then
+              echo "Nothing was covered - nothing to do."
+              circleci-agent step halt
+              # halt ends the job after this step; the script itself keeps running.
+              exit 0
+            fi
+            sha="$(cat /tmp/workspace/coverage/head-sha)"
             git fetch origin main
-            subject="$(git log -1 --format=%s origin/main)"
-            case "$subject" in
-              "chore: update prlog"*) ;;
-              *)
-                echo "The head of main is not a prlog commit ($subject) - nothing to do."
-                circleci-agent step halt
-                ;;
-            esac
-            git checkout -B main origin/main
+            git checkout -B main "$sha"
             git log -1 --format='Covering the head of main: %h %s'
             # Label the upload as main, not as whatever this pipeline was started for.
             {
@@ -50,36 +49,54 @@ jobs:
   # `toolkit/release_prlog`, whose `chore: update prlog for release … [skip ci]`
   # commit becomes the head of main with no coverage: validation does not
   # upload for main, and the update_prlog pipeline does not run for it (it
-  # follows a merged pull request). These two jobs run after `release_prlog`,
-  # move to the new head and upload coverage for it, as the jobs of
-  # update_prlog.yml do for a merge: the lcov report is written in the
-  # workspace's own executor (the orb's image carries no Rust toolchain), and
-  # the second job converts it, adds complexity and uploads it. Both stop unless
-  # the head is a prlog commit, so a commit is never uploaded twice.
+  # follows a merged pull request). These two jobs run after `release_prlog`
+  # and upload coverage for that head, as the jobs of update_prlog.yml do for a
+  # merge: the first writes the lcov report in the workspace's own executor (the
+  # orb's image carries no Rust toolchain) and records which commit it covered;
+  # the second converts the report, adds complexity and uploads it. The first
+  # finds nothing to cover unless the head is a prlog commit, and records that
+  # too, so a commit is never uploaded twice.
   coverage_report_on_release_head:
     executor: toolkit/rust_env_rolling
-    # Coverage instrumentation roughly doubles build memory (as in the
-    # toolkit's code_coverage job).
-    resource_class: large
+    resource_class: medium
     steps:
       - checkout
-      - move_to_release_head
+      - run:
+          name: Move to the head of main, if it is the prlog commit
+          command: |
+            mkdir -p coverage
+            : > coverage/head-sha
+            git fetch origin main
+            subject="$(git log -1 --format=%s origin/main)"
+            case "$subject" in
+              "chore: update prlog"*) ;;
+              *)
+                echo "The head of main is not a prlog commit ($subject) - nothing to do."
+                exit 0
+                ;;
+            esac
+            git checkout -B main origin/main
+            git log -1 --format='Covering the head of main: %h %s'
+            git rev-parse HEAD > coverage/head-sha
       - run:
           name: Write the lcov coverage report
           command: |
-            mkdir -p coverage
+            if [ ! -s coverage/head-sha ]; then
+              echo "Nothing to cover."
+              exit 0
+            fi
             cargo llvm-cov --lcov --output-path coverage/lcov.info --all-features
       - persist_to_workspace:
           root: .
           paths:
-            - coverage/lcov.info
+            - coverage
   coverage_on_release_head:
     executor: jci-coverage/default
     steps:
       - checkout
-      - move_to_release_head
       - attach_workspace:
           at: /tmp/workspace
+      - cover_the_reported_commit
       # An lcov report is annotated into a Cobertura report, which is written to
       # coverage/cobertura.xml (the default output for an lcov input).
       - jci-coverage/complexity:
