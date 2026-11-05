@@ -6,6 +6,6 @@ $ jci-coverage complexity --file coverage/report.lcov
 Error: coverage/report.lcov is not an lcov report to use
 
 Caused by:
-    the lcov report has no function records (`FN:` lines); `complexity` needs the per-function data of a report written by `cargo llvm-cov --lcov`
+    the lcov report has no function records (`FN:` lines); `complexity` matches functions to the source with them. `cargo llvm-cov --lcov` writes them; lcov from another tool works if it has them and names the functions as Rust paths (`crate::module::function`)
 
 ```

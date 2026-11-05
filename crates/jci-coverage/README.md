@@ -20,7 +20,9 @@ Three independent subcommands, not one:
 - **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
   or lcov report covers and writes it into a Cobertura report. `cargo llvm-cov` leaves
   every complexity at zero, so without this step OtterWise shows Complexity and CRAP as 0. It
-  reads the source files the report names and needs no other tool.
+  reads the source files the report names and needs no other tool. Rust only: the
+  complexity is counted from Rust source, so the report's files must be `.rs` (the coverage
+  formats themselves are not tied to a language; see below).
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
   `report` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates. It must run in a
@@ -101,10 +103,17 @@ An lcov report names its files by the absolute path they had where it was writte
 often not where the sources are now. For each file `complexity` looks for the longest tail of
 its path that exists under `--source-root`, and takes what is left of the path as the
 directory to strip from all of them, so the report may come from another machine. A file
-that does not share that directory (a dependency's source, say) is left as it is. An lcov
-report without function records, such as one from another tool, is refused: write it with
-`cargo llvm-cov --lcov`. With `--check-only` the report is read and nothing is written, so
-the gate can read the lcov report directly.
+that does not share that directory (a dependency's source, say) is left as it is.
+With `--check-only` the report is read and nothing is written, so the gate can read the lcov
+report directly.
+
+lcov is a standard format, but `complexity` needs more of it than the format requires. It
+matches each function in the report to a function in the Rust source by name and start line,
+so the report needs function records (`FN:` lines) whose names are Rust paths
+(`crate::module::function`, as `cargo llvm-cov --lcov` writes them) and the files must be
+`.rs`. A report without function records is refused. Only `cargo llvm-cov --lcov` has been
+tried: lcov from another tool should work if it names the functions the same way, and is
+refused or left unmatched if it does not.
 
 `complexity` counts decisions the way [`rust-code-analysis`](https://github.com/mozilla/rust-code-analysis)
 does by default (`--rules rca`): one for each `if`, `for`, `while`, `loop`, match arm,

@@ -49,8 +49,10 @@ pub(super) fn detect(text: &str) -> Result<Format> {
 pub(super) fn to_cobertura(lcov: &str, source_root: &Path) -> Result<String> {
     if !lcov.lines().any(|line| line.starts_with("FN:")) {
         bail!(
-            "the lcov report has no function records (`FN:` lines); `complexity` needs the \
-             per-function data of a report written by `cargo llvm-cov --lcov`"
+            "the lcov report has no function records (`FN:` lines); `complexity` matches \
+             functions to the source with them. `cargo llvm-cov --lcov` writes them; lcov from \
+             another tool works if it has them and names the functions as Rust paths \
+             (`crate::module::function`)"
         );
     }
     let files: Vec<&str> = lcov
