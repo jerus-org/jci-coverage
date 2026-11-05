@@ -14,6 +14,12 @@ description: >
   Neither complexity nor upload compiles anything, so the orb's image is always
   enough for them. Rust only.
 
+  The report may instead be lcov, which is smaller: write it with `cargo
+  llvm-cov --lcov --output-path coverage/lcov.info`, persist that, and set
+  file: coverage/lcov.info. The job converts it, as cargo llvm-cov converts its
+  own, and uploads the annotated Cobertura report it writes to output
+  (coverage/cobertura.xml by default). The format is told from the content.
+
   complexity_and_upload takes the same options as report_complexity_and_upload
   for the complexity step, the gate (max_complexity, max_crap, baseline,
   pr_comment, max_listed, failures_file) and the log level; file names the
@@ -51,6 +57,9 @@ usage:
         - jci-coverage/complexity_and_upload:
             requires:
               - coverage_report
+            # For an lcov report (persisted as coverage/lcov.info):
+            # file: coverage/lcov.info
+            #
             # Optional: fail on risky functions, allowing today's with a baseline.
             # max_complexity: 15
             # baseline: .jci-coverage-baseline

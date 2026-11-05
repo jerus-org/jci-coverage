@@ -1,9 +1,13 @@
-description: Add cyclomatic complexity to a Cobertura report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image; use it for a project the orb's image cannot build. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
+description: Add cyclomatic complexity to a coverage report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. The report may be Cobertura (cargo llvm-cov --cobertura) or lcov (cargo llvm-cov --lcov), which is converted. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image; use it for a project the orb's image cannot build. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
 executor: default
 parameters:
   file:
     type: string
-    description: The Cobertura report, relative to workspace_root, as the earlier job persisted it. Written by `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml`.
+    description: 'The coverage report, relative to workspace_root, as the earlier job persisted it: a Cobertura report written by `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml`, or an lcov report written by `cargo llvm-cov --lcov --output-path coverage/lcov.info`. The format is told from the content.'
+    default: coverage/cobertura.xml
+  output:
+    type: string
+    description: 'Where to write the annotated Cobertura report, relative to workspace_root; it is what is uploaded and checked. The default is also the default of `file`, so a Cobertura report is annotated in place. An lcov `file` is never replaced: set `file` to the lcov report and leave this.'
     default: coverage/cobertura.xml
   attach_workspace:
     type: boolean
@@ -100,19 +104,20 @@ steps:
     file: << parameters.workspace_root >>/<< parameters.file >>
     gate_tests: << parameters.gate_tests >>
     log_level: << parameters.log_level >>
+    output: << parameters.workspace_root >>/<< parameters.output >>
     rules: << parameters.rules >>
     source_root: << parameters.source_root >>
     unmatched: << parameters.unmatched >>
     warn_complexity: << parameters.warn_complexity >>
     warn_crap: << parameters.warn_crap >>
 - upload:
-    file: << parameters.workspace_root >>/<< parameters.file >>
+    file: << parameters.workspace_root >>/<< parameters.output >>
     log_level: << parameters.log_level >>
 - complexity:
     baseline: << parameters.baseline >>
     check_only: true
     failures_file: << parameters.failures_file >>
-    file: << parameters.workspace_root >>/<< parameters.file >>
+    file: << parameters.workspace_root >>/<< parameters.output >>
     gate_tests: << parameters.gate_tests >>
     log_level: << parameters.log_level >>
     max_complexity: << parameters.max_complexity >>

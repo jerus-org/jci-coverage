@@ -3,7 +3,7 @@ executor: default
 parameters:
   file:
     type: string
-    description: Cobertura report to annotate. The Cobertura file `report` writes.
+    description: 'Report to annotate: a Cobertura or an lcov report. The Cobertura file `report` writes, or the lcov file of `cargo llvm-cov --lcov`; the format is told from the content. An lcov report is converted the way `cargo llvm-cov` converts it, finding the source files it names under `--source-root` wherever the report was written.'
     default: coverage/cobertura.xml
   log_level:
     type: enum
@@ -18,7 +18,7 @@ parameters:
     - vvvv
   output:
     type: string
-    description: Write the annotated report here instead of over `--file`. The default replaces the report in place; a failed run never leaves a half-written file.
+    description: 'Write the annotated report here instead of over `--file`. A Cobertura report is replaced in place by default; a failed run never leaves a half-written file. An lcov report is never replaced: the annotated Cobertura report it is converted to goes here, by default to `coverage/cobertura.xml`, where `report` writes one.'
     default: ''
   source_root:
     type: string

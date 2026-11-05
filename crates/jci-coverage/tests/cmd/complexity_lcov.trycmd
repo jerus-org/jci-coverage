@@ -1,0 +1,20 @@
+An lcov report from `cargo llvm-cov --lcov` is converted, annotated, and written
+as a Cobertura report where `report` writes one (a dry run says where). The lcov
+file is never the one written.
+
+```
+$ jci-coverage complexity --file coverage/report.lcov --dry-run
+[..]INFO jci_coverage::complexity: complexity [..]
+complexity: 9 methods in the report, 8 after merging 1 duplicate instantiation(s)
+  8 matched, 0 not matched to a source function
+  total 12, mean 1.50, max 3
+  most complex:
+       3  demo::block_on::<demo::later::{closure#0}>
+       2  demo::pick::<u8>
+       2  demo::total::{closure#0}
+       2  demo::later
+       1  demo::never
+  0 function(s) at or over complexity 10, 0 at or over CRAP 30
+(dry run) would write coverage/cobertura.xml
+
+```

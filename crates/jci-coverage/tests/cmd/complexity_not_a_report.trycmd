@@ -1,0 +1,11 @@
+A file that is neither a Cobertura nor an lcov report is refused.
+
+```
+$ jci-coverage complexity
+? 1
+Error: cannot use coverage/cobertura.xml as a report
+
+Caused by:
+    it is neither a Cobertura report (XML, starting with `<`) nor an lcov report (starting with `TN:` or `SF:`)
+
+```
