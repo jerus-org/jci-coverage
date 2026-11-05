@@ -144,19 +144,36 @@ workflows:
               ignore:
                 - /pull\/[0-9]+/
 
-      # Dogfooding (P4, #16): coverage via this crate's own orb, replacing
-      # toolkit/code_coverage. Needs OTTERWISE_TOKEN set as a project
-      # environment variable, so forked-PR builds (/pull/N, no secrets) are
-      # skipped. Not run on main: the coverage of main is that of its head, the
-      # commit the update_prlog pipeline delivers (`coverage_on_main_head`), and
-      # a run on the merge commit before the prlog is written is never that head.
-      # Uses the composed job so OtterWise gets a Cobertura report with
-      # complexity (Complexity and CRAP, #44), not the lcov-only
-      # report_and_upload.
+      # Dogfooding (P4, #16): coverage via this crate's own orb, in the two-job
+      # shape the orb offers for a project whose own job makes the report
+      # (#117, #118). The report job is the toolkit's `code_coverage`, which runs
+      # `cargo llvm-cov --lcov` in the workspace's own executor and writes
+      # coverage/lcov.info; `post-steps` persists that file (and `codecov: false`,
+      # as no coverage goes to codecov.io). `complexity_and_upload` then converts
+      # the lcov report to Cobertura, adds complexity, uploads it to OtterWise
+      # (Complexity and CRAP, #44) and runs the gate. Needs OTTERWISE_TOKEN set as
+      # a project environment variable, so forked-PR builds (/pull/N, no secrets)
+      # are skipped, in both jobs. Not run on main: the coverage of main is that of
+      # its head, the commit the update_prlog pipeline delivers
+      # (`coverage_on_main_head`), and a run on the merge commit before the prlog
+      # is written is never that head.
+      - toolkit/code_coverage:
+          name: coverage_report
+          codecov: false
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths:
+                  - coverage/lcov.info
+          filters:
+            branches:
+              ignore:
+                - main
+                - /pull\/[0-9]+/
       #
-      # Also gates individual risky functions (#52) and comments the result on
-      # the pull request (#68): the last step, after the upload, fails the job
-      # if a function is at or over a maximum that .jci-coverage-baseline
+      # The gate gates individual risky functions (#52) and comments the result on
+      # the pull request (#68): the job's last step, after the upload, fails the
+      # job if a function is at or over a maximum that .jci-coverage-baseline
       # (committed at the repo root, made with
       # `jci-coverage complexity --write-baseline`) does not allow, and
       # `pr_comment` posts the result (pass or fail) as one comment, edited in
@@ -165,8 +182,11 @@ workflows:
       # function fails. Regenerate the baseline when a baselined function is
       # fixed (the job says when an entry is no longer needed) and if `rules`
       # is ever changed, as the file records the rule set it was scored with.
-      - jci-coverage/report_complexity_and_upload:
+      - jci-coverage/complexity_and_upload:
+          requires:
+            - coverage_report
           context: bot-check
+          file: coverage/lcov.info
           max_complexity: "15"
           max_crap: "30"
           baseline: .jci-coverage-baseline
