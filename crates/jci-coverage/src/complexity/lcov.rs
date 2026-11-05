@@ -13,16 +13,12 @@
 
 use std::{
     collections::BTreeMap,
-    fs::File,
-    io::{BufRead, Read},
+    io::BufRead,
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail};
-
-/// How much of a file is read to tell its format.
-const SNIFF_BYTES: u64 = 4096;
 
 /// The format of a report given to `complexity`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,18 +41,6 @@ pub(super) fn detect(text: &str) -> Result<Format> {
             "it is neither a Cobertura report (XML, starting with `<`) nor an lcov report \
              (starting with `TN:` or `SF:`)"
         ),
-    }
-}
-
-/// Which format the file at `path` is, for a decision made before the report is
-/// read for real. Anything that cannot be told is Cobertura: reading the file
-/// then reports what is wrong with it.
-pub(super) fn sniff(path: &Path) -> Format {
-    let mut head = Vec::new();
-    let read = File::open(path).and_then(|f| f.take(SNIFF_BYTES).read_to_end(&mut head));
-    match read {
-        Ok(_) => detect(&String::from_utf8_lossy(&head)).unwrap_or(Format::Cobertura),
-        Err(_) => Format::Cobertura,
     }
 }
 
@@ -186,22 +170,6 @@ mod tests {
                 "{text:?}: {err}"
             );
         }
-    }
-
-    #[test]
-    fn a_file_is_sniffed_without_failing_when_it_cannot_be_read() {
-        let dir = tempdir().expect("tempdir");
-        let l = dir.path().join("lcov.info");
-        fs::write(&l, lcov("/a/src/lib.rs")).expect("write");
-        let x = dir.path().join("c.xml");
-        fs::write(&x, "<coverage/>").expect("write");
-        let junk = dir.path().join("junk");
-        fs::write(&junk, "nothing like either").expect("write");
-        assert_eq!(sniff(&l), Format::Lcov);
-        assert_eq!(sniff(&x), Format::Cobertura);
-        // Reading it for real reports the problem; sniffing does not guess lcov.
-        assert_eq!(sniff(&junk), Format::Cobertura);
-        assert_eq!(sniff(&dir.path().join("missing")), Format::Cobertura);
     }
 
     #[test]

@@ -291,31 +291,34 @@ pub(crate) struct Outcome {
 
 /// The arguments with an lcov input's output filled in, and the report as
 /// Cobertura XML: read from `--file`, an lcov report converted first.
+///
+/// The format is told once, from the content that is converted, and that decides
+/// where the result is written, so an lcov report is never taken for a Cobertura
+/// one and replaced.
 fn prepare(args: &ComplexityArgs) -> Result<(ComplexityArgs, String)> {
-    let args = with_lcov_output(args)?;
-    let xml = read_cobertura(&args)?;
-    Ok((args, xml))
-}
-
-/// The report as Cobertura XML: read from `--file`, an lcov report converted
-/// first.
-fn read_cobertura(args: &ComplexityArgs) -> Result<String> {
     let text = fs::read_to_string(&args.file)
         .with_context(|| format!("failed to read {}", args.file.display()))?;
     let format = lcov::detect(&text)
         .with_context(|| format!("cannot use {} as a report", args.file.display()))?;
-    match format {
-        lcov::Format::Cobertura => Ok(text),
+    let args = with_lcov_output(args, format)?;
+    let xml = match format {
+        lcov::Format::Cobertura => text,
         lcov::Format::Lcov => lcov::to_cobertura(&text, &args.source_root)
-            .with_context(|| format!("{} is not an lcov report to use", args.file.display())),
-    }
+            .with_context(|| format!("{} is not an lcov report to use", args.file.display()))?,
+    };
+    Ok((args, xml))
 }
 
 /// Annotate the report, and return what was done.
+#[cfg(test)]
 pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
     let (args, xml) = prepare(args)?;
-    let args = &args;
-    let report = cobertura::parse(&xml)
+    annotate(&args, &xml)
+}
+
+/// Annotate the report `xml`, as `prepare` made it from `--file`, and write it.
+fn annotate(args: &ComplexityArgs, xml: &str) -> Result<Outcome> {
+    let report = cobertura::parse(xml)
         .with_context(|| format!("{} is not a Cobertura report", args.file.display()))?;
     report.require_rust_llvm_cov().with_context(|| {
         format!(
@@ -366,7 +369,7 @@ pub(crate) fn execute(args: &ComplexityArgs) -> Result<Outcome> {
         );
     }
 
-    let annotated = cobertura::rewrite(&xml, &edit)?;
+    let annotated = cobertura::rewrite(xml, &edit)?;
     if !args.dry_run {
         write_atomic(
             args.output.as_deref().unwrap_or(&args.file),
@@ -1031,10 +1034,11 @@ fn outcome_text(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionM
 
 /// The arguments with an lcov input's output filled in: an lcov report is not
 /// rewritten in place, so its annotated Cobertura report goes where `report`
-/// writes one unless `--output` says otherwise.
-fn with_lcov_output(args: &ComplexityArgs) -> Result<ComplexityArgs> {
+/// writes one unless `--output` says otherwise. The output may not be a file the
+/// run also writes or reads as something else.
+fn with_lcov_output(args: &ComplexityArgs, format: lcov::Format) -> Result<ComplexityArgs> {
     let mut resolved = args.clone();
-    if lcov::sniff(&args.file) != lcov::Format::Lcov {
+    if format != lcov::Format::Lcov {
         return Ok(resolved);
     }
     let output = resolved
@@ -1048,19 +1052,21 @@ fn with_lcov_output(args: &ComplexityArgs) -> Result<ComplexityArgs> {
             crate::report::COBERTURA_PATH
         );
     }
+    check_apart_from_report(&resolved)?;
     Ok(resolved)
 }
 
 /// Run the `complexity` subcommand.
 pub fn run(args: &ComplexityArgs) -> Result<()> {
-    let args = &with_lcov_output(args)?;
     check_baseline_args(args)?;
     if args.check_only && !args.has_maximum() {
         println!("complexity check: no maximum is set, so there is nothing to check");
         return Ok(());
     }
     let baseline = load_baseline(args)?;
-    let Outcome { summary, functions } = execute(args)?;
+    let (args, xml) = prepare(args)?;
+    let args = &args;
+    let Outcome { summary, functions } = annotate(args, &xml)?;
     if args.check_only {
         return check(args, baseline.as_ref(), &functions);
     }
@@ -2842,7 +2848,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn an_lcov_report_with_no_output_goes_where_report_writes_its_cobertura_report() {
         let (_dir, mut args) = setup_lcov();
         args.output = None;
-        let resolved = with_lcov_output(&args).expect("resolves");
+        let (resolved, _) = prepare(&args).expect("resolves");
         assert_eq!(
             resolved.output.as_deref(),
             Some(Path::new(crate::report::COBERTURA_PATH))
@@ -2850,15 +2856,62 @@ fn pick(x: Option<i32>) -> Option<i32> {
         assert_eq!(resolved.file, args.file);
         // An output that was asked for is kept.
         args.output = Some(PathBuf::from("elsewhere.xml"));
-        let kept = with_lcov_output(&args).expect("resolves");
+        let (kept, _) = prepare(&args).expect("resolves");
         assert_eq!(kept.output.as_deref(), Some(Path::new("elsewhere.xml")));
+    }
+
+    /// `setup_lcov`, with the report led by more blank lines than any head of the
+    /// file that is looked at to tell its format.
+    fn setup_lcov_after_blank_lines() -> (tempfile::TempDir, ComplexityArgs) {
+        let (dir, mut args) = setup_lcov();
+        let lcov = fs::read_to_string(&args.file).expect("read");
+        fs::write(&args.file, format!("{}{lcov}", "\n".repeat(10_000))).expect("write");
+        args.output = None;
+        (dir, args)
+    }
+
+    #[test]
+    fn an_lcov_report_led_by_many_blank_lines_still_goes_to_the_default_output() {
+        let (_dir, args) = setup_lcov_after_blank_lines();
+        let (resolved, xml) = prepare(&args).expect("prepares");
+        assert_eq!(
+            resolved.output.as_deref(),
+            Some(Path::new(crate::report::COBERTURA_PATH))
+        );
+        assert!(
+            xml.contains("<coverage"),
+            "converted to Cobertura: {xml:.80}"
+        );
+    }
+
+    #[test]
+    fn an_lcov_report_led_by_many_blank_lines_is_not_overwritten_by_its_own_output() {
+        let (_dir, mut args) = setup_lcov_after_blank_lines();
+        args.output = Some(args.file.clone());
+        let before = fs::read_to_string(&args.file).expect("read");
+        let err = format!("{:#}", run(&args).unwrap_err());
+        assert!(err.contains("lcov") && err.contains("--output"), "{err}");
+        assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn an_lcov_output_that_lands_on_the_summary_or_baseline_is_refused_before_writing() {
+        // The default output is not in the arguments, so this is found only once
+        // the format is known.
+        let (dir, mut args) = setup_lcov();
+        args.output = None;
+        args.summary_file = Some(PathBuf::from(crate::report::COBERTURA_PATH));
+        args.max_complexity = 4;
+        let err = format!("{:#}", prepare(&args).unwrap_err());
+        assert!(err.contains("same file as the report"), "{err}");
+        drop(dir);
     }
 
     #[test]
     fn a_cobertura_report_is_still_annotated_in_place_by_default() {
         let (_dir, args) = setup();
         assert!(args.output.is_none());
-        let resolved = with_lcov_output(&args).expect("resolves");
+        let (resolved, _) = prepare(&args).expect("resolves");
         assert!(resolved.output.is_none());
         run(&args).expect("runs");
         let xml = fs::read_to_string(&args.file).expect("read");
