@@ -16,11 +16,11 @@ cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
 rustup_components = ["llvm-tools-preview"]
 # Digest-pinned base images, as in jci-audit: pinned here (not left to the
 # generator's moving-tag default) so the @sha256 survives every regeneration.
-builder_image = "rust:1-slim-trixie@sha256:ea0999ff67355d958b8799b6751c879a6d770076d26047dca66f6e51e77930d3"
+builder_image = "rust:1-slim-trixie@sha256:59f72d5265cfcf281fcfa4d990e75f09c53f911def9913c47a4a89dca690a887"
 # The runtime needs a full Rust toolchain, not just the tool binaries: `report`
 # compiles and runs the consumer's test suite under instrumentation. Same image
 # and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:ea0999ff67355d958b8799b6751c879a6d770076d26047dca66f6e51e77930d3"
+base_image = "rust:1-slim-trixie@sha256:59f72d5265cfcf281fcfa4d990e75f09c53f911def9913c47a4a89dca690a887"
 # Hand-authored orb files the generator does not produce; without this the
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
