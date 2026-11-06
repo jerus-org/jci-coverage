@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: remove the report subcommand(pr [#128])
+
 ### Changed
 
 - ci-run coverage through complexity_and_upload(pr [#125])
@@ -374,6 +378,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#124]: https://github.com/jerus-org/jci-coverage/pull/124
 [#125]: https://github.com/jerus-org/jci-coverage/pull/125
 [#127]: https://github.com/jerus-org/jci-coverage/pull/127
+[#128]: https://github.com/jerus-org/jci-coverage/pull/128
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.20...HEAD
 [0.0.20]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/jerus-org/jci-coverage/compare/v0.0.18...v0.0.19
