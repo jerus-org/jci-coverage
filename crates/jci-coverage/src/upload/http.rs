@@ -1,5 +1,5 @@
 //! Multipart POST to OtterWise, with a primary/fallback endpoint pair and a
-//! testable client abstraction (mirrors `report`'s `CommandRunner`). Purely
+//! testable client abstraction (so the tests need no network). Purely
 //! transport: it has no notion of what counts as success for a given
 //! target — that's supplied by the caller as a predicate (see
 //! `otterwise::is_success`), so a second upload target never has to touch

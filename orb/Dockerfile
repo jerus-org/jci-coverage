@@ -32,12 +32,8 @@ RUN apt-get update \
          sleep "$w"; \
          s=$((s * 2)); [ "$s" -le 300 ] || s=300; \
        done; }
-RUN cargo install cargo-binstall --locked \
-    && cargo binstall --no-confirm \
-    cargo-llvm-cov@0.9.1 \
-    cargo-nextest@0.9.146
 
-FROM rust:1-slim-trixie@sha256:59f72d5265cfcf281fcfa4d990e75f09c53f911def9913c47a4a89dca690a887
+FROM debian:13-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -47,9 +43,5 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -ms /bin/bash circleci
 COPY --from=builder /usr/local/cargo/bin/jci-coverage /usr/local/bin/jci-coverage
-COPY --from=builder /usr/local/cargo/bin/cargo-llvm-cov /usr/local/bin/cargo-llvm-cov
-COPY --from=builder /usr/local/cargo/bin/cargo-nextest /usr/local/bin/cargo-nextest
-RUN rustup component add \
-    llvm-tools-preview
 USER circleci
 WORKDIR /home/circleci/project

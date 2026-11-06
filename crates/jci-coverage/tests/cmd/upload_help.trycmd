@@ -1,11 +1,11 @@
 ```
 $ jci-coverage upload --help
 Standalone: takes a coverage file path and uploads it. Does not
-require `report`, Rust, or `cargo-llvm-cov` — the caller is
-responsible for the file existing at the given path in a format
-OtterWise accepts. It must run in CircleCI: OtterWise shows only
-uploads that carry a CI identity, so without the CircleCI environment
-it stops and names what is missing.
+require Rust or `cargo-llvm-cov` — the caller is responsible for the
+file existing at the given path in a format OtterWise accepts. It must
+run in CircleCI: OtterWise shows only uploads that carry a CI
+identity, so without the CircleCI environment it stops and names what
+is missing.
 
 Usage: jci-coverage upload [OPTIONS] --file <PATH>
 

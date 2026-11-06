@@ -1,0 +1,10 @@
+The `report` subcommand was removed: the project's own job writes the report
+(`cargo llvm-cov --lcov`), and `complexity` and `upload` take it from there.
+
+```
+$ jci-coverage report
+? 2
+error: unrecognized subcommand 'report'
+...
+
+```

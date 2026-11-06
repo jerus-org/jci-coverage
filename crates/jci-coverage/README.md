@@ -1,8 +1,8 @@
 # jci-coverage
 
-Source-based Rust code coverage with
-[`cargo-llvm-cov`](https://crates.io/crates/cargo-llvm-cov), and upload of the report to
-[OtterWise](https://getotterwise.com) for code quality reporting.
+Complexity and CRAP scores for
+[`cargo-llvm-cov`](https://crates.io/crates/cargo-llvm-cov) coverage reports, and upload of
+the report to [OtterWise](https://getotterwise.com) for code quality reporting.
 
 [![Crates.io](https://img.shields.io/crates/v/jci-coverage.svg)](https://crates.io/crates/jci-coverage)
 [![Documentation](https://docs.rs/jci-coverage/badge.svg)](https://docs.rs/jci-coverage)
@@ -11,12 +11,8 @@ Source-based Rust code coverage with
 
 ## Why
 
-Three independent subcommands, not one:
+Two independent subcommands, not one:
 
-- **`report`** — orchestrates `cargo llvm-cov` (and, when selected, `cargo-nextest`) to
-  write a coverage report and print a terminal summary. `--format` chooses the report:
-  `lcov` (the default) writes `coverage/lcov.info`, `cobertura` writes
-  `coverage/cobertura.xml`, and `both` writes both from one test run. Rust-specific.
 - **`complexity`** — computes cyclomatic complexity for the Rust functions a Cobertura
   or lcov report covers and writes it into a Cobertura report. `cargo llvm-cov` leaves
   every complexity at zero, so without this step OtterWise shows Complexity and CRAP as 0. It
@@ -24,7 +20,7 @@ Three independent subcommands, not one:
   complexity is counted from Rust source, so the report's files must be `.rs` (the coverage
   formats themselves are not tied to a language; see below).
 - **`upload`** — takes a coverage file path and posts it to OtterWise. It never assumes
-  `report` produced the file, so it works standalone in a non-Rust project against
+  `complexity` produced the file, so it works standalone in a non-Rust project against
   whatever coverage report that project's own build already generates. It must run in a
   CircleCI job: OtterWise accepts an upload from anywhere but shows only those that carry a
   CI identity (its own bash uploader does not work outside a CI either), so `upload` stops,
@@ -35,25 +31,27 @@ Three independent subcommands, not one:
   past the check; whoever does takes responsibility for what OtterWise then shows.
 
 Kept separate so the CLI surface can grow additional upload targets (Codecov,
-Coveralls) later without reshaping coverage generation.
+Coveralls) later without reshaping complexity analysis.
 
-> **Status:** early (0.0.x). `report` and `upload` are implemented, and the
+The coverage report itself is written by your own job (`cargo llvm-cov`); there is no
+subcommand that runs it. (A `report` subcommand did, up to 0.0.20: see
+[Migrating from `report`](#migrating-from-report).)
+
+> **Status:** early (0.0.x). `complexity` and `upload` are implemented, and the
 > `jerus-org/jci-coverage` CircleCI orb is generated from them. The orb is
 > published (from 0.0.5) — see [ROADMAP.md](../../ROADMAP.md).
 
 ## Runtime prerequisites
 
-`report` **orchestrates the `cargo-llvm-cov` binary as a subprocess** (and
-`cargo-nextest` too, when `--runner nextest` is selected) — it does not bundle either.
-Both must be on `PATH`:
+`complexity` and `upload` run no other tool: they read the coverage report and the Rust
+source files, and `upload` needs a network connection and an OtterWise repository or
+organisation token. The report comes from `cargo llvm-cov`, which your own job runs, with
+the `llvm-tools-preview` rustup component:
 
 ```bash
-cargo binstall cargo-llvm-cov cargo-nextest
+cargo binstall cargo-llvm-cov
 rustup component add llvm-tools-preview
 ```
-
-`upload` has no Rust-specific runtime prerequisites — only a network connection and an
-OtterWise repository or organisation token.
 
 ## Installation
 
@@ -66,16 +64,14 @@ cargo install jci-coverage
 ## Usage
 
 ```bash
-jci-coverage report                          # writes coverage/lcov.info (--format lcov)
-jci-coverage report --format cobertura       # writes coverage/cobertura.xml
-jci-coverage report --format both            # writes both, from one test run
-jci-coverage upload --file coverage/lcov.info # uploads it to OtterWise
+cargo llvm-cov --lcov --output-path coverage/lcov.info   # your own job writes the report
+jci-coverage upload --file coverage/lcov.info            # uploads it to OtterWise
 ```
 
-To report complexity and CRAP, annotate a Cobertura report and upload that instead:
+To report complexity and CRAP, annotate the report and upload that instead:
 
 ```bash
-jci-coverage report --format cobertura        # writes coverage/cobertura.xml
+cargo llvm-cov --cobertura --output-path coverage/cobertura.xml
 jci-coverage complexity                       # adds complexity to it, in place
 jci-coverage upload --file coverage/cobertura.xml
 ```
@@ -91,7 +87,7 @@ Cobertura report. The format is told from the content of `--file`. An lcov repor
 converted exactly as `cargo llvm-cov --cobertura` converts it (with the same
 [`lcov2cobertura`](https://crates.io/crates/lcov2cobertura) crate), annotated, and written
 as a Cobertura report: it is never replaced, so `--output` says where to write (by default
-`coverage/cobertura.xml`, where `report` writes one) and is what `upload` takes next:
+`coverage/cobertura.xml`) and is what `upload` takes next:
 
 ```bash
 cargo llvm-cov --lcov --output-path coverage/lcov.info
@@ -208,7 +204,7 @@ worst first, with where it is, why it fails and the fix), to copy from when trac
 failures as issues in batches. The note about the functions not listed names the file. It is
 written, after the report, only when the gate fails, never with `--dry-run`, and a failure to
 write it is a warning. It cannot be the report, the summary or the baseline. The file is lost when a CI job ends unless a
-step stores it. The generated `report_complexity_and_upload` job stores it: give `failures_file` a
+step stores it. The generated `complexity_and_upload` job stores it: give `failures_file` a
 path and the job ends with a `store_artifacts` step for it, which runs even though the gate
 failed, so the file is among the job's artifacts. (Nothing is stored when the gate passes, as no
 file is written; CircleCI notes that and the step succeeds.) `failures_file: "-"` puts the whole
@@ -284,7 +280,7 @@ Limitations of reading source rather than compiled code:
 - The report is replaced by a new regular file, so a symlink is not followed and the file's
   mode is not kept. Use `--output` to write the annotated report elsewhere.
 
-See `jci-coverage report --help`, `jci-coverage complexity --help` and
+See `jci-coverage complexity --help` and
 `jci-coverage upload --help` for the full flag reference.
 
 ## CircleCI orb
@@ -292,16 +288,13 @@ See `jci-coverage report --help`, `jci-coverage complexity --help` and
 The `jerus-org/jci-coverage` orb is generated from this CLI by
 [`gen-circleci-orb`](https://github.com/jerus-org/gen-circleci-orb) (source in
 [`orb/`](../../orb), config in [`gen-circleci-orb.toml`](../../gen-circleci-orb.toml)).
-Its executor image carries `jci-coverage`, `cargo-llvm-cov`, `cargo-nextest` and a
-Rust toolchain; `cargo-llvm-cov` adds the `llvm-tools-preview` component itself on
-first use in CI.
+Its executor image is a slim Debian with `jci-coverage` and `git`: no Rust toolchain, no
+`cargo`, and no `cargo-llvm-cov`. The jobs therefore take a report your own job wrote, in
+your own executor; they never build your crate.
 
 | Job | Use it for |
 |-----|------------|
-| `report_complexity_and_upload` | **The default for Rust projects.** Generate coverage, add cyclomatic complexity to the Cobertura report and upload that, so OtterWise shows Complexity and CRAP as well as coverage. It writes only `coverage/cobertura.xml`, so a later job that needs `coverage/lcov.info` must set `format: both`. |
-| `complexity_and_upload` | Rust projects whose dependencies the orb's image cannot build (a workspace that links openssl, for example): take the Cobertura report your own job wrote with `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml` and persisted to the workspace, add complexity to it and upload it, then apply the gate. See below. |
-| `report_and_upload` | Rust projects that want the lcov report only: generate `coverage/lcov.info` and upload it in one job. No Complexity or CRAP. |
-| `report` | Generate coverage only, e.g. to persist or store the report yourself. |
+| `complexity_and_upload` | **The default for Rust projects.** Take the report your own job wrote with `cargo llvm-cov` (Cobertura or lcov) and persisted to the workspace, add cyclomatic complexity to it, upload it so OtterWise shows Complexity and CRAP as well as coverage, then apply the gate. See below. |
 | `complexity` | Rust projects: add complexity to a Cobertura or lcov report an earlier job produced. |
 | `upload` | Any project: upload a coverage file an earlier job produced (use `attach_workspace`). Needs no Rust toolchain. |
 
@@ -312,18 +305,18 @@ orbs:
 workflows:
   validation:
     jobs:
-      - jci-coverage/report_complexity_and_upload
+      - coverage_report # your own job: cargo llvm-cov, then persist_to_workspace
+      - jci-coverage/complexity_and_upload:
+          requires: [coverage_report]
 ```
 
-`report_complexity_and_upload` runs `report`, `complexity` and then `upload` of
-`coverage/cobertura.xml`, so the report path is fixed and there is no `file` parameter. It
-writes only the Cobertura report, which is all it needs. It takes the same `package`,
-`runner`, `nextest_profile`, `no_all_features`, `log_level`, `attach_workspace` and
-`workspace_root` parameters as `report_and_upload`, and these more:
+`complexity_and_upload` runs `complexity` and then `upload` of the annotated report, then
+the gate (see "Writing the report in your own job" below). It takes `file` (the report, by
+default `coverage/cobertura.xml`), `output`, `log_level`, `attach_workspace` and
+`workspace_root`, and these more:
 
 | Parameter | Default | Use it to |
 |-----------|---------|-----------|
-| `format` | `cobertura` | write `both` formats from the one test run, when a later job wants `coverage/lcov.info` too (it is not uploaded) |
 | `unmatched` | `keep` | set `fail` so the job stops when a method cannot be matched to a source function, instead of leaving its complexity at 0 |
 | `exclude_tests` | `false` | count `#[cfg(test)]` code and `#[test]` functions as 0 |
 | `source_root` | `.` | read sources from another directory |
@@ -336,7 +329,6 @@ writes only the Cobertura report, which is all it needs. It takes the same `pack
 | `pr_comment` | `false` | post the gate's result as one comment on the pull request, edited in place on each run (see below) |
 | `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
 | `failures_file` | empty | where to write every failing function, as a markdown task list; the job keeps it as an artifact when the gate fails. `-` puts the list at the end of the failure report in the job log instead; empty adds nothing |
-| `max_listed` | `0` | list at most this many failing functions in the failure report and the pull request comment; 0 lists them all |
 | `gate_tests` | `false` | judge `#[cfg(test)]` code and `#[test]` functions against the thresholds too |
 
 The maximums are checked by a last step, after `upload`, that runs `complexity --check-only`:
@@ -352,7 +344,7 @@ and succeeds. To adopt a maximum on existing code, record today's functions once
 `pr_comment: true` passes `--pr-comment` to that last step, so the gate's result is also
 posted as one comment on the pull request, whether the gate passes or fails, and edited in
 place on each run. The gate is the job's last step, after the upload, so a job that fails
-earlier (the tests, the report, the upload) posts nothing and leaves any earlier comment as
+earlier (the report, the upload) posts nothing and leaves any earlier comment as
 it was. It needs a maximum to have a result to post, and a GitHub token with permission to
 comment on pull requests in the `GITHUB_TOKEN` environment variable. Take the token from a
 [context](https://circleci.com/docs/contexts/) or the project's environment variables, never
@@ -362,7 +354,8 @@ fork's build neither a context nor your project's variables), and a failure to p
 warning that does not change the gate's result. Add the context to the job in the workflow:
 
 ```yaml
-      - jci-coverage/report_complexity_and_upload:
+      - jci-coverage/complexity_and_upload:
+          requires: [coverage_report]
           context: my-github-token-context
           max_complexity: 15
           baseline: .jci-coverage-baseline
@@ -372,8 +365,7 @@ warning that does not change the gate's result. Add the context to the job in th
 The `pr_comment` parameter exists only in the orb release that adds it, so pin an orb version
 at or after that one to use it.
 
-It is Rust-only. For a project in another language, or one that wants the lcov report only,
-use `report_and_upload` or `upload`.
+It is Rust-only. For a project in another language, use `upload`.
 
 Set the OtterWise token as the `OTTERWISE_TOKEN` environment variable in each
 project's settings. The `upload` job's `repo_token` parameter exists
@@ -381,21 +373,14 @@ because it mirrors the CLI flag, but a token passed that way is stored in your
 config and shown on the command line, so don't use it. See
 [`orb/src/examples`](../../orb/src/examples) for a non-Rust, upload-only workflow.
 
-Each job runs in the orb's own image, so `report` compiles your crate there. A crate
-that needs extra system libraries to build can't use the orb's `report` jobs; generate the
-report in your own executor and use `complexity_and_upload` (below), or the `upload` job for
-a report without complexity.
-
-### A project the orb's image cannot build
+### Writing the report in your own job
 
 Making the coverage report compiles and runs your tests under instrumentation, so it needs
-your toolchain and native libraries. The orb's image carries neither (a workspace that links
-openssl fails at `report` for want of `pkg-config` and `libssl-dev`), and its jobs take no
-`executor` parameter, so `report_complexity_and_upload` cannot be made to work for such a
-project. `complexity` and `upload` compile nothing: they need only the report and the source
-files. So write the report in a job of your own, in your own executor, persist it, and let
-`complexity_and_upload` do the rest (write `--lcov` instead, and set `file: coverage/lcov.info`,
-if your job produces an lcov report; see below):
+your toolchain and native libraries (a workspace that links openssl needs `pkg-config` and
+`libssl-dev`, for example). The orb's image carries none of them, and its jobs take no
+`executor` parameter, so the report is written by a job of your own, in your own executor
+(the circleci-toolkit's `code_coverage` job is one), and persisted. `complexity` and
+`upload` compile nothing: they need only the report and the source files.
 
 ```yaml
 jobs:
@@ -404,10 +389,10 @@ jobs:
       - image: cimg/rust:1.91 # your toolchain, native libraries and cargo-llvm-cov
     steps:
       - checkout
-      - run: cargo llvm-cov --cobertura --output-path coverage/cobertura.xml
+      - run: cargo llvm-cov --lcov --output-path coverage/lcov.info
       - persist_to_workspace:
           root: .
-          paths: [coverage/cobertura.xml]
+          paths: [coverage/lcov.info]
 
 workflows:
   validation:
@@ -415,19 +400,35 @@ workflows:
       - coverage_report
       - jci-coverage/complexity_and_upload:
           requires: [coverage_report]
+          file: coverage/lcov.info
 ```
 
 `complexity_and_upload` checks out the source (the report names its files relative to the
 repository root), attaches the workspace (`attach_workspace` is `true` here, and
 `workspace_root` is where it is attached), annotates the report, uploads it and then checks
 the gate, so a failing gate still updates the dashboard. `file` names the report relative to
-the workspace (`coverage/cobertura.xml`), and `output` where the annotated Cobertura report
-goes, which is what is uploaded and checked (also `coverage/cobertura.xml`, so a Cobertura
-report is annotated in place). A job that writes an lcov report (`cargo llvm-cov --lcov
---output-path coverage/lcov.info`, or any job that writes `lcov` from `cargo llvm-cov`)
-sets `file: coverage/lcov.info` and leaves `output`. The job takes the same complexity, gate
-and `log_level` parameters as `report_complexity_and_upload`, and none of the parameters only
-`report` uses (`package`, `runner`, `nextest_profile`, `no_all_features`, `format`).
+the workspace (`coverage/cobertura.xml` by default), and `output` where the annotated
+Cobertura report goes, which is what is uploaded and checked (also `coverage/cobertura.xml`,
+so a Cobertura report is annotated in place). An lcov report (`cargo llvm-cov --lcov
+--output-path coverage/lcov.info`) is converted: set `file: coverage/lcov.info` and leave
+`output`; a Cobertura report (`cargo llvm-cov --cobertura --output-path
+coverage/cobertura.xml`) needs neither.
+
+### Migrating from `report`
+
+The `report` subcommand, and the orb jobs `report`, `report_and_upload` and
+`report_complexity_and_upload` that ran it, were removed after 0.0.20, and the orb's image
+no longer carries a Rust toolchain, `cargo-llvm-cov` or `cargo-nextest`. To migrate:
+
+1. Write the report in a job of your own, as above (`cargo llvm-cov --lcov --output-path
+   coverage/lcov.info`, or with `cargo nextest`: `cargo llvm-cov nextest --lcov ...`), and
+   persist it to the workspace.
+2. Replace `report_complexity_and_upload` with `complexity_and_upload`, `report_and_upload`
+   with `upload`, and `report` with your own job. The parameters that only `report` used
+   (`package`, `runner`, `nextest_profile`, `no_all_features`, `format`) are gone: pass the
+   equivalents to `cargo llvm-cov` in your job.
+3. To stay on the old jobs for now, pin the orb to `jerus-org/jci-coverage@0.0.20`. A
+   floating `@0.0` takes the removal.
 
 ## License
 

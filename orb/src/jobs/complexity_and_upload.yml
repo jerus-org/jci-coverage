@@ -1,4 +1,4 @@
-description: Add cyclomatic complexity to a coverage report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. The report may be Cobertura (cargo llvm-cov --cobertura) or lcov (cargo llvm-cov --lcov), which is converted. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image; use it for a project the orb's image cannot build. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
+description: The default job for a Rust project. Add cyclomatic complexity to a coverage report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. The report may be Cobertura (cargo llvm-cov --cobertura) or lcov (cargo llvm-cov --lcov), which is converted. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image. Rust only. Set OTTERWISE_TOKEN as a project environment variable.
 executor: default
 parameters:
   file:

@@ -1,7 +1,7 @@
 [package]
 name = "jci-coverage"
 version = "0.0.20"
-description = "Source-based Rust code coverage (cargo-llvm-cov) with upload to OtterWise for code quality reporting"
+description = "Complexity and CRAP scores for cargo-llvm-cov coverage reports, with upload to OtterWise for code quality reporting"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,12 +13,6 @@ readme = "README.md"
 # cargo-about tooling config: needed to regenerate THIRD-PARTY-LICENSES.md but
 # not part of the distributed crate.
 exclude = ["about.toml", "about.hbs"]
-
-# jci-coverage orchestrates the `cargo-llvm-cov` (and, when the nextest runner
-# is selected, `cargo-nextest`) *binary* as a subprocess for `report` — it
-# does not link either as a library crate. `upload` is a standalone,
-# language-agnostic subcommand: it takes a coverage file path and posts it to
-# OtterWise, with no dependency on `report` or on any Rust-specific tooling.
 
 [dependencies]
 # CLI

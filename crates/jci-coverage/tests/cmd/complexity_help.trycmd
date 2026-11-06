@@ -3,12 +3,12 @@ $ jci-coverage complexity --help
 Computes the cyclomatic complexity of the Rust functions a coverage
 report covers and writes it into each method of a Cobertura report,
 where OtterWise reads it for its Complexity and CRAP scores. `cargo
-llvm-cov` leaves every complexity at 0. Takes the Cobertura report
-`report` writes, or the lcov report of `cargo llvm-cov --lcov`, which
-is converted first. Reads the source files the report names, relative
-to `--source-root`, and needs no other tool. Rust only: it refuses a
-report that is not a `cargo llvm-cov` report of `.rs` files. Run it
-after `report` has written one, and before `upload`.
+llvm-cov` leaves every complexity at 0. Takes the Cobertura report of
+`cargo llvm-cov`, or its lcov report, which is converted first. Reads
+the source files the report names, relative to `--source-root`, and
+needs no other tool. Rust only: it refuses a report that is not a
+`cargo llvm-cov` report of `.rs` files. Run it after `cargo llvm-cov`
+has written one, and before `upload`.
 
 Usage: jci-coverage complexity [OPTIONS]
 
@@ -16,9 +16,9 @@ Options:
       --file <PATH>
           Report to annotate: a Cobertura or an lcov report.
           
-          The Cobertura file `report` writes, or the lcov file of
-          `cargo llvm-cov --lcov`; the format is told from the
-          content. An lcov report is converted the way `cargo
+          The Cobertura file of `cargo llvm-cov --cobertura`, or the
+          lcov file of `cargo llvm-cov --lcov`; the format is told
+          from the content. An lcov report is converted the way `cargo
           llvm-cov` converts it, finding the source files it names
           under `--source-root` wherever the report was written.
           
@@ -34,7 +34,7 @@ Options:
           run never leaves a half-written file. An lcov report is
           never replaced: the annotated Cobertura report it is
           converted to goes here, by default to
-          `coverage/cobertura.xml`, where `report` writes one.
+          `coverage/cobertura.xml`.
 
   -q, --quiet...
           Decrease logging verbosity

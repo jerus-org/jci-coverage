@@ -1,19 +1,13 @@
 Regression test for RUST_LOG="" (set-but-empty) vs. unset — see
-`resolve_filter_source` in `src/main.rs`. Uses `--dry-run`: a real `report`
-shells out to `cargo-llvm-cov`, which reruns this crate's own test suite
-(including this fixture) under instrumentation, recursing without bound.
-
-The leading `...` absorbs the dry-run preflight warning printed when
-`cargo-llvm-cov` isn't on PATH, so this passes whether or not the host has it
-installed; that warning has its own snapshot in
-`report_dry_run_warns_about_missing_tools.trycmd`.
+`resolve_filter_source` in `src/main.rs`. `upload` fails on a file that does
+not exist before any network call, so nothing is read or sent; the INFO lines
+are logged before it does.
 
 ```
-$ RUST_LOG= jci-coverage report --dry-run
-...
-[..]INFO jci_coverage::report: report [..]
-(dry run) would run: cargo llvm-cov --all-features --lcov --output-path coverage/lcov.info
-(dry run) would write [..]coverage/lcov.info
-(dry run) would run: cargo llvm-cov report --summary-only
+$ RUST_LOG= jci-coverage upload --file /no/such/file --repo-token x
+? 1
+[..]INFO jci_coverage::upload: upload [..]
+[..]INFO jci_coverage::upload: upload token repo_token=provided via --repo-token (value withheld)
+Error: coverage file not found: /no/such/file [..]
 
 ```

@@ -273,7 +273,7 @@ fn resolution(limits: &Thresholds, with_baseline: bool, record: &Record) -> Stri
         format!(" {}", record.path)
     };
     items.push(format!(
-        "Accept it for now, recording today's state so that only new or worse\n     functions fail. Run this from the repository root, against a Cobertura\n     report made as in CI (jci-coverage report --format cobertura):\n         {}\n     then commit {} and pass it with --baseline{pass}\n     (orb job parameter baseline: {}).{regenerate}",
+        "Accept it for now, recording today's state so that only new or worse\n     functions fail. Run this from the repository root, against a Cobertura\n     report made as in CI (cargo llvm-cov --cobertura --output-path coverage/cobertura.xml):\n         {}\n     then commit {} and pass it with --baseline{pass}\n     (orb job parameter baseline: {}).{regenerate}",
         record.command, record.path, record.path
     ));
     items.push(format!(
@@ -823,7 +823,7 @@ mod tests {
         assert!(tail.contains("--file cov.xml --rules mccabe"), "{tail}");
         assert!(tail.contains("repository root"), "{tail}");
         assert!(
-            tail.contains("jci-coverage report --format cobertura"),
+            tail.contains("cargo llvm-cov --cobertura --output-path coverage/cobertura.xml"),
             "{tail}"
         );
         assert!(

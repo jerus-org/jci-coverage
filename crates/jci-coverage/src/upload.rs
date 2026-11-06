@@ -1,6 +1,6 @@
 //! Standalone coverage upload to OtterWise.
 //!
-//! Deliberately independent of [`crate::report`]: this subcommand takes a
+//! Deliberately independent of the other subcommands: this one takes a
 //! coverage file path and uploads it, with no assumption about how the file
 //! was produced.
 
@@ -56,8 +56,8 @@ impl std::fmt::Debug for UploadArgs {
 }
 
 /// CLI flag wins; falls back to the given env value. An empty string from
-/// either source counts as absent (matches `report`'s set-but-empty-means-
-/// unset convention), so a CI template that expands an unset secret to `""`
+/// either source counts as absent (the set-but-empty-means-unset
+/// convention), so a CI template that expands an unset secret to `""`
 /// still falls through to a real value instead of silently winning.
 fn resolve_token(cli_flag: Option<&str>, env: Option<String>) -> Option<String> {
     match cli_flag {
@@ -108,7 +108,7 @@ fn require_ci(get_env: &impl Fn(&str) -> Option<String>) -> Result<()> {
 const FILE_FIELD: &str = "clover";
 
 /// Core orchestration, testable without real tools or network — the caller
-/// supplies the client and env lookup (mirrors `report_with`'s split).
+/// supplies the client and env lookup (a split that keeps the network out of the tests).
 fn upload_with<C: UploadClient>(
     client: &C,
     args: &UploadArgs,

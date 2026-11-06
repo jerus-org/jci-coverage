@@ -1,5 +1,5 @@
 An lcov report from `cargo llvm-cov --lcov` is converted, annotated, and written
-as a Cobertura report where `report` writes one (a dry run says where). The lcov
+as a Cobertura report at the default path (a dry run says where). The lcov
 file is never the one written.
 
 ```

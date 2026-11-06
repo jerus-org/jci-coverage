@@ -55,16 +55,20 @@ pub use plan::{Duplicates, Unmatched};
 /// repository root, where the report's workspace-relative file paths start.
 pub const DEFAULT_BASELINE: &str = ".jci-coverage-baseline";
 
+/// Where the annotated Cobertura report goes for an lcov input, and the default
+/// `--file`: the conventional path `cargo llvm-cov --cobertura` is pointed at.
+pub const COBERTURA_PATH: &str = "coverage/cobertura.xml";
+
 /// Parsed `complexity` subcommand arguments.
 #[derive(Debug, Clone, Args)]
 pub struct ComplexityArgs {
     /// Report to annotate: a Cobertura or an lcov report.
     ///
-    /// The Cobertura file `report` writes, or the lcov file of `cargo llvm-cov
-    /// --lcov`; the format is told from the content. An lcov report is
+    /// The Cobertura file of `cargo llvm-cov --cobertura`, or the lcov file of
+    /// `cargo llvm-cov --lcov`; the format is told from the content. An lcov report is
     /// converted the way `cargo llvm-cov` converts it, finding the source files
     /// it names under `--source-root` wherever the report was written.
-    #[arg(long, value_name = "PATH", default_value = "coverage/cobertura.xml")]
+    #[arg(long, value_name = "PATH", default_value = COBERTURA_PATH)]
     pub file: PathBuf,
 
     /// Write the annotated report here instead of over `--file`.
@@ -72,7 +76,7 @@ pub struct ComplexityArgs {
     /// A Cobertura report is replaced in place by default; a failed run never
     /// leaves a half-written file. An lcov report is never replaced: the
     /// annotated Cobertura report it is converted to goes here, by default to
-    /// `coverage/cobertura.xml`, where `report` writes one.
+    /// `coverage/cobertura.xml`.
     #[arg(long, value_name = "PATH")]
     pub output: Option<PathBuf>,
 
@@ -1033,8 +1037,8 @@ fn outcome_text(args: &ComplexityArgs, summary: &Summary, functions: &[FunctionM
 }
 
 /// The arguments with an lcov input's output filled in: an lcov report is not
-/// rewritten in place, so its annotated Cobertura report goes where `report`
-/// writes one unless `--output` says otherwise. The output may not be a file the
+/// rewritten in place, so its annotated Cobertura report goes to the conventional
+/// path unless `--output` says otherwise. The output may not be a file the
 /// run also writes or reads as something else.
 fn with_lcov_output(args: &ComplexityArgs, format: lcov::Format) -> Result<ComplexityArgs> {
     let mut resolved = args.clone();
@@ -1043,13 +1047,13 @@ fn with_lcov_output(args: &ComplexityArgs, format: lcov::Format) -> Result<Compl
     }
     let output = resolved
         .output
-        .get_or_insert_with(|| PathBuf::from(crate::report::COBERTURA_PATH));
+        .get_or_insert_with(|| PathBuf::from(COBERTURA_PATH));
     if !args.check_only && !args.dry_run && same_file(output, &args.file) {
         bail!(
             "{} is an lcov report and is not rewritten in place; give --output the path of the \
              Cobertura report to write (by default {})",
             args.file.display(),
-            crate::report::COBERTURA_PATH
+            COBERTURA_PATH
         );
     }
     check_apart_from_report(&resolved)?;
@@ -2806,7 +2810,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         );
     }
 
-    /// The same two functions as `report`, as `cargo llvm-cov --lcov` writes them
+    /// The same two functions as the Cobertura fixture, as `cargo llvm-cov --lcov` writes them
     /// from another machine: `plain` once, `pick` twice.
     fn lcov_report(root: &str) -> String {
         format!(
@@ -2845,14 +2849,27 @@ fn pick(x: Option<i32>) -> Option<i32> {
     }
 
     #[test]
-    fn an_lcov_report_with_no_output_goes_where_report_writes_its_cobertura_report() {
+    fn the_default_report_path_is_the_one_the_docs_and_the_orb_use() {
+        // Pinned by value: the tests that import the const would pass for any
+        // value, and the orb's complexity_and_upload default is this path.
+        assert_eq!(COBERTURA_PATH, "coverage/cobertura.xml");
+        let cmd = <ComplexityArgs as clap::Args>::augment_args(clap::Command::new("t"));
+        let file = cmd
+            .get_arguments()
+            .find(|a| a.get_id() == "file")
+            .expect("file");
+        assert_eq!(
+            file.get_default_values(),
+            [std::ffi::OsStr::new("coverage/cobertura.xml")]
+        );
+    }
+
+    #[test]
+    fn an_lcov_report_with_no_output_goes_to_the_default_cobertura_path() {
         let (_dir, mut args) = setup_lcov();
         args.output = None;
         let (resolved, _) = prepare(&args).expect("resolves");
-        assert_eq!(
-            resolved.output.as_deref(),
-            Some(Path::new(crate::report::COBERTURA_PATH))
-        );
+        assert_eq!(resolved.output.as_deref(), Some(Path::new(COBERTURA_PATH)));
         assert_eq!(resolved.file, args.file);
         // An output that was asked for is kept.
         args.output = Some(PathBuf::from("elsewhere.xml"));
@@ -2874,10 +2891,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
     fn an_lcov_report_led_by_many_blank_lines_still_goes_to_the_default_output() {
         let (_dir, args) = setup_lcov_after_blank_lines();
         let (resolved, xml) = prepare(&args).expect("prepares");
-        assert_eq!(
-            resolved.output.as_deref(),
-            Some(Path::new(crate::report::COBERTURA_PATH))
-        );
+        assert_eq!(resolved.output.as_deref(), Some(Path::new(COBERTURA_PATH)));
         assert!(
             xml.contains("<coverage"),
             "converted to Cobertura: {xml:.80}"
@@ -2900,7 +2914,7 @@ fn pick(x: Option<i32>) -> Option<i32> {
         // the format is known.
         let (dir, mut args) = setup_lcov();
         args.output = None;
-        args.summary_file = Some(PathBuf::from(crate::report::COBERTURA_PATH));
+        args.summary_file = Some(PathBuf::from(COBERTURA_PATH));
         args.max_complexity = 4;
         let err = format!("{:#}", prepare(&args).unwrap_err());
         assert!(err.contains("same file as the report"), "{err}");

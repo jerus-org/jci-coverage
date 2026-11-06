@@ -17,7 +17,7 @@ this document groups that work into themes and horizons.
 ## Current status
 
 jci-coverage is **pre-pre-release (0.0.x)**. The workspace and release machinery are
-scaffolded, both `report` and `upload` are implemented, and the CircleCI orb is
+scaffolded, `complexity` and `upload` are implemented (the `report` subcommand was removed, see P1), and the CircleCI orb is
 generated from them.
 
 ## Phased plan to 0.1.0 (preview)
@@ -25,10 +25,10 @@ generated from them.
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **P0 — scaffold** | Workspace, clap skeleton (flags settled, behaviour stubbed), release machinery, `jci-audit`-managed `deny.toml`/license policy | Done |
-| **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done |
+| **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done; removed in the next release ([#126](https://github.com/jerus-org/jci-coverage/issues/126)): the project's own job runs `cargo llvm-cov`, and `complexity` and `upload` take the report from there |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); published from `0.0.5` |
-| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `0.0.8`) validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): CI runs the orb's `report_and_upload` (0.0.8, which carries the `upload` fix); needs `OTTERWISE_TOKEN` set as a project variable, then the first dogfooded release |
+| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI writes the report with the toolkit's `code_coverage` job and runs the orb's `complexity_and_upload` (with the gate) on it, and on the head of `main` after the prlog update; the first crate release cut after that validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): the dogfooding runs (#125, #127); `OTTERWISE_TOKEN` is set as a project variable; the first release cut with it is the removal of `report` (#126) |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
@@ -77,7 +77,7 @@ generated from them.
 
 ## Medium term — toward 1.0
 
-- **Stabilise the CLI surface.** Settle `report`/`upload`'s flags so that `0.x → 1.0`
+- **Stabilise the CLI surface.** Settle `complexity`/`upload`'s flags so that `0.x → 1.0`
   is a stability milestone with documented migration guidance for existing consumers.
 - **Consumer migration.** Offer the orb as the coverage job across the org's Rust repos,
   once the MVP parity gap (if any remains — see the crate README's status note) is
