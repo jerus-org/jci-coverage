@@ -4,29 +4,16 @@ namespaces = ["jerus-org"]
 orb_dir = "orb"
 home_url = "https://github.com/jerus-org/jci-coverage"
 source_url = "https://github.com/jerus-org/jci-coverage"
-# `report` drives cargo-llvm-cov (and cargo-nextest for `--runner nextest`) as
-# subprocesses, so the executor image must carry both. Installed via
-# cargo-binstall into the generated Dockerfile, pinned for reproducible images.
-cargo_tools = ["cargo-llvm-cov@0.9.1", "cargo-nextest@0.9.146"]
-# `cargo-llvm-cov` needs the `llvm-tools-preview` rustup component and otherwise
-# downloads it (about 39 MiB) on every `report` run, so bake it into the image for
-# the image's default toolchain (the `rust:` base image provides rustup). A
-# consumer whose rust-toolchain.toml selects another toolchain still gets the
-# component added by cargo-llvm-cov on first use when `CI` is set.
-rustup_components = ["llvm-tools-preview"]
-# Digest-pinned base images, as in jci-audit: pinned here (not left to the
+# Digest-pinned builder image, as in jci-audit: pinned here (not left to the
 # generator's moving-tag default) so the @sha256 survives every regeneration.
+# Only the builder stage uses it: the runtime stage is the generator's slim
+# default, with no Rust toolchain, since `complexity` and `upload` compile
+# nothing and run no tests.
 builder_image = "rust:1-slim-trixie@sha256:59f72d5265cfcf281fcfa4d990e75f09c53f911def9913c47a4a89dca690a887"
-# The runtime needs a full Rust toolchain, not just the tool binaries: `report`
-# compiles and runs the consumer's test suite under instrumentation. Same image
-# and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:59f72d5265cfcf281fcfa4d990e75f09c53f911def9913c47a4a89dca690a887"
 # Hand-authored orb files the generator does not produce; without this the
 # prune step would delete them as orphans on the next `generate`.
 custom_files = [
-    "src/examples/rust_report_and_upload.yml",
     "src/examples/rust_complexity_and_upload.yml",
-    "src/examples/rust_report_complexity_and_upload.yml",
     "src/examples/upload_only.yml",
 ]
 
@@ -76,266 +63,37 @@ branch_patterns = ["renovate/*"]
 workflow = "update_prlog"
 file = "update_prlog.yml"
 
-# Generate and upload in one job. `report` writes coverage/lcov.info into its own job's
-# working directory, so a separate `upload` job would need a workspace hand-off;
-# composing both here avoids that. Simple mode (steps + params), not rich mode:
-# the exposed job parameters are derived from the commands themselves, so
-# `runner` and `log_level` keep their enum types. Tokens are deliberately NOT
-# exposed: `upload` falls back to OTTERWISE_TOKEN, which a consumer sets as a
-# per-project environment variable.
-[[job_group]]
-name = "report_and_upload"
-description = "Generate Rust coverage with cargo-llvm-cov (coverage/lcov.info) and upload it to OtterWise. Writes lcov only: use report_complexity_and_upload to also report Complexity and CRAP. Set OTTERWISE_TOKEN as a project environment variable."
-steps = ["report", "upload"]
-params = ["package", "runner", "nextest_profile", "no_all_features", "log_level"]
-
-# The default job for a Rust project: `report_and_upload` plus complexity. One
-# instrumented test run writes the Cobertura report (only that format, unless
-# `format: both` asks for lcov too), `complexity` annotates it, and `upload`
-# sends it so OtterWise shows Complexity and CRAP. Rich mode (not simple)
-# because `report` and `upload` need their own values: the format defaults to
-# the one format this job needs (`cobertura`, with `both` available), and
-# `upload`'s file is the Cobertura report, not the lcov default. `complexity`
-# exposes the options that change what it reports (`unmatched`, `exclude_tests`,
-# `source_root`, `rules`); `duplicates` and `no_rollup` are left at their
-# defaults because they change what OtterWise sums. Unlike `report_and_upload`
-# this job is hand-maintained, not regenerated from `--help`: keep its
-# parameters in step with `report`'s. `report_and_upload` remains, for projects
-# that want the lcov report only (jerus-org/jci-coverage#44).
-[[job_group]]
-name = "report_complexity_and_upload"
-description = "The default job for a Rust project. Generate coverage with cargo-llvm-cov, add cyclomatic complexity to its Cobertura report and upload that to OtterWise, which then shows Complexity and CRAP. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
-
-[[job_group.parameter]]
-name = "package"
-description = "Limit coverage to one workspace package"
-default = ""
-
-[[job_group.parameter]]
-name = "runner"
-enum = ["test", "nextest"]
-default = "test"
-description = "Test runner to drive coverage with"
-
-[[job_group.parameter]]
-name = "nextest_profile"
-description = "Nextest profile to use. Only meaningful with `--runner nextest`."
-default = ""
-
-[[job_group.parameter]]
-name = "no_all_features"
-type = "boolean"
-default = "false"
-description = "Disable `--all-features` (on by default). Leaving it on means instrumented subprocess coverage is captured."
-
-[[job_group.parameter]]
-name = "format"
-enum = ["cobertura", "both"]
-default = "cobertura"
-description = "Report format(s) to write. `cobertura` (the default) writes only `coverage/cobertura.xml`, which is all this job needs; `both` also writes `coverage/lcov.info` from the same test run, for a later job that wants it. The lcov file is not uploaded."
-
-[[job_group.parameter]]
-name = "unmatched"
-enum = ["keep", "one", "fail"]
-default = "keep"
-description = "What to do with a method that has no matching function in the source. `fail` stops the job, so a run where complexity silently stays 0 is not reported as a success."
-
-[[job_group.parameter]]
-name = "exclude_tests"
-type = "boolean"
-default = "false"
-description = "Count `#[cfg(test)]` code and `#[test]` functions as complexity 0"
-
-[[job_group.parameter]]
-name = "source_root"
-default = "."
-description = "Directory the report's source file paths are relative to"
-
-[[job_group.parameter]]
-name = "rules"
-enum = ["rca", "mccabe"]
-default = "rca"
-description = "Which decision points count"
-
-[[job_group.parameter]]
-name = "warn_complexity"
-default = "10"
-description = "Warn about each function whose cyclomatic complexity is at least this. 0 turns the check off"
-
-[[job_group.parameter]]
-name = "warn_crap"
-default = "30"
-description = "Warn about each function whose CRAP score is at least this. 0 turns the check off"
-
-[[job_group.parameter]]
-name = "max_complexity"
-default = "0"
-description = "Fail the job, after the upload, if any function's cyclomatic complexity is at least this. 0 (the default) turns the check off"
-
-[[job_group.parameter]]
-name = "max_crap"
-default = "0"
-description = "Fail the job, after the upload, if any function's CRAP score is at least this. 0 (the default) turns the check off"
-
-[[job_group.parameter]]
-name = "baseline"
-default = ""
-description = "Path of a committed baseline of the functions allowed to stay over a maximum, such as `.jci-coverage-baseline`, made with `jci-coverage complexity --write-baseline`. A baselined function fails only if it gets worse. Empty means no baseline"
-
-[[job_group.parameter]]
-name = "pr_comment"
-type = "boolean"
-default = "false"
-description = "Post the gate's result as a comment on the pull request, and keep it up to date: one comment, edited in place on each run, whether the gate passes or fails. The gate is the job's last step, after the upload, so a job that fails earlier posts nothing and leaves any earlier comment as it was. Needs a maximum, and a GitHub token with permission to comment in GITHUB_TOKEN, from a context or the project's environment variables (never a parameter). Nothing is posted, and the reason is logged, for a build with no pull request or a pull request from a fork, which gets neither. A failure to post is a warning and does not change the result. Needs an orb release that includes this parameter."
-
-[[job_group.parameter]]
-name = "max_listed"
-default = "0"
-description = "List at most this many of the failing functions, worst first, in the failure report and in the pull request comment. The headline still counts all of them and says how many are not listed. 0 (the default) lists them all; a comment too long for GitHub is cut to fit whatever this says. Needs an orb release that includes this parameter."
-
-[[job_group.parameter]]
-name = "failures_file"
-default = ""
-description = "Where to put every failing function, as a markdown task list one to a line, worst first, whatever max_listed says: a list to copy from when tracking the failures as issues, however many there are. Set it to `-` to have the whole list at the end of the failure report in the job log. A file path is written when the gate fails and kept as a job artifact. Empty adds nothing. Needs an orb release that includes this parameter."
-
-[[job_group.parameter]]
-name = "gate_tests"
-type = "boolean"
-default = "false"
-description = "Judge `#[cfg(test)]` code and `#[test]` functions against the warning and maximum thresholds too"
-
-[[job_group.parameter]]
-name = "log_level"
-enum = ["quiet", "default", "v", "vv", "vvv", "vvvv"]
-default = "default"
-description = "Logging verbosity, from `quiet` to `vvvv` (most verbose)."
-
-[[job_group.step]]
-builtin = "checkout"
-
-[[job_group.step]]
-builtin = "attach_workspace"
-
-[[job_group.step]]
-command = "report"
-# Left at the command's default on purpose: `--dry-run` is for a local preview.
-defaults = ["dry_run"]
-
-[job_group.step.with]
-format = "<< parameters.format >>"
-package = "<< parameters.package >>"
-runner = "<< parameters.runner >>"
-nextest_profile = "<< parameters.nextest_profile >>"
-no_all_features = "<< parameters.no_all_features >>"
-log_level = "<< parameters.log_level >>"
-
-[[job_group.step]]
-command = "complexity"
-# Left at the command's default on purpose: the report is annotated in place,
-# duplicate instantiations are merged and roll-ups are written because those
-# change what OtterWise sums, and `--dry-run` is for a local preview. The
-# maximums and the baseline are the gate step's, after `upload`: failing this
-# step would skip the upload and leave the dashboard stale.
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "max_complexity", "max_crap", "baseline", "write_baseline", "check_only", "summary_file", "pr_comment", "max_listed", "failures_file"]
-
-[job_group.step.with]
-file = "coverage/cobertura.xml"
-source_root = "<< parameters.source_root >>"
-rules = "<< parameters.rules >>"
-unmatched = "<< parameters.unmatched >>"
-exclude_tests = "<< parameters.exclude_tests >>"
-warn_complexity = "<< parameters.warn_complexity >>"
-warn_crap = "<< parameters.warn_crap >>"
-gate_tests = "<< parameters.gate_tests >>"
-log_level = "<< parameters.log_level >>"
-
-[[job_group.step]]
-command = "upload"
-# Deliberately not exposed: the token comes from OTTERWISE_TOKEN (a token passed
-# as a parameter is stored in the consumer's config and shown on the command
-# line), and the endpoint override is for testing the CLI.
-defaults = ["repo_token", "endpoint"]
-
-[job_group.step.with]
-file = "coverage/cobertura.xml"
-log_level = "<< parameters.log_level >>"
-
-# The gate: a second `complexity` step after `upload` (jerus-org/jci-coverage#52),
-# so a function over a maximum fails the job once the upload has happened and
-# the dashboard shows the failing state. `--check-only` leaves the report as it
-# is and does not repeat the summary or the warnings; with every maximum off
-# (the default) it has nothing to check and succeeds. The annotating step has
-# already matched the methods, set the roll-ups and warned, so `unmatched`,
-# `exclude_tests` and the warn thresholds are not the gate's. `pr_comment`,
-# `max_listed` and `failures_file` are the gate's: the summary it posts and the
-# failures it lists are the gate's result. A file path is kept by the
-# `store_artifacts` step that follows (jerus-org/gen-circleci-orb#527), which runs
-# even though this step failed; `failures_file: "-"` puts the list in the log
-# instead. It is off by default, and
-# needs `GITHUB_TOKEN` from the environment or a context (never a parameter,
-# which would be stored in the consumer's config).
-[[job_group.step]]
-command = "complexity"
-defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]
-
-[job_group.step.with]
-file = "coverage/cobertura.xml"
-check_only = "true"
-source_root = "<< parameters.source_root >>"
-rules = "<< parameters.rules >>"
-max_complexity = "<< parameters.max_complexity >>"
-max_crap = "<< parameters.max_crap >>"
-baseline = "<< parameters.baseline >>"
-pr_comment = "<< parameters.pr_comment >>"
-max_listed = "<< parameters.max_listed >>"
-failures_file = "<< parameters.failures_file >>"
-gate_tests = "<< parameters.gate_tests >>"
-log_level = "<< parameters.log_level >>"
-
-# Keep the failures file (#65). `condition` runs it only when a path was given.
-[[job_group.step]]
-builtin = "store_artifacts"
-condition = "failures_file"
-
-[job_group.step.with]
-path = "<< parameters.failures_file >>"
-
 # Curated step names: without a label the generator uses the first paragraph of
 # each subcommand's `--help`, which for these is the whole long description.
-[subcommand.report]
-label = "Generate coverage report"
-
 [subcommand.complexity]
 label = "Add complexity to coverage report"
 
 [subcommand.upload]
 label = "Upload coverage to OtterWise"
 
-# `report` always writes coverage/lcov.info, so make that `upload`'s default.
-# gen-circleci-orb >= 0.1.28 applies this to report_and_upload's `file` too
-# (gen-circleci-orb#458), so the composed job no longer requires it; the
-# standalone `upload` job gets the same default.
+# `upload` standalone defaults to the lcov report that `cargo llvm-cov --lcov`
+# writes (and the toolkit's `code_coverage` persists), for a project that sends
+# the report as it is. `complexity_and_upload` below sets its own `file`.
 [subcommand.upload.param.file]
 default = "coverage/lcov.info"
 
-# The input-only counterpart of `report_complexity_and_upload` (jerus-org/jci-coverage#117).
-# Creating the coverage report means compiling and running the consumer's tests
-# under instrumentation, which needs the consumer's own toolchain and native
-# libraries (a workspace that links openssl needs pkg-config and libssl-dev, which
-# the orb's image does not carry, and no job here takes an executor). `complexity`
-# and `upload` compile nothing: they need only the report and the source files, so
-# the orb's image always suffices for them. This job therefore starts from a
-# Cobertura report the consumer's own job wrote with
-# `cargo llvm-cov --cobertura --output-path coverage/cobertura.xml` and persisted to
-# the workspace, and does what `report_complexity_and_upload` does after `report`.
-# Rich mode, as there: hand-maintained, so keep the parameters it shares with
-# `report_complexity_and_upload` in step with it. `attach_workspace` is declared
-# here, defaulting to true, because the built-in step's own parameter defaults to
-# false and the report arrives in the workspace; a declared parameter takes
-# precedence over the one the built-in injects.
+# The default job for a Rust project (jerus-org/jci-coverage#117). Making the
+# coverage report means compiling and running the consumer's tests under
+# instrumentation, which needs the consumer's own toolchain and native libraries
+# (a workspace that links openssl needs pkg-config and libssl-dev), and no job
+# here takes an executor. `complexity` and `upload` compile nothing: they need only
+# the report and the source files, so the orb's slim image always suffices for
+# them. This job therefore starts from a report the consumer's own job wrote with
+# `cargo llvm-cov` and persisted to the workspace (the toolkit's `code_coverage`
+# job does this), adds complexity, uploads it, and runs the gate. Rich mode:
+# hand-maintained, so keep the parameters it shares with `complexity` and `upload`
+# in step with them. `attach_workspace` is declared here, defaulting to true,
+# because the built-in step's own parameter defaults to false and the report
+# arrives in the workspace; a declared parameter takes precedence over the one the
+# built-in injects.
 [[job_group]]
 name = "complexity_and_upload"
-description = "Add cyclomatic complexity to a coverage report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. The report may be Cobertura (cargo llvm-cov --cobertura) or lcov (cargo llvm-cov --lcov), which is converted. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image; use it for a project the orb's image cannot build. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
+description = "The default job for a Rust project. Add cyclomatic complexity to a coverage report that an earlier job wrote with cargo llvm-cov and persisted to the workspace, and upload it to OtterWise, which then shows Complexity and CRAP. The report may be Cobertura (cargo llvm-cov --cobertura) or lcov (cargo llvm-cov --lcov), which is converted. Takes the report instead of making it, so it needs none of the project's build dependencies in the orb's image. Rust only. Set OTTERWISE_TOKEN as a project environment variable."
 
 [[job_group.parameter]]
 name = "file"
@@ -459,7 +217,16 @@ defaults = ["repo_token", "endpoint"]
 file = "<< parameters.workspace_root >>/<< parameters.output >>"
 log_level = "<< parameters.log_level >>"
 
-# The gate, after the upload, as in `report_complexity_and_upload`.
+# The gate: a second `complexity` step after `upload` (jerus-org/jci-coverage#52),
+# so a function over a maximum fails the job once the upload has happened and the
+# dashboard shows the failing state. `--check-only` leaves the report as it is and
+# does not repeat the summary or the warnings; with every maximum off (the
+# default) it has nothing to check and succeeds. `pr_comment`, `max_listed` and
+# `failures_file` are the gate's: the summary it posts and the failures it lists
+# are the gate's result. A file path is kept by the `store_artifacts` step that
+# follows (jerus-org/gen-circleci-orb#527), which runs even though this step
+# failed. `pr_comment` needs `GITHUB_TOKEN` from the environment or a context
+# (never a parameter, which would be stored in the consumer's config).
 [[job_group.step]]
 command = "complexity"
 defaults = ["output", "duplicates", "no_rollup", "dry_run", "unmatched", "exclude_tests", "warn_complexity", "warn_crap", "write_baseline", "summary_file"]

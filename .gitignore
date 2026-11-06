@@ -20,8 +20,8 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Coverage — jci-coverage's own generated output (the thing this tool produces),
-# never committed.
+# Coverage — the report `cargo llvm-cov` writes for jci-coverage's own CI and
+# `just cov`, never committed.
 /coverage/
 *.profraw
 *.profdata

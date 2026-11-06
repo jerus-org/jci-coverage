@@ -1,32 +1,32 @@
 description: >
-  Rust project whose dependencies the orb's image cannot build: write the
-  Cobertura report in your own job, then add cyclomatic complexity to it and
-  upload it to OtterWise with complexity_and_upload.
+  Rust project: write the coverage report in your own job, then add cyclomatic
+  complexity to it and upload it to OtterWise with complexity_and_upload.
 
   Making the report means compiling and running your tests under
   instrumentation, which needs your toolchain and native libraries (a
   workspace that links openssl needs pkg-config and libssl-dev, for example).
-  The orb's image does not carry them, and its jobs take no executor, so
-  report_complexity_and_upload fails for such a project at its first step. So
-  your own job runs `cargo llvm-cov --cobertura --output-path
-  coverage/cobertura.xml` in your executor and persists that file to the
-  workspace; complexity_and_upload attaches the workspace and does the rest.
-  Neither complexity nor upload compiles anything, so the orb's image is always
+  The orb's image carries none of them and its jobs take no executor, so your
+  own job runs `cargo llvm-cov` in your executor (the circleci-toolkit's
+  code_coverage job does this) and persists the report to the workspace;
+  complexity_and_upload attaches the workspace and does the rest. Neither
+  complexity nor upload compiles anything, so the orb's slim image is always
   enough for them. Rust only.
 
-  The report may instead be lcov, which is smaller: write it with `cargo
-  llvm-cov --lcov --output-path coverage/lcov.info`, persist that, and set
-  file: coverage/lcov.info. The job converts it, as cargo llvm-cov converts its
-  own, and uploads the annotated Cobertura report it writes to output
-  (coverage/cobertura.xml by default). The format is told from the content.
+  The report may be lcov, which is smaller: write it with `cargo llvm-cov
+  --lcov --output-path coverage/lcov.info`, persist that, and set file:
+  coverage/lcov.info. The job converts it, as cargo llvm-cov converts its own,
+  and uploads the annotated Cobertura report it writes to output
+  (coverage/cobertura.xml by default). Or write Cobertura with `cargo llvm-cov
+  --cobertura --output-path coverage/cobertura.xml`, the default for file. The
+  format is told from the content.
 
-  complexity_and_upload takes the same options as report_complexity_and_upload
-  for the complexity step, the gate (max_complexity, max_crap, baseline,
-  pr_comment, max_listed, failures_file) and the log level; file names the
-  report relative to the workspace (coverage/cobertura.xml by default). Set the
-  OtterWise token as the OTTERWISE_TOKEN environment variable in each project's
-  settings. Never pass a token as a parameter: it would be stored in your
-  config and appear on the command line.
+  complexity_and_upload takes the options of the complexity step, the gate
+  (max_complexity, max_crap, baseline, pr_comment, max_listed, failures_file)
+  and the log level; file names the report relative to the workspace
+  (coverage/cobertura.xml by default). Set the OtterWise token as the
+  OTTERWISE_TOKEN environment variable in each project's settings. Never pass a
+  token as a parameter: it would be stored in your config and appear on the
+  command line.
 
   The job checks out the source: the report names its files relative to the
   repository root, and complexity reads them from the checkout. The gate is the

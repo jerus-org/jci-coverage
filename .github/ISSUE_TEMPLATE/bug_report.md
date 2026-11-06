@@ -36,7 +36,7 @@ See SECURITY.md for the policy.
 ## Environment
 
 - jci-coverage version:
-- Subcommand (`report` / `upload`):
+- Subcommand (`complexity` / `upload`):
 - Rust toolchain (`rustc --version`):
 - Operating system:
 
