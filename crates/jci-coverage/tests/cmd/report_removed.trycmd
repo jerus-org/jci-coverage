@@ -5,9 +5,6 @@ The `report` subcommand was removed: the project's own job writes the report
 $ jci-coverage report
 ? 2
 error: unrecognized subcommand 'report'
-
-Usage: jci-coverage [OPTIONS] <COMMAND>
-
-For more information, try '--help'.
+...
 
 ```

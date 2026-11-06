@@ -68,7 +68,7 @@ pub struct ComplexityArgs {
     /// `cargo llvm-cov --lcov`; the format is told from the content. An lcov report is
     /// converted the way `cargo llvm-cov` converts it, finding the source files
     /// it names under `--source-root` wherever the report was written.
-    #[arg(long, value_name = "PATH", default_value = "coverage/cobertura.xml")]
+    #[arg(long, value_name = "PATH", default_value = COBERTURA_PATH)]
     pub file: PathBuf,
 
     /// Write the annotated report here instead of over `--file`.
@@ -2846,6 +2846,22 @@ fn pick(x: Option<i32>) -> Option<i32> {
             "{found:?}"
         );
         assert_eq!(fs::read_to_string(&args.file).expect("read"), before);
+    }
+
+    #[test]
+    fn the_default_report_path_is_the_one_the_docs_and_the_orb_use() {
+        // Pinned by value: the tests that import the const would pass for any
+        // value, and the orb's complexity_and_upload default is this path.
+        assert_eq!(COBERTURA_PATH, "coverage/cobertura.xml");
+        let cmd = <ComplexityArgs as clap::Args>::augment_args(clap::Command::new("t"));
+        let file = cmd
+            .get_arguments()
+            .find(|a| a.get_id() == "file")
+            .expect("file");
+        assert_eq!(
+            file.get_default_values(),
+            [std::ffi::OsStr::new("coverage/cobertura.xml")]
+        );
     }
 
     #[test]

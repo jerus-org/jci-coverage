@@ -28,7 +28,7 @@ generated from them.
 | **P1 — `report`** | Orchestrate `cargo-llvm-cov` (test + nextest runners), write `coverage/lcov.info`, terminal summary | Done; removed in the next release ([#126](https://github.com/jerus-org/jci-coverage/issues/126)): the project's own job runs `cargo llvm-cov`, and `complexity` and `upload` take the report from there |
 | **P2 — `upload`** | Standalone multipart upload to OtterWise (repo token, git metadata, diff-coverage payload) | Done |
 | **P3 — generated orb** | `gen-circleci-orb`-produced `jerus-org/jci-coverage` orb; example workflows for a Rust repo and an upload-only non-Rust repo | Done ([#15](https://github.com/jerus-org/jci-coverage/issues/15)); published from `0.0.5` |
-| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI runs `report`/`upload`; the first crate release cut after that (the next after `0.0.8`) validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): CI runs the orb's `report_and_upload` (0.0.8, which carries the `upload` fix); needs `OTTERWISE_TOKEN` set as a project variable, then the first dogfooded release |
+| **P4 — dogfooding + first dogfooded release** | jci-coverage's own CI writes the report with the toolkit's `code_coverage` job and runs the orb's `complexity_and_upload` (with the gate) on it, and on the head of `main` after the prlog update; the first crate release cut after that validates the full loop | In progress ([#16](https://github.com/jerus-org/jci-coverage/issues/16)): the dogfooding runs (#125, #127); `OTTERWISE_TOKEN` is set as a project variable; the first release cut with it is the removal of `report` (#126) |
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
