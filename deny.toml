@@ -9,7 +9,14 @@ yanked = "warn"
 # Canonical source of truth for advisory ignores. `.cargo/audit.toml` is
 # derived from this list via `jci-audit sync`. Give each entry a written
 # justification.
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0542: humantime is unmaintained (no patched version exists).
+    # Dev-dependency only, via trycmd -> humantime-serde -> humantime; it is not
+    # in the shipped binary, the orb or the image. See
+    # https://rustsec.org/advisories/RUSTSEC-2026-0542. Remove this entry once
+    # trycmd no longer depends on humantime.
+    "RUSTSEC-2026-0542",
+]
 
 [licenses]
 # All licenses are denied unless explicitly allowed. Permissive licenses are
