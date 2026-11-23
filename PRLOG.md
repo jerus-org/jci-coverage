@@ -16,6 +16,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency jci-coverage to v0.0.21(pr [#130])
 - deps: lock file maintenance(pr [#131])
 - deps: lock file maintenance(pr [#133])
+- deps: clear the audit failures(pr [#140])
 
 ## [0.0.21] - 2026-11-06
 
@@ -397,6 +398,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#131]: https://github.com/jerus-org/jci-coverage/pull/131
 [#132]: https://github.com/jerus-org/jci-coverage/pull/132
 [#133]: https://github.com/jerus-org/jci-coverage/pull/133
+[#140]: https://github.com/jerus-org/jci-coverage/pull/140
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.21...HEAD
 [0.0.21]: https://github.com/jerus-org/jci-coverage/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...v0.0.20
