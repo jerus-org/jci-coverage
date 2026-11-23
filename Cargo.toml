@@ -31,7 +31,7 @@ tracing-log = "0.2.0"
 
 # complexity: parse Rust sources (spans need proc-macro2's `span-locations`) and
 # rewrite the Cobertura report without disturbing the rest of the file.
-syn = { version = "3.0.9", features = ["full", "visit"] }
+syn = { version = "3.0.10", features = ["full", "visit"] }
 proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
 quick-xml = "0.42.0"
 lcov2cobertura = "1.0.10"
