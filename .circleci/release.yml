@@ -11,7 +11,7 @@ parameters:
     description: "Override workspace v* version (empty = nextsv auto-detect)"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@8.0.3
+  toolkit: jerus-org/circleci-toolkit@8.1.0
   orb-tools: circleci/orb-tools@12.5.0
   # Dogfood: the coverage jobs below use this crate's own published orb.
   jci-coverage: jerus-org/jci-coverage@0.0.21
