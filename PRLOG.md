@@ -20,6 +20,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency toolkit to v8.1.0(pr [#139])
 - deps: update rust:1-slim-trixie docker digest to 6f14b2b(pr [#134])
 - deps: update rust crate clap to 4.6.9(pr [#135])
+- deps: update rust crate syn to 3.0.10(pr [#136])
 
 ## [0.0.21] - 2026-11-06
 
@@ -405,6 +406,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#139]: https://github.com/jerus-org/jci-coverage/pull/139
 [#134]: https://github.com/jerus-org/jci-coverage/pull/134
 [#135]: https://github.com/jerus-org/jci-coverage/pull/135
+[#136]: https://github.com/jerus-org/jci-coverage/pull/136
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.21...HEAD
 [0.0.21]: https://github.com/jerus-org/jci-coverage/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...v0.0.20
