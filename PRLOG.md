@@ -23,6 +23,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate syn to 3.0.10(pr [#136])
 - deps: lock file maintenance(pr [#137])
 - deps: update rust crate anyhow to 1.0.105(pr [#138])
+- deps: lock file maintenance(pr [#141])
 
 ## [0.0.21] - 2026-11-06
 
@@ -411,6 +412,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#136]: https://github.com/jerus-org/jci-coverage/pull/136
 [#137]: https://github.com/jerus-org/jci-coverage/pull/137
 [#138]: https://github.com/jerus-org/jci-coverage/pull/138
+[#141]: https://github.com/jerus-org/jci-coverage/pull/141
 [Unreleased]: https://github.com/jerus-org/jci-coverage/compare/v0.0.21...HEAD
 [0.0.21]: https://github.com/jerus-org/jci-coverage/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/jerus-org/jci-coverage/compare/v0.0.19...v0.0.20
