@@ -12,9 +12,10 @@ yanked = "warn"
 ignore = [
     # RUSTSEC-2026-0542: humantime is unmaintained (no patched version exists).
     # Dev-dependency only, via trycmd -> humantime-serde -> humantime; it is not
-    # in the shipped binary, the orb or the image. See
-    # https://rustsec.org/advisories/RUSTSEC-2026-0542. Remove this entry once
-    # trycmd no longer depends on humantime.
+    # in the shipped binary, the orb or the image. Advisory:
+    # https://rustsec.org/advisories/RUSTSEC-2026-0542. Tracked in
+    # https://github.com/jerus-org/jci-coverage/issues/142. Remove this entry
+    # once trycmd no longer depends on humantime.
     "RUSTSEC-2026-0542",
 ]
 
